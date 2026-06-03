@@ -24,6 +24,32 @@ def _load_mobile_css():
         with open(css_path) as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
+def _show_daily_consumption():
+    """Exibe widget com o consumo total de café do dia."""
+    from datetime import datetime
+    hoje = date.today()
+    agora = datetime.now().strftime("%H:%M")
+
+    # Soma todas as extrações de hoje
+    result = _fetch("""
+        SELECT COALESCE(SUM(gramas), 0) as total
+        FROM extracoes
+        WHERE DATE(data) = %s
+    """, (hoje,), _v=_v())
+
+    consumo_total = result[0]["total"] if result else 0
+
+    st.markdown(
+        f'<div style="background:#1E0E14;border:1px solid #271018;border-radius:8px;'
+        f'padding:14px;margin-bottom:1.5rem;text-align:center">'
+        f'<div style="font-size:12px;color:#6B3A4A;margin-bottom:6px">'
+        f'📅 {hoje.strftime("%d/%m/%Y")} | ⏰ {agora}</div>'
+        f'<div style="font-size:14px;font-weight:700;color:#F5EDE8;'
+        f'text-transform:uppercase;letter-spacing:0.05em">'
+        f'EU JÁ CONSUMI {consumo_total:.1f}g DE CAFÉ AUDITADOS PELO MATEU COFFEE</div>'
+        f'</div>',
+        unsafe_allow_html=True)
+
 def _show_logo():
     logo_path = os.path.join(_DIR, "assets", "mateu_coffee_logo.png")
     if os.path.exists(logo_path):
@@ -32,7 +58,7 @@ def _show_logo():
         st.markdown(
             f'<div class="mc-hero-full">'
             f'<img src="data:image/png;base64,{b64}" alt="Mateu Coffee">'
-            f'<p class="mc-tagline">Para baristas,<br>entusiastas e iniciantes</p>'
+            f'<p class="mc-tagline">Para baristas e entusiastas,<br>para mim, e para você também</p>'
             f'</div>',
             unsafe_allow_html=True)
     else:
@@ -719,6 +745,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
 def main():
     _init_db()
     _show_logo()
+    _show_daily_consumption()
 
     tab1, tab2, tab3, tab4 = st.tabs([
         "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ", "  Histórico  "])
@@ -851,30 +878,29 @@ def main():
             m  = CoffeeEngine.calc(gramas, agua, tds if tds > 0 else None, tempo)
             ey = m.get("ey", 0.0)
 
+            # ── Análise em Tempo Real (Expander no Topo) ───────────────────
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            st.markdown('<p class="section-label">Análise em Tempo Real</p>',
-                        unsafe_allow_html=True)
+            with st.expander("📊 ANÁLISE EM TEMPO REAL", expanded=True):
+                mc1, mc2, mc3, mc4 = st.columns(4)
+                mc1.metric("Brew Ratio",       m.get("ratio_text", "—"))
+                mc2.metric("Extraction Yield", f"{ey:.2f}%" if ey > 0 else "—",
+                           delta=m.get("status") if ey > 0 else None,
+                           delta_color=m.get("delta_color", "off"))
+                mc3.metric("Fluxo Médio",      f"{m.get('fluxo',0):.2f} g/s")
+                mc4.metric("Status",           m.get("status", "—"))
 
-            mc1, mc2, mc3, mc4 = st.columns(4)
-            mc1.metric("Brew Ratio",       m.get("ratio_text", "—"))
-            mc2.metric("Extraction Yield", f"{ey:.2f}%" if ey > 0 else "—",
-                       delta=m.get("status") if ey > 0 else None,
-                       delta_color=m.get("delta_color", "off"))
-            mc3.metric("Fluxo Médio",      f"{m.get('fluxo',0):.2f} g/s")
-            mc4.metric("Status",           m.get("status", "—"))
-
-            col_r, col_p = st.columns([1.6, 1], gap="large")
-            with col_r:
-                st.plotly_chart(_radar(CoffeeEngine.sensory(ey)),
-                                use_container_width=True, config={'displayModeBar': False})
-            with col_p:
-                foto_can = st.file_uploader("Foto da Caneca", type=["jpg","jpeg","png"],
-                                            key="foto_can")
-                if foto_can:
-                    _img(_b64(foto_can), w=210)
+                col_r, col_p = st.columns([1.6, 1], gap="large")
+                with col_r:
+                    st.plotly_chart(_radar(CoffeeEngine.sensory(ey)),
+                                    use_container_width=True, config={'displayModeBar': False})
+                with col_p:
+                    foto_can = st.file_uploader("Foto da Caneca", type=["jpg","jpeg","png"],
+                                                key="foto_can")
+                    if foto_can:
+                        _img(_b64(foto_can), w=210)
 
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            if st.button("Salvar Extração", type="primary", use_container_width=True):
+            if st.button("🔴 REGISTRAR EXTRAÇÃO", type="primary", use_container_width=True):
                 _run("""INSERT INTO extracoes
                     (coffee_id,data,metodo,gramas,moedor,clicks_moedor,agua_alvo,tds,
                      tempo_extracao,brew_ratio,ey,fluxo,foto_caneca,classificacao,notas)
@@ -882,7 +908,8 @@ def main():
                     (cid, data_ext, metodo, gramas, moedor, clicks, agua, tds, tempo,
                      m.get("ratio",0), ey, m.get("fluxo",0),
                      _b64(foto_can) if foto_can else None, class_e, notas_e))
-                st.success("Extração registrada.")
+                st.success("Extração registrada!")
+                st.rerun()
 
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             st.markdown('<p class="section-label">Motor Barista — Simulador de Extração</p>',
