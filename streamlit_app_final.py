@@ -372,6 +372,13 @@ def _init_db():
                 notas TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW()
             );
         """)
+        # Migração incremental — adiciona colunas novas sem recriar a tabela
+        cur.execute("""
+            ALTER TABLE coffees
+                ADD COLUMN IF NOT EXISTS local_compra  TEXT    DEFAULT '',
+                ADD COLUMN IF NOT EXISTS valor_compra  FLOAT   DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS data_compra   DATE;
+        """)
         conn.commit()
         st.session_state["_db_ready"] = True
     except Exception:
@@ -736,6 +743,20 @@ def main():
                         except Exception as e:
                             st.error(f"Erro na análise: {e}")
 
+        # ── Seção Compra ──────────────────────────────────────────────────
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        st.markdown('<p class="section-label">Compra</p>', unsafe_allow_html=True)
+        cp1, cp2, cp3 = st.columns(3, gap="large")
+        with cp1:
+            local_compra = st.text_input("Local de Compra",
+                                         placeholder="Ex: Torrefação Orfeu, iFood, Mercado...")
+        with cp2:
+            valor_compra = st.number_input("Valor Pago (R$)", min_value=0.0,
+                                           value=0.0, step=0.50, format="%.2f")
+        with cp3:
+            data_compra = st.date_input("Data da Compra", value=date.today(),
+                                        format="DD/MM/YYYY", key="data_compra")
+
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         if st.button("Salvar Café", type="primary", use_container_width=True):
             if not nome.strip():
@@ -743,10 +764,14 @@ def main():
             else:
                 _run("""INSERT INTO coffees
                     (data_cadastro,nome,tipo,torra,notas,classificacao,
-                     fazenda,regiao,data_torra,tamanho_pacote,foto_embalagem)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                     fazenda,regiao,data_torra,tamanho_pacote,foto_embalagem,
+                     local_compra,valor_compra,data_compra)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     (data_cad, nome.strip(), tipo, torra, notas, class_c,
-                     fazenda, regiao, data_tort, tamanho, _b64(foto_emb)))
+                     fazenda, regiao, data_tort, tamanho, _b64(foto_emb),
+                     local_compra.strip() or None,
+                     valor_compra if valor_compra > 0 else None,
+                     data_compra))
                 st.success(f"**{nome}** cadastrado com sucesso.")
                 st.balloons()
 
@@ -853,12 +878,21 @@ def main():
                         info = (_irow("Fazenda",  c['fazenda'] or "—") +
                                 _irow("Região",   c['regiao']  or "—") +
                                 _irow("Cadastro", c['data_cadastro'].strftime('%d/%m/%Y')))
+                        # Info de compra (se preenchida)
+                        if c.get("local_compra"):
+                            info += _irow("Comprado em", c["local_compra"])
+                        if c.get("data_compra"):
+                            info += _irow("Data compra", c["data_compra"].strftime('%d/%m/%Y'))
                         note = (f'<div style="margin-top:10px;font-size:12px;color:#6B3A4A;'
                                 f'font-style:italic;">{c["notas"]}</div>' if c["notas"] else "")
                         st.markdown(f'<div>{tags}</div><div style="margin-top:12px">{info}</div>{note}',
                                     unsafe_allow_html=True)
                     with cc:
                         st.metric("Extrações", int(c["total_ext"] or 0))
+                        if c.get("valor_compra"):
+                            lbl = (f"Comprado em {c['data_compra'].strftime('%d/%m/%Y')}"
+                                   if c.get("data_compra") else "Valor Pago")
+                            st.metric(lbl, f"R$ {c['valor_compra']:.2f}")
                         if c["avg_ey"]:   st.metric("EY Médio",   f"{c['avg_ey']:.1f}%")
                         if c["avg_nota"]: st.metric("Nota Média", _stars(round(c["avg_nota"])))
                     st.markdown("")
