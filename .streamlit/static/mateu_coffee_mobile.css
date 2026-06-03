@@ -58,13 +58,71 @@
   letter-spacing: 0.08em;
 }
 
-/* ══ 3. MOBILE LAYOUT (≤ 768 px) ════════════════════════════════ */
+/* ══ 3. TIPOGRAFIA GLOBAL (todas as telas) ═══════════════════════ */
+
+/* Section labels (CADASTRAR NOVO CAFÉ, PARÂMETROS, etc.) */
+p.section-label,
+p[class*="section-label"] {
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.12em !important;
+  color: #9A6070 !important;
+}
+
+/* info-key e info-val dos cards Meus Cafés / Histórico */
+.info-key { font-size: 13px !important; font-weight: 600 !important; }
+.info-val  { font-size: 15px !important; font-weight: 500 !important; }
+
+/* Tags (Grãos, Escura, 250g) */
+.tag {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 3px 9px !important;
+}
+
+/* ══ 4. MOBILE LAYOUT (≤ 768 px) ════════════════════════════════ */
 @media (max-width: 768px) {
 
-  /* Container padding */
+  /* ── Container ───────────────────────────────────────────────── */
   .block-container {
     padding: 0.75rem 0.9rem 2rem !important;
     max-width: 100% !important;
+  }
+
+  /* ── Corpo base: 16px mínimo ─────────────────────────────────── */
+  p, li, span, div,
+  [data-testid] p,
+  [data-testid] span,
+  [data-testid] div {
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  /* ── Labels de widgets (FAZENDA, TIPO, TORRA, etc.) ─────────── */
+  [data-testid="stWidgetLabel"] > p,
+  [data-testid="stWidgetLabel"] label,
+  label {
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    color: #F5EDE8 !important;
+    letter-spacing: 0.01em !important;
+  }
+
+  /* ── Help text abaixo dos widgets ────────────────────────────── */
+  [data-testid="stWidgetLabel"] > div,
+  [data-testid="stWidgetLabel"] small,
+  .stMarkdown small {
+    font-size: 13px !important;
+    opacity: 0.75;
+  }
+
+  /* ── Section labels mobile (sobreescrita específica) ─────────── */
+  p.section-label,
+  p[class*="section-label"] {
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.14em !important;
+    margin-bottom: 0.6rem !important;
   }
 
   /* ── Tabs: horizontal scroll, no wrap ───────────────────────── */
@@ -80,9 +138,24 @@
 
   button[data-baseweb="tab"] {
     white-space: nowrap !important;
-    min-height: 48px !important;
-    padding: 0 16px !important;
-    font-size: 13px !important;
+    min-height: 50px !important;
+    padding: 0 18px !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.01em !important;
+  }
+
+  /* ── Expander: título mais visível ───────────────────────────── */
+  [data-testid="stExpander"] summary p,
+  [data-testid="stExpander"] summary span,
+  button[data-testid="stExpanderToggleIcon"] + div p {
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    line-height: 1.4 !important;
+  }
+  [data-testid="stExpander"] summary {
+    padding: 14px 16px !important;
+    min-height: 52px !important;
   }
 
   /* ── Columns: stack vertically ───────────────────────────────── */
@@ -102,86 +175,136 @@
     min-width: calc(50% - 8px) !important;
   }
 
-  /* ── Inputs: full width, touch-friendly ─────────────────────── */
+  /* ── Inputs ──────────────────────────────────────────────────── */
   [data-testid="stTextInput"] input,
   [data-testid="stNumberInput"] input,
-  [data-testid="stTextArea"] textarea {
-    font-size: 16px !important; /* prevents iOS zoom on focus */
-    min-height: 44px;
+  [data-testid="stTextArea"] textarea,
+  [data-testid="stDateInput"] input {
+    font-size: 16px !important;
+    min-height: 48px !important;
+    padding: 10px 14px !important;
   }
   [data-testid="stSelectbox"] > div,
   [data-testid="stMultiSelect"] > div {
-    min-height: 44px !important;
+    min-height: 48px !important;
+    font-size: 16px !important;
+  }
+  /* Selectbox text do item selecionado */
+  [data-testid="stSelectbox"] [data-baseweb="select"] [data-id="select-placeholder"],
+  [data-testid="stSelectbox"] [data-baseweb="select"] span {
+    font-size: 16px !important;
   }
 
-  /* ── Radio / checkbox: larger tap target ─────────────────────── */
+  /* ── Radio / checkbox ────────────────────────────────────────── */
   [data-testid="stRadio"] label,
   [data-testid="stCheckbox"] label {
-    min-height: 44px !important;
+    min-height: 46px !important;
     display: flex !important;
     align-items: center !important;
-    padding: 6px 10px !important;
+    padding: 8px 12px !important;
     border-radius: 6px;
+    font-size: 15px !important;
+    font-weight: 600 !important;
   }
 
-  /* ── Slider: taller track ────────────────────────────────────── */
+  /* ── Slider ──────────────────────────────────────────────────── */
   [data-testid="stSlider"] > div > div { min-height: 44px; }
   [data-testid="stSlider"] input[type=range] { height: 44px; }
-
-  /* ── Buttons ─────────────────────────────────────────────────── */
-  [data-testid="stButton"] button {
-    min-height: 52px !important;
+  /* Valor do slider */
+  [data-testid="stSlider"] [data-testid="stMarkdownContainer"] p {
     font-size: 16px !important;
-    border-radius: 10px !important;
+    font-weight: 600 !important;
   }
 
-  /* ── File uploader: compact on mobile ───────────────────────── */
+  /* ── Botões ──────────────────────────────────────────────────── */
+  [data-testid="stButton"] button {
+    min-height: 54px !important;
+    font-size: 17px !important;
+    font-weight: 700 !important;
+    border-radius: 10px !important;
+    letter-spacing: 0.01em !important;
+  }
+
+  /* ── File uploader ───────────────────────────────────────────── */
   [data-testid="stFileUploader"] section {
-    padding: 12px !important;
+    padding: 14px !important;
+  }
+  [data-testid="stFileUploader"] section p,
+  [data-testid="stFileUploader"] section span {
+    font-size: 14px !important;
   }
   [data-testid="stFileUploader"] section small { display: none; }
 
-  /* ── Expander: remove overflow clip on columns inside ────────── */
+  /* ── Expander: remove overflow clip ─────────────────────────── */
   [data-testid="stExpander"] > div > div { overflow: visible !important; }
 
-  /* ── Metrics: bigger value text on mobile ────────────────────── */
-  [data-testid="stMetricValue"] { font-size: 20px !important; }
-  [data-testid="stMetricLabel"] { font-size: 11px !important; }
+  /* ── Metrics ─────────────────────────────────────────────────── */
+  [data-testid="stMetricValue"]  {
+    font-size: 24px !important;
+    font-weight: 700 !important;
+  }
+  [data-testid="stMetricLabel"]  {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.02em !important;
+  }
+  [data-testid="stMetricDelta"] {
+    font-size: 13px !important;
+  }
 
-  /* ── Plotly chart: no excess margin ─────────────────────────── */
+  /* ── st.info / st.success / st.error ────────────────────────── */
+  [data-testid="stAlert"] p,
+  [data-testid="stAlert"] div {
+    font-size: 15px !important;
+  }
+
+  /* ── Plotly ──────────────────────────────────────────────────── */
   .js-plotly-plot .plotly { margin: 0 !important; }
 
-  /* ── Motor Barista iframe: constrain height ─────────────────── */
+  /* ── Motor Barista iframe ─────────────────────────────────────── */
   iframe[title="streamlit_components.v1.html"] {
     max-height: 900px !important;
   }
 
-  /* ── Section labels: smaller on mobile ──────────────────────── */
-  p.section-label,
-  p[class*="section-label"] {
-    font-size: 10px !important;
-    letter-spacing: 0.1em !important;
+  /* ── Info-row no mobile (Meus Cafés) ─────────────────────────── */
+  .info-key { font-size: 14px !important; min-width: 100px !important; }
+  .info-val  { font-size: 16px !important; }
+
+  /* ── Tags ────────────────────────────────────────────────────── */
+  .tag {
+    font-size: 13px !important;
+    padding: 4px 10px !important;
   }
 
-  /* ── App header: stack on very small screens ─────────────────── */
+  /* ── App header ──────────────────────────────────────────────── */
   .mc-hero { gap: 10px; }
   .mc-hero img { width: 40px; height: 40px; }
   .mc-hero-text h1 { font-size: 17px; }
+
+  /* ── Nota de sabor em itálico ────────────────────────────────── */
+  div[style*="font-style:italic"] {
+    font-size: 14px !important;
+    line-height: 1.5 !important;
+  }
 }
 
-/* ══ 4. EXTRA SMALL (≤ 400 px, iPhone SE) ═══════════════════════ */
+/* ══ 5. EXTRA SMALL (≤ 400 px, iPhone SE) ═══════════════════════ */
 @media (max-width: 400px) {
-  .block-container { padding: 0.5rem 0.6rem 2rem !important; }
-  button[data-baseweb="tab"] { padding: 0 10px !important; font-size: 12px !important; }
-  [data-testid="stMetricValue"] { font-size: 17px !important; }
+  .block-container { padding: 0.5rem 0.75rem 2rem !important; }
+  button[data-baseweb="tab"] {
+    padding: 0 12px !important;
+    font-size: 14px !important;
+  }
+  [data-testid="stMetricValue"] { font-size: 20px !important; }
+  [data-testid="stButton"] button { font-size: 16px !important; }
 }
 
-/* ══ 5. SCROLLBAR STYLING ════════════════════════════════════════ */
+/* ══ 6. SCROLLBAR STYLING ════════════════════════════════════════ */
 ::-webkit-scrollbar       { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: #0D0608; }
 ::-webkit-scrollbar-thumb { background: #321420; border-radius: 4px; }
 
-/* ══ 6. FOCUS / ACCESSIBILITY ════════════════════════════════════ */
+/* ══ 7. FOCUS / ACCESSIBILITY ════════════════════════════════════ */
 :focus-visible {
   outline: 2px solid #D4561A !important;
   outline-offset: 2px !important;

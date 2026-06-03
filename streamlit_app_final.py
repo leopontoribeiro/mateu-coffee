@@ -112,8 +112,8 @@ st.markdown("""
 
     /* Section */
     .section-label {
-        font-size: 10px;
-        font-weight: 700;
+        font-size: 11px;
+        font-weight: 800;
         color: #6B3A4A;
         letter-spacing: 0.12em;
         text-transform: uppercase;
@@ -131,16 +131,16 @@ st.markdown("""
         background: #1E0E14;
         border: 1px solid #321420;
         border-radius: 6px;
-        font-size: 11px;
-        font-weight: 500;
+        font-size: 12px;
+        font-weight: 600;
         color: #9A6070;
         padding: 3px 10px;
         margin: 2px 3px 2px 0;
     }
     .tag-accent { border-color: #D4561A88; color: #D4561A; }
-    .info-row   { display: flex; gap: 6px; align-items: baseline; margin: 6px 0; }
-    .info-key   { font-size: 11px; color: #6B3A4A; font-weight: 500; min-width: 80px; }
-    .info-val   { font-size: 13px; color: #F5EDE8; font-weight: 500; }
+    .info-row   { display: flex; gap: 6px; align-items: baseline; margin: 7px 0; }
+    .info-key   { font-size: 12px; color: #6B3A4A; font-weight: 600; min-width: 90px; }
+    .info-val   { font-size: 14px; color: #F5EDE8; font-weight: 500; }
 
     /* Metrics */
     div[data-testid="stMetric"] {
