@@ -18,6 +18,11 @@ st.set_page_config(
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+/* ── Paleta ORFEU ACAUÃ ─────────────────────────────────────────────
+   Vinho  : #8B1A35   Laranja : #D4561A   Branco : #F5EDE8
+   BG     : #0D0608   Card    : #160C0F   Border : #271018
+──────────────────────────────────────────────────────────────────── */
+
 /* ── Base ───────────────────────────────────────────────────────── */
 html, body, [class*="css"], .stApp, .stMarkdown, .stTextInput,
 .stNumberInput, .stSelectbox, .stTextArea, .stRadio, .stDateInput,
@@ -26,99 +31,99 @@ html, body, [class*="css"], .stApp, .stMarkdown, .stTextInput,
     letter-spacing: -0.01em;
 }
 
-.stApp { background-color: #0C0C0C; }
+.stApp { background-color: #0D0608; }
 .block-container { padding: 2rem 2.5rem 2rem !important; max-width: 1280px; }
 
 /* ── Header ─────────────────────────────────────────────────────── */
 .app-header {
     display: flex; align-items: center; gap: 14px;
     padding: 0 0 2rem 0;
-    border-bottom: 1px solid #1E1E1E;
+    border-bottom: 1px solid #271018;
     margin-bottom: 2rem;
 }
 .app-header-icon { font-size: 32px; line-height: 1; }
 .app-header-title {
-    font-size: 22px; font-weight: 700; color: #F5F5F5;
+    font-size: 22px; font-weight: 700; color: #F5EDE8;
     letter-spacing: -0.03em; margin: 0;
 }
 .app-header-sub {
-    font-size: 12px; font-weight: 400; color: #555;
+    font-size: 12px; font-weight: 400; color: #6B3A4A;
     letter-spacing: 0.06em; text-transform: uppercase; margin: 2px 0 0 0;
 }
 
 /* ── Tabs ────────────────────────────────────────────────────────── */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 0; background: #111; border-radius: 10px;
-    padding: 4px; border: 1px solid #1E1E1E; width: fit-content;
+    gap: 0; background: #160C0F; border-radius: 10px;
+    padding: 4px; border: 1px solid #271018; width: fit-content;
 }
 .stTabs [data-baseweb="tab"] {
     background: transparent; border-radius: 7px;
-    color: #666; font-size: 13px; font-weight: 500;
+    color: #6B3A4A; font-size: 13px; font-weight: 500;
     padding: 8px 20px; border: none; transition: all .15s;
 }
 .stTabs [aria-selected="true"] {
-    background: #1E1E1E !important; color: #F5F5F5 !important;
+    background: #271018 !important; color: #F5EDE8 !important;
 }
 .stTabs [data-baseweb="tab-border"] { display: none !important; }
 .stTabs [data-baseweb="tab-panel"] { padding-top: 2rem !important; }
 
 /* ── Section labels ──────────────────────────────────────────────── */
 .section-label {
-    font-size: 10px; font-weight: 700; color: #555;
+    font-size: 10px; font-weight: 700; color: #6B3A4A;
     letter-spacing: 0.12em; text-transform: uppercase;
     margin: 0 0 1.2rem 0;
 }
 .section-divider {
-    border: none; border-top: 1px solid #1E1E1E;
+    border: none; border-top: 1px solid #271018;
     margin: 2rem 0;
 }
 
 /* ── Cards ───────────────────────────────────────────────────────── */
 .metric-card {
-    background: #111; border: 1px solid #1E1E1E;
+    background: #160C0F; border: 1px solid #271018;
     border-radius: 12px; padding: 16px 20px;
 }
 .metric-label {
-    font-size: 11px; font-weight: 600; color: #555;
+    font-size: 11px; font-weight: 600; color: #6B3A4A;
     text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;
 }
 .metric-value {
-    font-size: 22px; font-weight: 700; color: #10B981;
+    font-size: 22px; font-weight: 700; color: #D4561A;
     letter-spacing: -0.03em;
 }
-.metric-sub { font-size: 12px; color: #666; margin-top: 4px; }
+.metric-sub { font-size: 12px; color: #6B3A4A; margin-top: 4px; }
 
 .coffee-card {
-    background: #111; border: 1px solid #1E1E1E;
+    background: #160C0F; border: 1px solid #271018;
     border-radius: 14px; padding: 20px 24px; margin: 10px 0;
 }
 .tag {
-    display: inline-block; background: #1A1A1A;
-    border: 1px solid #2A2A2A; border-radius: 6px;
-    font-size: 11px; font-weight: 500; color: #999;
+    display: inline-block; background: #1E0E14;
+    border: 1px solid #321420; border-radius: 6px;
+    font-size: 11px; font-weight: 500; color: #9A6070;
     padding: 3px 10px; margin: 2px 3px 2px 0;
 }
-.tag-accent { border-color: #10B98155; color: #10B981; }
+.tag-accent { border-color: #D4561A55; color: #D4561A; }
 .info-row {
     display: flex; gap: 6px; align-items: baseline;
     margin: 6px 0;
 }
-.info-key { font-size: 11px; color: #555; font-weight: 500; min-width: 80px; }
-.info-val { font-size: 13px; color: #D0D0D0; font-weight: 500; }
+.info-key { font-size: 11px; color: #6B3A4A; font-weight: 500; min-width: 80px; }
+.info-val { font-size: 13px; color: #F5EDE8; font-weight: 500; }
 
 /* ── Native Streamlit metrics ────────────────────────────────────── */
 div[data-testid="stMetric"] {
-    background: #111 !important; border: 1px solid #1E1E1E !important;
+    background: #160C0F !important; border: 1px solid #271018 !important;
     border-radius: 12px !important; padding: 16px 20px !important;
 }
 div[data-testid="stMetricLabel"] p {
     font-size: 10px !important; font-weight: 700 !important;
-    color: #555 !important; text-transform: uppercase !important;
+    color: #6B3A4A !important; text-transform: uppercase !important;
     letter-spacing: 0.1em !important;
 }
 div[data-testid="stMetricValue"] {
     font-size: 20px !important; font-weight: 700 !important;
-    color: #10B981 !important; letter-spacing: -0.02em !important;
+    color: #D4561A !important; letter-spacing: -0.02em !important;
 }
 div[data-testid="stMetricDelta"] {
     font-size: 11px !important; font-weight: 500 !important;
@@ -127,22 +132,22 @@ div[data-testid="stMetricDelta"] {
 /* ── Inputs ──────────────────────────────────────────────────────── */
 .stTextInput input, .stNumberInput input, .stTextArea textarea,
 .stDateInput input {
-    background: #111 !important; border: 1px solid #242424 !important;
-    border-radius: 8px !important; color: #E0E0E0 !important;
+    background: #160C0F !important; border: 1px solid #271018 !important;
+    border-radius: 8px !important; color: #F5EDE8 !important;
     font-size: 14px !important; font-weight: 400 !important;
     padding: 10px 14px !important;
     transition: border-color .15s !important;
 }
 .stTextInput input:focus, .stNumberInput input:focus,
-.stTextArea textarea:focus { border-color: #10B981 !important; }
+.stTextArea textarea:focus { border-color: #D4561A !important; }
 
 .stSelectbox select, div[data-baseweb="select"] {
-    background: #111 !important; border: 1px solid #242424 !important;
+    background: #160C0F !important; border: 1px solid #271018 !important;
     border-radius: 8px !important;
 }
 div[data-baseweb="select"] > div {
-    background: #111 !important; border: 1px solid #242424 !important;
-    border-radius: 8px !important; color: #E0E0E0 !important;
+    background: #160C0F !important; border: 1px solid #271018 !important;
+    border-radius: 8px !important; color: #F5EDE8 !important;
 }
 
 /* ── Labels ──────────────────────────────────────────────────────── */
@@ -150,63 +155,64 @@ div[data-baseweb="select"] > div {
 .stTextArea label, .stDateInput label, .stRadio label,
 .stFileUploader label, .stSlider label {
     font-size: 11px !important; font-weight: 600 !important;
-    color: #666 !important; text-transform: uppercase !important;
+    color: #6B3A4A !important; text-transform: uppercase !important;
     letter-spacing: 0.08em !important; margin-bottom: 4px !important;
 }
 
 /* ── Buttons ─────────────────────────────────────────────────────── */
 .stButton > button {
-    background: #1A1A1A !important; border: 1px solid #2A2A2A !important;
-    border-radius: 8px !important; color: #D0D0D0 !important;
+    background: #1E0E14 !important; border: 1px solid #321420 !important;
+    border-radius: 8px !important; color: #C09090 !important;
     font-size: 13px !important; font-weight: 500 !important;
     padding: 10px 20px !important; transition: all .15s !important;
 }
 .stButton > button:hover {
-    background: #222 !important; border-color: #333 !important;
-    color: #F5F5F5 !important;
+    background: #271018 !important; border-color: #3D1828 !important;
+    color: #F5EDE8 !important;
 }
 .stButton > button[kind="primary"] {
-    background: #10B981 !important; border-color: #10B981 !important;
-    color: #000 !important; font-weight: 600 !important;
+    background: #D4561A !important; border-color: #D4561A !important;
+    color: #FFF8F4 !important; font-weight: 600 !important;
 }
 .stButton > button[kind="primary"]:hover {
-    background: #0D9E6E !important; border-color: #0D9E6E !important;
+    background: #B8451400 !important; border-color: #B84514 !important;
+    background: #B84514 !important;
 }
 
 /* ── Radio ───────────────────────────────────────────────────────── */
 .stRadio > div { gap: 6px !important; }
 .stRadio > div label {
-    background: #111 !important; border: 1px solid #1E1E1E !important;
+    background: #160C0F !important; border: 1px solid #271018 !important;
     border-radius: 7px !important; padding: 7px 14px !important;
-    color: #999 !important; font-size: 13px !important;
+    color: #9A6070 !important; font-size: 13px !important;
     font-weight: 500 !important; cursor: pointer !important;
     text-transform: none !important; letter-spacing: 0 !important;
     transition: all .12s !important;
 }
 .stRadio > div label:has(input:checked) {
-    background: #1A2A22 !important; border-color: #10B981 !important;
-    color: #10B981 !important;
+    background: #2A1018 !important; border-color: #8B1A35 !important;
+    color: #F5EDE8 !important;
 }
 
 /* ── Expander ────────────────────────────────────────────────────── */
 .streamlit-expanderHeader {
-    background: #111 !important; border: 1px solid #1E1E1E !important;
-    border-radius: 10px !important; color: #C0C0C0 !important;
+    background: #160C0F !important; border: 1px solid #271018 !important;
+    border-radius: 10px !important; color: #D0A090 !important;
     font-size: 13px !important; font-weight: 500 !important;
     padding: 14px 18px !important;
 }
 .streamlit-expanderContent {
-    background: #0E0E0E !important; border: 1px solid #1A1A1A !important;
+    background: #120A0C !important; border: 1px solid #1E1018 !important;
     border-top: none !important; border-radius: 0 0 10px 10px !important;
     padding: 20px !important;
 }
 
 /* ── Divider ─────────────────────────────────────────────────────── */
-hr { border-color: #1A1A1A !important; margin: 1.5rem 0 !important; }
+hr { border-color: #271018 !important; margin: 1.5rem 0 !important; }
 
 /* ── File uploader ───────────────────────────────────────────────── */
 .stFileUploader > div {
-    background: #111 !important; border: 1px dashed #2A2A2A !important;
+    background: #160C0F !important; border: 1px dashed #321420 !important;
     border-radius: 10px !important;
 }
 
@@ -379,25 +385,25 @@ def radar(profile):
     fig = go.Figure()
     fig.add_trace(go.Scatterpolar(
         r=[8, 7, 7, 4, 8], theta=attrs, fill='toself',
-        name='Target', line_color='#2A2A2A', fillcolor='rgba(42,42,42,0.4)'))
+        name='Target', line_color='#8B1A35', fillcolor='rgba(139,26,53,0.15)'))
     fig.add_trace(go.Scatterpolar(
         r=profile, theta=attrs, fill='toself',
-        name='Atual', line_color='#10B981', fillcolor='rgba(16,185,129,0.15)'))
+        name='Atual', line_color='#D4561A', fillcolor='rgba(212,86,26,0.18)'))
     fig.update_layout(
         polar=dict(
             bgcolor='rgba(0,0,0,0)',
             radialaxis=dict(visible=True, range=[0, 10],
-                            gridcolor='#1E1E1E', linecolor='#1E1E1E',
-                            tickfont=dict(color='#444', size=9)),
-            angularaxis=dict(gridcolor='#1E1E1E', linecolor='#1E1E1E')
+                            gridcolor='#271018', linecolor='#271018',
+                            tickfont=dict(color='#6B3A4A', size=9)),
+            angularaxis=dict(gridcolor='#271018', linecolor='#271018')
         ),
         showlegend=True,
-        legend=dict(font=dict(color='#666', size=10), bgcolor='rgba(0,0,0,0)'),
+        legend=dict(font=dict(color='#9A6070', size=10), bgcolor='rgba(0,0,0,0)'),
         height=270,
         margin=dict(l=20, r=20, t=20, b=20),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='#888', size=11, family='Inter'),
+        font=dict(color='#9A6070', size=11, family='Inter'),
     )
     return fig
 
@@ -574,9 +580,9 @@ def main():
                             show_img(c["foto_embalagem"], width=150)
                         else:
                             st.markdown(
-                                '<div style="width:150px;height:150px;background:#111;'
-                                'border:1px solid #1E1E1E;border-radius:10px;display:flex;'
-                                'align-items:center;justify-content:center;color:#333;font-size:28px;">☕</div>',
+                                '<div style="width:150px;height:150px;background:#160C0F;'
+                                'border:1px solid #271018;border-radius:10px;display:flex;'
+                                'align-items:center;justify-content:center;color:#3D1828;font-size:28px;">☕</div>',
                                 unsafe_allow_html=True
                             )
 
@@ -645,9 +651,9 @@ def main():
                             show_img(r["foto_caneca"], width=150)
                         else:
                             st.markdown(
-                                '<div style="width:150px;height:150px;background:#111;'
-                                'border:1px solid #1E1E1E;border-radius:10px;display:flex;'
-                                'align-items:center;justify-content:center;color:#333;font-size:28px;">☕</div>',
+                                '<div style="width:150px;height:150px;background:#160C0F;'
+                                'border:1px solid #271018;border-radius:10px;display:flex;'
+                                'align-items:center;justify-content:center;color:#3D1828;font-size:28px;">☕</div>',
                                 unsafe_allow_html=True
                             )
 
