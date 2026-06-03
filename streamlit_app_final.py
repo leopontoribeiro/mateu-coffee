@@ -9,6 +9,7 @@ import json
 from datetime import date
 import hashlib
 import secrets
+from typing import Optional
 
 # ── Page config ────────────────────────────────────────────────────────
 st.set_page_config(
@@ -552,7 +553,7 @@ class CoffeeEngine:
     EY_HIGH  = 22.0
 
     @staticmethod
-    def calc(coffee_g: float, water_g: float, tds: float | None, time_s: int) -> dict:
+    def calc(coffee_g: float, water_g: float, tds: Optional[float], time_s: int) -> dict:
         if coffee_g <= 0:
             return {}
         ratio = water_g / coffee_g
