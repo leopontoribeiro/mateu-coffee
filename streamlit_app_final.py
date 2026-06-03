@@ -1330,7 +1330,7 @@ def main():
                         if r["ey"]:         st.metric("EY",         f"{r['ey']:.1f}%")
                         if r["fluxo"]:      st.metric("Fluxo",      f"{r['fluxo']:.2f} g/s")
                     st.markdown("")
-                    if st.button("Remover extração", key=f"del_e_{r['id']}"):
+                    if st.button("Remover extração", key=f"del_r_{r['id']}"):
                         _run("DELETE FROM extracoes WHERE id=%s", (r["id"],))
                         st.rerun()
 
