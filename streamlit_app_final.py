@@ -1,7 +1,7 @@
 import streamlit as st
 import plotly.graph_objects as go
-import psycopg2
-import psycopg2.extras
+import psycopg
+from psycopg.rows import dict_row
 import base64
 from datetime import date
 
@@ -232,8 +232,8 @@ div[data-testid="stAlert"] {
 @st.cache_resource
 def get_conn():
     s = st.secrets["connections"]["postgresql"]
-    return psycopg2.connect(
-        host=s["host"], port=s["port"], dbname=s["database"],
+    return psycopg.connect(
+        host=s["host"], port=int(s["port"]), dbname=s["database"],
         user=s["username"], password=s["password"], sslmode="require"
     )
 
@@ -286,7 +286,7 @@ def init_db():
     cur.close()
 
 def fetch(query, params=()):
-    cur = conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn().cursor(row_factory=dict_row)
     cur.execute(query, params)
     rows = cur.fetchall()
     cur.close()
