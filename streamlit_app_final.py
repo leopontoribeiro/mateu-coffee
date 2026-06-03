@@ -723,8 +723,10 @@ def main():
                 with st.expander(f"{c['nome']}  ·  {c['torra']}  ·  {_stars(c['classificacao'] or 0)}"):
                     ca, cb, cc = st.columns([1, 2.2, 1.4], gap="large")
                     with ca:
-                        _img(c["foto_embalagem"], w=150) if c["foto_embalagem"] \
-                            else st.markdown(_ph(), unsafe_allow_html=True)
+                        if c["foto_embalagem"]:
+                            _img(c["foto_embalagem"], w=150)
+                        else:
+                            st.markdown(_ph(), unsafe_allow_html=True)
                     with cb:
                         tags = (_tag(c['tipo']) + _tag(c['torra']) +
                                 _tag(f"{c['tamanho_pacote']}g") +
@@ -764,8 +766,10 @@ def main():
                 with st.expander(header):
                     ra, rb, rc = st.columns([1, 2.2, 1.4], gap="large")
                     with ra:
-                        _img(r["foto_caneca"], w=150) if r["foto_caneca"] \
-                            else st.markdown(_ph(), unsafe_allow_html=True)
+                        if r["foto_caneca"]:
+                            _img(r["foto_caneca"], w=150)
+                        else:
+                            st.markdown(_ph(), unsafe_allow_html=True)
                     with rb:
                         tags = _tag(r['metodo'], True) + _tag(r['torra'])
                         info = (_irow("Dose",  f"{r['gramas']}g") +
