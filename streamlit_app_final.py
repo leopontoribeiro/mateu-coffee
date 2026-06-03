@@ -384,7 +384,7 @@ def _verify_senha(senha: str, hash_stored: str) -> bool:
     salt = hash_stored.split("$")[0]
     return _hash_senha(senha, salt) == hash_stored
 
-def _login(email: str, senha: str) -> bool:
+def _login(email: str, senha: str, remember: bool = False) -> bool:
     """Valida credenciais e define sessão."""
     try:
         result = _fetch("SELECT id, email FROM usuarios WHERE email=%s LIMIT 1", (email,), _v=0)
@@ -396,14 +396,51 @@ def _login(email: str, senha: str) -> bool:
             return False
         st.session_state['user_id'] = usuario['id']
         st.session_state['user_email'] = usuario['email']
+
+        if remember:
+            token = secrets.token_urlsafe(32)
+            from datetime import datetime, timedelta
+            expira = datetime.now() + timedelta(days=30)
+            _run(
+                "UPDATE usuarios SET remember_token=%s, remember_token_created=%s WHERE id=%s",
+                (token, expira, usuario['id'])
+            )
+            st.session_state['remember_token'] = token
+
+        return True
+    except:
+        return False
+
+def _check_remember_token():
+    """Restaura sessão se token válido."""
+    token = st.session_state.get('remember_token')
+    if not token:
+        return False
+    try:
+        from datetime import datetime
+        result = _fetch(
+            "SELECT id, email, remember_token_created FROM usuarios WHERE remember_token=%s",
+            (token,), _v=0
+        )
+        if not result:
+            return False
+        usuario = result[0]
+        if usuario['remember_token_created'] and datetime.fromisoformat(usuario['remember_token_created']) < datetime.now():
+            return False
+        st.session_state['user_id'] = usuario['id']
+        st.session_state['user_email'] = usuario['email']
         return True
     except:
         return False
 
 def _logout():
-    """Limpa sessão."""
+    """Limpa sessão e token."""
+    user_id = st.session_state.get('user_id')
+    if user_id:
+        _run("UPDATE usuarios SET remember_token=NULL, remember_token_created=NULL WHERE id=%s", (user_id,))
     st.session_state.pop('user_id', None)
     st.session_state.pop('user_email', None)
+    st.session_state.pop('remember_token', None)
 
 def _init_db():
     if st.session_state.get("_db_ready"):
@@ -416,9 +453,14 @@ def _init_db():
                 id SERIAL PRIMARY KEY,
                 email TEXT UNIQUE NOT NULL,
                 senha_hash TEXT NOT NULL,
-                criado_em TIMESTAMP DEFAULT NOW()
+                criado_em TIMESTAMP DEFAULT NOW(),
+                remember_token TEXT,
+                remember_token_created TIMESTAMP
             );
         """)
+        # Migrations para tabela existente
+        cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token TEXT;")
+        cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token_created TIMESTAMP;")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS coffees (
                 id SERIAL PRIMARY KEY, data_cadastro DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -789,23 +831,75 @@ def main():
     _init_db()
 
     # ── Autenticação ────────────────────────────────────────────────────
+    # Tenta restaurar login via remember_token
+    if 'user_id' not in st.session_state and 'remember_token' not in st.session_state:
+        # Tenta carregar token do session_state (persistido via Streamlit secrets)
+        try:
+            import json
+            from pathlib import Path
+            secrets_file = Path.home() / ".mateu_coffee_auth"
+            if secrets_file.exists():
+                with open(secrets_file) as f:
+                    auth_data = json.load(f)
+                    st.session_state['remember_token'] = auth_data.get('token')
+        except:
+            pass
+
     if 'user_id' not in st.session_state:
-        st.markdown('<p class="section-label">Mateu Coffee Production</p>', unsafe_allow_html=True)
-        st.markdown("---")
+        # Tenta restaurar com token
+        if not _check_remember_token():
+            # ── Página de Login ────────────────────────────────────
+            st.markdown("""
+                <style>
+                .login-container {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 2rem auto;
+                }
+                .login-logo {
+                    max-width: 280px;
+                    margin-bottom: 2rem;
+                }
+                </style>
+                <div class="login-container">
+                    <img src="app/static/assets/mateu_coffee_logo.png" class="login-logo" alt="Mateu Coffee">
+                </div>
+            """, unsafe_allow_html=True)
 
-        tab_login, tab_cadastro = st.tabs(["Login", "Cadastro"])
+            # Exibe logo usando file path direto
+            logo_path = os.path.join(_DIR, "assets", "mateu_coffee_logo.png")
+            if os.path.exists(logo_path):
+                col_logo_center = st.columns([0.15, 0.7, 0.15])[1]
+                with col_logo_center:
+                    st.image(logo_path, use_container_width=True)
 
-        with tab_login:
-            st.markdown("### Entrar")
-            email = st.text_input("Email", key="login_email")
-            senha = st.text_input("Senha", type="password", key="login_senha")
+            st.markdown("---")
+            tab_login, tab_cadastro = st.tabs(["Login", "Cadastro"])
 
-            if st.button("🔓 Entrar", use_container_width=True):
-                if _login(email, senha):
-                    st.success("Login realizado!")
-                    st.rerun()
-                else:
-                    st.error("Email ou senha inválidos.")
+            with tab_login:
+                st.markdown("### 🔐 Entrar na Conta")
+                email = st.text_input("Email", key="login_email", placeholder="seu@email.com")
+                senha = st.text_input("Senha", type="password", key="login_senha")
+                remember_me = st.checkbox("✓ Manter-me conectado", value=False, key="login_remember")
+
+                if st.button("🔓 Entrar", use_container_width=True):
+                    if _login(email, senha, remember=remember_me):
+                        if remember_me:
+                            # Salva token no arquivo local
+                            try:
+                                import json
+                                from pathlib import Path
+                                secrets_file = Path.home() / ".mateu_coffee_auth"
+                                with open(secrets_file, 'w') as f:
+                                    json.dump({'token': st.session_state.get('remember_token', '')}, f)
+                            except:
+                                pass
+                        st.success("✅ Login realizado!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Email ou senha inválidos.")
 
         with tab_cadastro:
             st.markdown("### Criar Conta")
