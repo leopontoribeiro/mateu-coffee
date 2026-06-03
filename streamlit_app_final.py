@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import plotly.graph_objects as go
 import psycopg2
 import psycopg2.extras
@@ -416,6 +417,165 @@ def _radar(profile: tuple) -> go.Figure:
     )
     return fig
 
+# ── Motor Barista HTML ─────────────────────────────────────────────────
+_MOTOR_BARISTA_HTML = """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:      #0D0608;
+    --card:    #160a0e;
+    --text:    #F5EDE8;
+    --muted:   #6B3A4A;
+    --accent:  #D4561A;
+    --vinho:   #8B1A35;
+    --border:  #271018;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);padding:16px 4px 4px}
+  .layout{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:680px){.layout{grid-template-columns:1fr}}
+  .card{background:var(--card);border-radius:8px;padding:18px;border:1px solid var(--border)}
+  .card h2{color:var(--accent);font-size:11pt;margin-bottom:16px;border-left:3px solid var(--accent);padding-left:9px;font-weight:700}
+  .cg{margin-bottom:14px}
+  .cl{display:flex;justify-content:space-between;font-weight:600;font-size:9.5pt;margin-bottom:4px}
+  .cl span{color:var(--accent)}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4px}
+  .ht{font-size:7.5pt;color:var(--muted);margin-top:3px;line-height:1.4}
+  .chart-wrap{position:relative;height:260px;width:100%}
+  .results{margin-top:14px;background:#1a0a0f;border-radius:6px;padding:13px;border:1px solid var(--border)}
+  .rt{font-size:9.5pt;font-weight:700;color:var(--accent);margin-bottom:8px}
+  .vb{font-size:10.5pt;font-weight:600;color:#F5EDE8;background:#250d14;padding:9px 11px;border-radius:4px;border-left:4px solid var(--vinho);margin-bottom:8px}
+  .vd{font-size:8.5pt;color:#c4a8b0;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="layout">
+  <div class="card">
+    <h2>Variáveis de Entrada</h2>
+
+    <div class="cg">
+      <div class="cl"><label>Massa de Café (Dose)</label><span id="vd">18.0 g</span></div>
+      <input type="range" id="id" min="14" max="22" step="0.5" value="18">
+      <div class="ht">Quantidade de pó no porta-filtro. Impacta o corpo e resistência ao fluxo.</div>
+    </div>
+
+    <div class="cg">
+      <div class="cl"><label>Volumetria na Xícara (Yield)</label><span id="vy">36.0 g</span></div>
+      <input type="range" id="iy" min="20" max="60" step="1" value="36">
+      <div class="ht">Peso final do líquido extraído. Define a taxa de concentração (Ratio).</div>
+    </div>
+
+    <div class="cg">
+      <div class="cl"><label>Tempo de Extração</label><span id="vt">28 s</span></div>
+      <input type="range" id="it" min="15" max="45" step="1" value="28">
+      <div class="ht">Tempos baixos subextraem; altos superextraem.</div>
+    </div>
+
+    <div class="cg">
+      <div class="cl"><label>Temperatura da Água</label><span id="vp">92.0 °C</span></div>
+      <input type="range" id="ip" min="85" max="98" step="0.5" value="92">
+      <div class="ht">Temperaturas elevadas dissolvem mais amargor; baixas geram acidez crua.</div>
+    </div>
+
+    <div class="cg">
+      <div class="cl"><label>Pressão da Bomba</label><span id="vb">9.0 bar</span></div>
+      <input type="range" id="ib" min="6" max="12" step="0.5" value="9">
+      <div class="ht">Fora de 8–10 bar gera canalizações ou falta de crema.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Perfil Sensorial Resultante</h2>
+    <div class="chart-wrap"><canvas id="rc"></canvas></div>
+    <div class="results">
+      <div class="rt">Diagnóstico do Especialista:</div>
+      <div class="vb" id="vtitle">Balanço Perfeito</div>
+      <div class="vd" id="vtext">Carregando análise...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const chart = new Chart(document.getElementById('rc').getContext('2d'), {
+  type: 'radar',
+  data: {
+    labels: ['Acidez','Amargor','Corpo','Doçura','Adstringência'],
+    datasets:[{
+      data:[5,5,5,5,1],
+      backgroundColor:'rgba(212,86,26,0.15)',
+      borderColor:'rgba(212,86,26,1)',
+      borderWidth:2,
+      pointBackgroundColor:'rgba(139,26,53,1)',
+      pointRadius:4
+    }]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    scales:{r:{
+      angleLines:{color:'#271018'},grid:{color:'#271018'},
+      pointLabels:{font:{size:10,weight:'bold'},color:'#F5EDE8'},
+      suggestedMin:0,suggestedMax:10,ticks:{display:false}
+    }},
+    plugins:{legend:{display:false}}
+  }
+});
+
+function sim(){
+  const d=+document.getElementById('id').value,
+        y=+document.getElementById('iy').value,
+        t=+document.getElementById('it').value,
+        p=+document.getElementById('ip').value,
+        b=+document.getElementById('ib').value;
+
+  document.getElementById('vd').innerText=d.toFixed(1)+' g';
+  document.getElementById('vy').innerText=y.toFixed(1)+' g';
+  document.getElementById('vt').innerText=t+' s';
+  document.getElementById('vp').innerText=p.toFixed(1)+' °C';
+  document.getElementById('vb').innerText=b.toFixed(1)+' bar';
+
+  const ratio=y/d;
+  let ac=5,am=5,co=5,sw=5,as=1;
+
+  if(ratio>2.4){ac-=(ratio-2.4)*1.5;am+=(ratio-2.4)*2;co-=(ratio-2.4)*1.8;sw-=(ratio-2.4)*1.2}
+  else if(ratio<1.7){ac+=(1.7-ratio)*2.5;am-=(1.7-ratio)*2;co+=(1.7-ratio)*2;sw-=(1.7-ratio)*1.5}
+
+  if(t<22){ac+=(22-t)*0.3;am-=(22-t)*0.25;sw-=(22-t)*0.4;co-=(22-t)*0.2}
+  else if(t>34){am+=(t-34)*0.4;ac-=(t-34)*0.2;sw-=(t-34)*0.3;as+=(t-34)*0.5}
+
+  const dT=p-92;
+  if(dT>0){am+=dT*0.4;ac-=dT*0.2}
+  else{ac+=Math.abs(dT)*0.4;am-=Math.abs(dT)*0.3;sw-=Math.abs(dT)*0.2}
+
+  if(b>10){as+=(b-10)*1;am+=(b-10)*0.4}
+  else if(b<8){co-=(8-b)*1;sw-=(8-b)*0.4}
+
+  const cl=v=>Math.max(0,Math.min(10,v));
+  ac=cl(ac);am=cl(am);co=cl(co);sw=cl(sw);as=cl(as);
+
+  chart.data.datasets[0].data=[ac.toFixed(1),am.toFixed(1),co.toFixed(1),sw.toFixed(1),as.toFixed(1)];
+  chart.update();
+
+  let ti="Balanço Perfeito",
+      tx="Extração simétrica. Parâmetros em conformidade com os padrões SCA. Acidez brilhante, doçura limpa e corpo aveludado.";
+  if(am>7&&ac<3.5){ti="Superextração Crítica (Amargo e Seco)";tx="A água dissolveu compostos pesados da celulose do grão. O café apresenta corpo fino/ralo porém muito amargo, com sensação de queima e finalização cinzenta."}
+  else if(ac>7&&am<3.5){ti="Subextração (Ácido Macetado e Ralo)";tx="A extração foi interrompida antes da dissolução dos açúcares complexos. O resultado é um café agressivamente azedo, corpo excessivamente fino e sem finalização."}
+  else if(co>7.2&&ratio<1.6){ti="Concentrado / Ristretto denso";tx="Alta concentração de óleos insolúveis e coloides. Corpo extremamente pesado e espesso, com potência ácida elevada. Perfil xaroposo."}
+  else if(as>4){ti="Canalização Hidráulica Detectada";tx="Fissuras no bolo de café causadas por alta pressão ou moagem irregular geraram caminhos preferenciais. O café amarra a boca como banana verde."}
+
+  document.getElementById('vtitle').innerText=ti;
+  document.getElementById('vtext').innerText=tx;
+}
+
+['id','iy','it','ip','ib'].forEach(id=>document.getElementById(id).addEventListener('input',sim));
+sim();
+</script>
+</body>
+</html>"""
+
 # ── Main ───────────────────────────────────────────────────────────────
 def main():
     _init_db()
@@ -452,7 +612,7 @@ def main():
             notas   = st.text_area("Notas de Sabor / Torra",
                                    placeholder="Ex: Blueberry, chocolate, floral...", height=108)
             class_c = st.select_slider("Classificação", options=[1,2,3,4,5],
-                                       format_func=_stars, value=3)
+                                       format_func=_stars, value=3, key="class_cafe")
             foto_emb = st.file_uploader("Foto da Embalagem", type=["jpg","jpeg","png"],
                                         key="foto_emb")
             if foto_emb:
@@ -501,7 +661,7 @@ def main():
                 clicks   = st.number_input("Clicks do Moedor", 0, 200, 0, 1)
                 data_ext = st.date_input("Data", value=date.today(), key="data_ext")
                 class_e  = st.select_slider("Classificação", options=[1,2,3,4,5],
-                                            format_func=_stars, value=3)
+                                            format_func=_stars, value=3, key="class_extracao")
                 notas_e  = st.text_area("Notas", placeholder="Impressões da extração...",
                                         height=80)
 
@@ -540,6 +700,11 @@ def main():
                      m.get("ratio",0), ey, m.get("fluxo",0),
                      _b64(foto_can) if foto_can else None, class_e, notas_e))
                 st.success("Extração registrada.")
+
+            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+            st.markdown('<p class="section-label">Motor Barista — Simulador de Extração</p>',
+                        unsafe_allow_html=True)
+            components.html(_MOTOR_BARISTA_HTML, height=660, scrolling=False)
 
     # ── Tab 3 · Meus cafés ────────────────────────────────────────────
     with tab3:
