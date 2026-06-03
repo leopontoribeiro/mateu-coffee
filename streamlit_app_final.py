@@ -678,14 +678,14 @@ def main():
         c1, c2 = st.columns(2, gap="large")
 
         with c1:
-            data_cad = st.date_input("Data de Cadastro", value=date.today())
+            data_cad = st.date_input("Data de Cadastro", value=date.today(), format="DD/MM/YYYY")
             nome     = st.text_input("Nome do Café *", key="inp_nome",
                                      placeholder="Ex: Ethiopian Yirgacheffe")
             fazenda  = st.text_input("Fazenda", key="inp_fazenda",
                                      placeholder="Ex: Fazenda Santa Inês")
             regiao   = st.text_input("Região",  key="inp_regiao",
                                      placeholder="Ex: Sul de Minas / Etiópia")
-            data_tort = st.date_input("Data da Torra", value=None)
+            data_tort = st.date_input("Data da Torra", value=None, format="DD/MM/YYYY")
             tamanho  = st.radio("Pacote", [250, 500, 1000], key="inp_tamanho",
                                 horizontal=True, format_func=lambda x: f"{x}g")
 
@@ -752,7 +752,7 @@ def main():
             with c2:
                 moedor   = st.text_input("Moedor", placeholder="Ex: Comandante C40")
                 clicks   = st.number_input("Clicks do Moedor", 0, 200, 0, 1)
-                data_ext = st.date_input("Data", value=date.today(), key="data_ext")
+                data_ext = st.date_input("Data", value=date.today(), key="data_ext", format="DD/MM/YYYY")
                 class_e  = st.select_slider("Classificação", options=[1,2,3,4,5],
                                             format_func=_stars, value=3, key="class_extracao")
                 notas_e  = st.text_area("Notas", placeholder="Impressões da extração...",
@@ -823,11 +823,11 @@ def main():
                     with cb:
                         tags = (_tag(c['tipo']) + _tag(c['torra']) +
                                 _tag(f"{c['tamanho_pacote']}g") +
-                                (_tag("Torra " + c['data_torra'].strftime('%d/%m/%y'), True)
+                                (_tag("Torra " + c['data_torra'].strftime('%d/%m/%Y'), True)
                                  if c['data_torra'] else ""))
                         info = (_irow("Fazenda",  c['fazenda'] or "—") +
                                 _irow("Região",   c['regiao']  or "—") +
-                                _irow("Cadastro", c['data_cadastro'].strftime('%d/%m/%y')))
+                                _irow("Cadastro", c['data_cadastro'].strftime('%d/%m/%Y')))
                         note = (f'<div style="margin-top:10px;font-size:12px;color:#6B3A4A;'
                                 f'font-style:italic;">{c["notas"]}</div>' if c["notas"] else "")
                         st.markdown(f'<div>{tags}</div><div style="margin-top:12px">{info}</div>{note}',
@@ -855,7 +855,7 @@ def main():
         else:
             for r in rows:
                 header = (f"{r['cafe_nome']}  ·  {r['metodo']}  ·  "
-                          f"{r['data'].strftime('%d/%m/%y')}  ·  {_stars(r['classificacao'] or 0)}")
+                          f"{r['data'].strftime('%d/%m/%Y')}  ·  {_stars(r['classificacao'] or 0)}")
                 with st.expander(header):
                     ra, rb, rc = st.columns([1, 2.2, 1.4], gap="large")
                     with ra:
