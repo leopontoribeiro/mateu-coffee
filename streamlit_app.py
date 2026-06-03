@@ -1,12 +1,5 @@
 import streamlit as st
 import pandas as pd
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from datetime import datetime, timedelta
-import pytz
-import json
-import time
-
 st.set_page_config(
     page_title="Mateu Coffee | Extracao",
         page_icon="",
