@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import psycopg2
 import psycopg2.extras
 import base64
+import os
 from datetime import date
 
 # ── Page config ────────────────────────────────────────────────────────
@@ -13,6 +14,39 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def _load_mobile_css():
+    css_path = os.path.join(_DIR, ".streamlit", "static", "mateu_coffee_mobile.css")
+    if os.path.exists(css_path):
+        with open(css_path) as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+def _show_logo():
+    logo_path = os.path.join(_DIR, "assets", "mateu_coffee_logo.png")
+    if os.path.exists(logo_path):
+        with open(logo_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+        st.markdown(
+            f'<div class="mc-hero">'
+            f'<img src="data:image/png;base64,{b64}" alt="Mateu Coffee">'
+            f'<div class="mc-hero-text">'
+            f'<h1>Mateu Coffee Production</h1>'
+            f'<p>Cadastro · Extração · Análise · Histórico</p>'
+            f'</div></div>',
+            unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="app-header">
+          <div style="font-size:32px">☕</div>
+          <div>
+            <div class="app-header-title">Mateu Coffee Production</div>
+            <div class="app-header-sub">Cadastro · Extração · Análise · Histórico</div>
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+_load_mobile_css()
 
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -579,15 +613,7 @@ sim();
 # ── Main ───────────────────────────────────────────────────────────────
 def main():
     _init_db()
-
-    st.markdown("""
-    <div class="app-header">
-      <div style="font-size:32px">☕</div>
-      <div>
-        <div class="app-header-title">Mateu Coffee Production</div>
-        <div class="app-header-sub">Cadastro · Extração · Análise · Histórico</div>
-      </div>
-    </div>""", unsafe_allow_html=True)
+    _show_logo()
 
     tab1, tab2, tab3, tab4 = st.tabs([
         "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ", "  Histórico  "])

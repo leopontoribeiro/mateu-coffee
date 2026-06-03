@@ -1,0 +1,173 @@
+/* ─────────────────────────────────────────────
+   Mateu Coffee Production — Mobile Design System
+   Palette: Vinho #8B1A35 · Laranja #D4561A · Creme #F5EDE8
+   ───────────────────────────────────────────── */
+
+/* ══ 1. SAFE AREA (iPhone notch / Dynamic Island) ═══════════════ */
+@supports (padding: max(0px)) {
+  .block-container {
+    padding-left:   max(1rem, env(safe-area-inset-left))   !important;
+    padding-right:  max(1rem, env(safe-area-inset-right))  !important;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important;
+  }
+}
+
+/* ══ 2. HERO LOGO ════════════════════════════════════════════════ */
+.mc-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0.5rem 0 1.25rem;
+  border-bottom: 1px solid #271018;
+  margin-bottom: 1.5rem;
+}
+.mc-hero img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 12px;
+}
+.mc-hero-text { line-height: 1.2; }
+.mc-hero-text h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #F5EDE8;
+  margin: 0;
+  letter-spacing: -0.03em;
+}
+.mc-hero-text p {
+  font-size: 10px;
+  color: #6B3A4A;
+  margin: 2px 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ══ 3. MOBILE LAYOUT (≤ 768 px) ════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* Container padding */
+  .block-container {
+    padding: 0.75rem 0.9rem 2rem !important;
+    max-width: 100% !important;
+  }
+
+  /* ── Tabs: horizontal scroll, no wrap ───────────────────────── */
+  [data-testid="stTabs"] > div:first-child {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap !important;
+    gap: 0 !important;
+    border-bottom: 1px solid #271018 !important;
+  }
+  [data-testid="stTabs"] > div:first-child::-webkit-scrollbar { display: none; }
+
+  button[data-baseweb="tab"] {
+    white-space: nowrap !important;
+    min-height: 48px !important;
+    padding: 0 16px !important;
+    font-size: 13px !important;
+  }
+
+  /* ── Columns: stack vertically ───────────────────────────────── */
+  [data-testid="column"] {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* ── Four-metric row: 2×2 grid ───────────────────────────────── */
+  [data-testid="stHorizontalBlock"] {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+    flex: 1 1 calc(50% - 8px) !important;
+    min-width: calc(50% - 8px) !important;
+  }
+
+  /* ── Inputs: full width, touch-friendly ─────────────────────── */
+  [data-testid="stTextInput"] input,
+  [data-testid="stNumberInput"] input,
+  [data-testid="stTextArea"] textarea {
+    font-size: 16px !important; /* prevents iOS zoom on focus */
+    min-height: 44px;
+  }
+  [data-testid="stSelectbox"] > div,
+  [data-testid="stMultiSelect"] > div {
+    min-height: 44px !important;
+  }
+
+  /* ── Radio / checkbox: larger tap target ─────────────────────── */
+  [data-testid="stRadio"] label,
+  [data-testid="stCheckbox"] label {
+    min-height: 44px !important;
+    display: flex !important;
+    align-items: center !important;
+    padding: 6px 10px !important;
+    border-radius: 6px;
+  }
+
+  /* ── Slider: taller track ────────────────────────────────────── */
+  [data-testid="stSlider"] > div > div { min-height: 44px; }
+  [data-testid="stSlider"] input[type=range] { height: 44px; }
+
+  /* ── Buttons ─────────────────────────────────────────────────── */
+  [data-testid="stButton"] button {
+    min-height: 52px !important;
+    font-size: 16px !important;
+    border-radius: 10px !important;
+  }
+
+  /* ── File uploader: compact on mobile ───────────────────────── */
+  [data-testid="stFileUploader"] section {
+    padding: 12px !important;
+  }
+  [data-testid="stFileUploader"] section small { display: none; }
+
+  /* ── Expander: remove overflow clip on columns inside ────────── */
+  [data-testid="stExpander"] > div > div { overflow: visible !important; }
+
+  /* ── Metrics: bigger value text on mobile ────────────────────── */
+  [data-testid="stMetricValue"] { font-size: 20px !important; }
+  [data-testid="stMetricLabel"] { font-size: 11px !important; }
+
+  /* ── Plotly chart: no excess margin ─────────────────────────── */
+  .js-plotly-plot .plotly { margin: 0 !important; }
+
+  /* ── Motor Barista iframe: constrain height ─────────────────── */
+  iframe[title="streamlit_components.v1.html"] {
+    max-height: 900px !important;
+  }
+
+  /* ── Section labels: smaller on mobile ──────────────────────── */
+  p.section-label,
+  p[class*="section-label"] {
+    font-size: 10px !important;
+    letter-spacing: 0.1em !important;
+  }
+
+  /* ── App header: stack on very small screens ─────────────────── */
+  .mc-hero { gap: 10px; }
+  .mc-hero img { width: 40px; height: 40px; }
+  .mc-hero-text h1 { font-size: 17px; }
+}
+
+/* ══ 4. EXTRA SMALL (≤ 400 px, iPhone SE) ═══════════════════════ */
+@media (max-width: 400px) {
+  .block-container { padding: 0.5rem 0.6rem 2rem !important; }
+  button[data-baseweb="tab"] { padding: 0 10px !important; font-size: 12px !important; }
+  [data-testid="stMetricValue"] { font-size: 17px !important; }
+}
+
+/* ══ 5. SCROLLBAR STYLING ════════════════════════════════════════ */
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #0D0608; }
+::-webkit-scrollbar-thumb { background: #321420; border-radius: 4px; }
+
+/* ══ 6. FOCUS / ACCESSIBILITY ════════════════════════════════════ */
+:focus-visible {
+  outline: 2px solid #D4561A !important;
+  outline-offset: 2px !important;
+}

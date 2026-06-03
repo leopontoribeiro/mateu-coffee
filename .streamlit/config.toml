@@ -1,10 +1,10 @@
 [theme]
 base = "dark"
-primaryColor = "#10B981"
-backgroundColor = "#111827"
-secondaryBackgroundColor = "#1F2937"
-textColor = "#F3F4F6"
-font = "monospace"
+backgroundColor = "#0e0e0e"
+secondaryBackgroundColor = "#181818"
+primaryColor = "#CD853F"
+textColor = "#F0EBE3"
+font = "sans serif"
 
 [client]
 showErrorDetails = false
