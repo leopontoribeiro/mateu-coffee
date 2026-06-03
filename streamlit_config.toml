@@ -1,0 +1,54 @@
+# ☕ MATEU BARISTA - CONFIGURAÇÃO STREAMLIT
+
+[theme]
+# Cores do tema (baseadas no Design System)
+primaryColor="#FF8C42"          # Laranja principal
+backgroundColor="#FFFFFF"      # Fundo branco
+secondaryBackgroundColor="#F5F5F5"  # Fundo claro dos cards
+textColor="#2A2A2A"            # Texto principal
+font="sans serif"
+
+[client]
+# Comportamento do cliente
+showErrorDetails=false
+toolbarMode="viewer"
+
+[server]
+# Configurações do servidor
+port=8501
+headless=true
+runOnSave=true
+maxUploadSize=200
+
+[logger]
+level="info"
+
+[browser]
+# Configurações do navegador
+gatherUsageStats=false
+serverAddress="localhost"
+
+[ui]
+hideTopBar=false
+hideFooter=false
+hideStreamlitBadge=false
+
+[deprecation]
+# Avisos de deprecated
+showPyplotGlobalUse=false
+showfileUploaderEncoding=false
+showImageCompressionWarning=false
+showMagicCommandsDeprecationWarning=false
+showMemoizationMissingWarnings=false
+showNumpyDeprecationWarnings=false
+showPyarrowDeprecationWarnings=false
+showPyplotGlobalUse=false
+showfileUploaderEncoding=false
+
+# Enable WebGL (se necessário para gráficos 3D)
+[client.showErrorDetails]
+value=false
+
+# Configuração de segurança
+[client.toolbarMode]
+value="viewer"
