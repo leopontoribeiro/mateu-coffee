@@ -1191,87 +1191,87 @@ def main():
                         for e in extracts:
                             ex_header = (f"📅 {e['data'].strftime('%d/%m/%Y')}  ·  "
                                         f"{e['metodo']}  ·  {_stars(e['classificacao'] or 0)}")
-                            with st.expander(ex_header):
-                                ex_col1, ex_col2, ex_col3 = st.columns([1, 2, 1.5], gap="large")
+                            st.markdown(f"**{ex_header}**")
+                            ex_col1, ex_col2, ex_col3 = st.columns([1, 2, 1.5], gap="large")
 
-                                # Foto da caneca
-                                with ex_col1:
-                                    st.markdown("**Foto da Caneca**")
-                                    if e["foto_caneca"]:
-                                        _img(e["foto_caneca"], w=140)
-                                    else:
-                                        st.markdown(_ph(), unsafe_allow_html=True)
-                                    # Upload adicional de fotos
-                                    nova_foto = st.file_uploader(
-                                        "Adicionar foto",
-                                        type=["jpg","jpeg","png"],
-                                        key=f"add_foto_{e['id']}"
+                            # Foto da caneca
+                            with ex_col1:
+                                st.markdown("**Foto da Caneca**")
+                                if e["foto_caneca"]:
+                                    _img(e["foto_caneca"], w=140)
+                                else:
+                                    st.markdown(_ph(), unsafe_allow_html=True)
+                                # Upload adicional de fotos
+                                nova_foto = st.file_uploader(
+                                    "Adicionar foto",
+                                    type=["jpg","jpeg","png"],
+                                    key=f"add_foto_{e['id']}"
+                                )
+                                if nova_foto:
+                                    _run(
+                                        "UPDATE extracoes SET foto_caneca=%s WHERE id=%s",
+                                        (_b64(nova_foto), e["id"])
                                     )
-                                    if nova_foto:
-                                        _run(
-                                            "UPDATE extracoes SET foto_caneca=%s WHERE id=%s",
-                                            (_b64(nova_foto), e["id"])
-                                        )
-                                        st.success("Foto adicionada!")
-                                        st.rerun()
+                                    st.success("Foto adicionada!")
+                                    st.rerun()
 
-                                # Detalhes da extração
-                                with ex_col2:
-                                    st.markdown("**Parâmetros**")
-                                    det_info = (_irow("Dose", f"{e['gramas']}g") +
-                                               _irow("Água", f"{e['agua_alvo']}g") +
-                                               _irow("Tempo", f"{e['tempo_extracao']}s") +
-                                               _irow("TDS", f"{e['tds']}%" if e['tds'] else "—"))
-                                    if e['moedor']:
-                                        det_info += _irow("Moedor", f"{e['moedor']}  ·  {e['clicks_moedor']} clicks")
-                                    st.markdown(det_info, unsafe_allow_html=True)
+                            # Detalhes da extração
+                            with ex_col2:
+                                st.markdown("**Parâmetros**")
+                                det_info = (_irow("Dose", f"{e['gramas']}g") +
+                                           _irow("Água", f"{e['agua_alvo']}g") +
+                                           _irow("Tempo", f"{e['tempo_extracao']}s") +
+                                           _irow("TDS", f"{e['tds']}%" if e['tds'] else "—"))
+                                if e['moedor']:
+                                    det_info += _irow("Moedor", f"{e['moedor']}  ·  {e['clicks_moedor']} clicks")
+                                st.markdown(det_info, unsafe_allow_html=True)
 
-                                    st.markdown("**Comentários**")
-                                    if e['notas']:
-                                        st.markdown(f"*{e['notas']}*")
-                                    else:
-                                        st.markdown("_Sem comentários_")
+                                st.markdown("**Comentários**")
+                                if e['notas']:
+                                    st.markdown(f"*{e['notas']}*")
+                                else:
+                                    st.markdown("_Sem comentários_")
 
-                                # Métricas
-                                with ex_col3:
-                                    st.metric("Brew Ratio", f"1:{e['agua_alvo']/e['gramas']:.1f}")
-                                    if e['ey']:
-                                        st.metric("EY", f"{e['ey']:.1f}%")
-                                    st.metric("Fluxo", f"{e['fluxo']:.2f}g/s" if e['fluxo'] else "—")
+                            # Métricas
+                            with ex_col3:
+                                st.metric("Brew Ratio", f"1:{e['agua_alvo']/e['gramas']:.1f}")
+                                if e['ey']:
+                                    st.metric("EY", f"{e['ey']:.1f}%")
+                                st.metric("Fluxo", f"{e['fluxo']:.2f}g/s" if e['fluxo'] else "—")
 
-                                # Botão editar
-                                st.markdown("---")
-                                col_edit, col_del = st.columns(2)
-                                with col_edit:
-                                    if st.button("✏️ Editar Extração", key=f"edit_e_{e['id']}", use_container_width=True):
-                                        st.session_state[f"edit_ext_{e['id']}"] = True
-                                with col_del:
-                                    if st.button("🗑️ Deletar", key=f"del_e_{e['id']}", use_container_width=True):
-                                        _run("DELETE FROM extracoes WHERE id=%s", (e['id'],))
-                                        st.rerun()
+                            # Botão editar
+                            st.markdown("---")
+                            col_edit, col_del = st.columns(2)
+                            with col_edit:
+                                if st.button("✏️ Editar Extração", key=f"edit_e_{e['id']}", use_container_width=True):
+                                    st.session_state[f"edit_ext_{e['id']}"] = True
+                            with col_del:
+                                if st.button("🗑️ Deletar", key=f"del_e_{e['id']}", use_container_width=True):
+                                    _run("DELETE FROM extracoes WHERE id=%s", (e['id'],))
+                                    st.rerun()
 
-                                # Formulário de edição (se ativado)
-                                if st.session_state.get(f"edit_ext_{e['id']}", False):
-                                    st.markdown("**Editar Extração**")
-                                    ed_col1, ed_col2 = st.columns(2)
-                                    with ed_col1:
-                                        ed_gramas = st.number_input("Dose (g)", value=e['gramas'], key=f"ed_g_{e['id']}")
-                                        ed_agua = st.number_input("Água (g)", value=e['agua_alvo'], key=f"ed_a_{e['id']}")
-                                        ed_tempo = st.number_input("Tempo (s)", value=e['tempo_extracao'], key=f"ed_t_{e['id']}")
-                                    with ed_col2:
-                                        ed_class = st.select_slider("Classificação", options=[1,2,3,4,5],
-                                                                   value=e['classificacao'] or 3,
-                                                                   format_func=_stars, key=f"ed_c_{e['id']}")
-                                        ed_notas = st.text_area("Comentários", value=e['notas'] or "", key=f"ed_n_{e['id']}", height=80)
+                            # Formulário de edição (se ativado)
+                            if st.session_state.get(f"edit_ext_{e['id']}", False):
+                                st.markdown("**Editar Extração**")
+                                ed_col1, ed_col2 = st.columns(2)
+                                with ed_col1:
+                                    ed_gramas = st.number_input("Dose (g)", value=e['gramas'], key=f"ed_g_{e['id']}")
+                                    ed_agua = st.number_input("Água (g)", value=e['agua_alvo'], key=f"ed_a_{e['id']}")
+                                    ed_tempo = st.number_input("Tempo (s)", value=e['tempo_extracao'], key=f"ed_t_{e['id']}")
+                                with ed_col2:
+                                    ed_class = st.select_slider("Classificação", options=[1,2,3,4,5],
+                                                               value=e['classificacao'] or 3,
+                                                               format_func=_stars, key=f"ed_c_{e['id']}")
+                                    ed_notas = st.text_area("Comentários", value=e['notas'] or "", key=f"ed_n_{e['id']}", height=80)
 
-                                    if st.button("💾 Salvar Edição", key=f"save_e_{e['id']}", use_container_width=True):
-                                        _run(
-                                            "UPDATE extracoes SET gramas=%s, agua_alvo=%s, tempo_extracao=%s, classificacao=%s, notas=%s WHERE id=%s",
-                                            (ed_gramas, ed_agua, ed_tempo, ed_class, ed_notas, e['id'])
-                                        )
-                                        st.success("Extração atualizada!")
-                                        st.session_state[f"edit_ext_{e['id']}"] = False
-                                        st.rerun()
+                                if st.button("💾 Salvar Edição", key=f"save_e_{e['id']}", use_container_width=True):
+                                    _run(
+                                        "UPDATE extracoes SET gramas=%s, agua_alvo=%s, tempo_extracao=%s, classificacao=%s, notas=%s WHERE id=%s",
+                                        (ed_gramas, ed_agua, ed_tempo, ed_class, ed_notas, e['id'])
+                                    )
+                                    st.success("Extração atualizada!")
+                                    st.session_state[f"edit_ext_{e['id']}"] = False
+                                    st.rerun()
 
                     st.markdown("")
                     if st.button("Remover café", key=f"del_c_{c['id']}"):
