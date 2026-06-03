@@ -506,6 +506,24 @@ def _init_db():
                 ADD COLUMN IF NOT EXISTS valor_compra  FLOAT   DEFAULT 0,
                 ADD COLUMN IF NOT EXISTS data_compra   DATE;
         """)
+        cur.execute("""
+            ALTER TABLE usuarios
+                ADD COLUMN IF NOT EXISTS last_grinder TEXT,
+                ADD COLUMN IF NOT EXISTS last_clicks INTEGER DEFAULT 0;
+        """)
+        cur.execute("""
+            ALTER TABLE extracoes
+                ADD COLUMN IF NOT EXISTS crema_stars INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS corpo_stars INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS equilibrio_stars INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS acidez_stars INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS amargor_stars INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS presenca_boca_stars INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS doçura_stars INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS nota_final_stars INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS balanco_ideal TEXT DEFAULT '',
+                ADD COLUMN IF NOT EXISTS data_hora_extracao TIMESTAMP DEFAULT NOW();
+        """)
         conn.commit()
         st.session_state["_db_ready"] = True
     except Exception:
@@ -846,43 +864,10 @@ def main():
     _init_db()
 
     # ── Autenticação ────────────────────────────────────────────────────
-    # Tenta restaurar login via remember_token
-    if 'user_id' not in st.session_state and 'remember_token' not in st.session_state:
-        # Tenta carregar token do session_state (persistido via Streamlit secrets)
-        try:
-            import json
-            from pathlib import Path
-            secrets_file = Path.home() / ".mateu_coffee_auth"
-            if secrets_file.exists():
-                with open(secrets_file) as f:
-                    auth_data = json.load(f)
-                    st.session_state['remember_token'] = auth_data.get('token')
-        except:
-            pass
-
     if 'user_id' not in st.session_state:
         # Tenta restaurar com token
         if not _check_remember_token():
             # ── Página de Login ────────────────────────────────────
-            st.markdown("""
-                <style>
-                .login-container {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    margin: 2rem auto;
-                }
-                .login-logo {
-                    max-width: 280px;
-                    margin-bottom: 2rem;
-                }
-                </style>
-                <div class="login-container">
-                    <img src="app/static/assets/mateu_coffee_logo.png" class="login-logo" alt="Mateu Coffee">
-                </div>
-            """, unsafe_allow_html=True)
-
             # Exibe logo centralizada
             col_logo_center = st.columns([0.15, 0.7, 0.15])[1]
             with col_logo_center:
@@ -899,43 +884,33 @@ def main():
 
                 if st.button("🔓 Entrar", use_container_width=True):
                     if _login(email, senha, remember=remember_me):
-                        if remember_me:
-                            # Salva token no arquivo local
-                            try:
-                                import json
-                                from pathlib import Path
-                                secrets_file = Path.home() / ".mateu_coffee_auth"
-                                with open(secrets_file, 'w') as f:
-                                    json.dump({'token': st.session_state.get('remember_token', '')}, f)
-                            except:
-                                pass
                         st.success("✅ Login realizado!")
                         st.rerun()
                     else:
                         st.error("❌ Email ou senha inválidos.")
 
-        with tab_cadastro:
-            st.markdown("### Criar Conta")
-            new_email = st.text_input("Email", key="cadastro_email")
-            new_senha = st.text_input("Senha", type="password", key="cadastro_senha")
-            new_senha_conf = st.text_input("Confirmar Senha", type="password", key="cadastro_senha_conf")
+            with tab_cadastro:
+                st.markdown("### Criar Conta")
+                new_email = st.text_input("Email", key="cadastro_email")
+                new_senha = st.text_input("Senha", type="password", key="cadastro_senha")
+                new_senha_conf = st.text_input("Confirmar Senha", type="password", key="cadastro_senha_conf")
 
-            if st.button("✅ Cadastrar", use_container_width=True):
-                if not new_email or not new_senha:
-                    st.error("Preencha todos os campos.")
-                elif new_senha != new_senha_conf:
-                    st.error("Senhas não conferem.")
-                elif len(new_senha) < 6:
-                    st.error("Senha deve ter pelo menos 6 caracteres.")
-                else:
-                    try:
-                        hash_pwd = _hash_senha(new_senha)
-                        _run("INSERT INTO usuarios (email, senha_hash) VALUES (%s, %s)",
-                             (new_email, hash_pwd))
-                        st.success("Cadastro realizado! Faça login.")
-                        st.rerun()
-                    except:
-                        st.error("Email já cadastrado.")
+                if st.button("✅ Cadastrar", use_container_width=True):
+                    if not new_email or not new_senha:
+                        st.error("Preencha todos os campos.")
+                    elif new_senha != new_senha_conf:
+                        st.error("Senhas não conferem.")
+                    elif len(new_senha) < 6:
+                        st.error("Senha deve ter pelo menos 6 caracteres.")
+                    else:
+                        try:
+                            hash_pwd = _hash_senha(new_senha)
+                            _run("INSERT INTO usuarios (email, senha_hash) VALUES (%s, %s)",
+                                 (new_email, hash_pwd))
+                            st.success("Cadastro realizado! Faça login.")
+                            st.rerun()
+                        except:
+                            st.error("Email já cadastrado.")
         return
 
     # ── App Logado ──────────────────────────────────────────────────────
@@ -1060,6 +1035,16 @@ def main():
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             st.markdown('<p class="section-label">Parâmetros</p>', unsafe_allow_html=True)
 
+            # Carrega último moedor do usuário
+            user_id = st.session_state.get('user_id')
+            last_grinder = None
+            last_clicks = 0
+            if user_id:
+                grinder_info = _fetch("SELECT last_grinder, last_clicks FROM usuarios WHERE id=%s", (user_id,), _v=0)
+                if grinder_info and grinder_info[0]['last_grinder']:
+                    last_grinder = grinder_info[0]['last_grinder']
+                    last_clicks = grinder_info[0]['last_clicks'] or 0
+
             c1, c2 = st.columns(2, gap="large")
             with c1:
                 gramas = st.number_input("Pó de Café (g)",       5.0,  80.0,  gramas_default, 0.1,
@@ -1069,11 +1054,21 @@ def main():
                                          help="Deixe 0 se não usar refratômetro")
                 tempo  = st.number_input("Tempo de Extração (s)", 1,    600,   150,  1)
             with c2:
-                moedor   = st.text_input("Moedor", placeholder="Ex: Comandante C40")
-                clicks   = st.number_input("Clicks do Moedor", 0, 200, 0, 1)
+                if last_grinder:
+                    use_last = st.checkbox("✓ Usar último moedor", value=True, key="use_last_grinder")
+                    if use_last:
+                        moedor = st.text_input("Moedor", value=last_grinder, disabled=True)
+                        clicks = st.number_input("Clicks do Moedor", 0, 200, last_clicks, 1)
+                    else:
+                        moedor = st.text_input("Moedor", placeholder="Ex: Comandante C40")
+                        clicks = st.number_input("Clicks do Moedor", 0, 200, 0, 1)
+                else:
+                    moedor = st.text_input("Moedor", placeholder="Ex: Comandante C40")
+                    clicks = st.number_input("Clicks do Moedor", 0, 200, 0, 1)
+
+                from datetime import datetime
                 data_ext = st.date_input("Data", value=date.today(), key="data_ext", format="DD/MM/YYYY")
-                class_e  = st.select_slider("Classificação", options=[1,2,3,4,5],
-                                            format_func=_stars, value=3, key="class_extracao")
+                hora_ext = st.time_input("Hora da Extração", value=datetime.now().time(), key="hora_ext")
                 notas_e  = st.text_area("Notas", placeholder="Impressões da extração...",
                                         height=80)
 
@@ -1102,14 +1097,55 @@ def main():
                         _img(_b64(foto_can), w=210)
 
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+            st.markdown('<p class="section-label">⭐ Classificação da Extração</p>', unsafe_allow_html=True)
+
+            # Grid de classificações por estrelas
+            col_s1, col_s2, col_s3, col_s4 = st.columns(4, gap="large")
+            with col_s1:
+                crema_stars = st.slider("CREMA", 1, 5, 3, key="crema_stars")
+            with col_s2:
+                corpo_stars = st.slider("CORPO", 1, 5, 3, key="corpo_stars")
+            with col_s3:
+                equilibrio_stars = st.slider("EQUILÍBRIO", 1, 5, 3, key="equilibrio_stars")
+            with col_s4:
+                acidez_stars = st.slider("ACIDEZ", 1, 5, 3, key="acidez_stars")
+
+            col_s5, col_s6, col_s7, col_s8 = st.columns(4, gap="large")
+            with col_s5:
+                amargor_stars = st.slider("AMARGOR", 1, 5, 3, key="amargor_stars")
+            with col_s6:
+                presenca_boca_stars = st.slider("PRESENÇA NA BOCA", 1, 5, 3, key="presenca_boca_stars")
+            with col_s7:
+                doçura_stars = st.slider("DOÇURA", 1, 5, 3, key="doçura_stars")
+            with col_s8:
+                nota_final_stars = st.slider("NOTA FINAL", 1, 5, 3, key="nota_final_stars")
+
+            # Balanço Ideal (referência)
+            balanco_ideal = st.text_input("Balanço Perfeito (do diagnóstico)",
+                                         placeholder="Ex: Crema 4, Corpo 4, Equilíbrio 5...",
+                                         key="balanco_ideal")
+
+            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             if st.button("🔴 REGISTRAR EXTRAÇÃO", type="primary", use_container_width=True):
+                from datetime import datetime
+                data_hora = datetime.combine(data_ext, hora_ext)
                 _run("""INSERT INTO extracoes
                     (coffee_id,data,metodo,gramas,moedor,clicks_moedor,agua_alvo,tds,
-                     tempo_extracao,brew_ratio,ey,fluxo,foto_caneca,classificacao,notas)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                     tempo_extracao,brew_ratio,ey,fluxo,foto_caneca,classificacao,notas,
+                     crema_stars,corpo_stars,equilibrio_stars,acidez_stars,amargor_stars,
+                     presenca_boca_stars,doçura_stars,nota_final_stars,balanco_ideal,data_hora_extracao)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     (cid, data_ext, metodo, gramas, moedor, clicks, agua, tds, tempo,
                      m.get("ratio",0), ey, m.get("fluxo",0),
-                     _b64(foto_can) if foto_can else None, class_e, notas_e))
+                     _b64(foto_can) if foto_can else None, class_e, notas_e,
+                     crema_stars, corpo_stars, equilibrio_stars, acidez_stars, amargor_stars,
+                     presenca_boca_stars, doçura_stars, nota_final_stars, balanco_ideal, data_hora))
+
+                # Atualiza último moedor usado
+                if user_id and moedor:
+                    _run("UPDATE usuarios SET last_grinder=%s, last_clicks=%s WHERE id=%s",
+                         (moedor, clicks, user_id))
+
                 st.success("Extração registrada!")
                 st.rerun()
 
@@ -1304,8 +1340,10 @@ def main():
             st.info("Nenhuma extração registrada ainda.")
         else:
             for r in rows:
+                # Monta header com classificações
+                stars_display = f"⭐{r.get('nota_final_stars', r['classificacao'] or 0)}" if (r.get('nota_final_stars') or r['classificacao']) else ""
                 header = (f"{r['cafe_nome']}  ·  {r['metodo']}  ·  "
-                          f"{r['data'].strftime('%d/%m/%Y')}  ·  {_stars(r['classificacao'] or 0)}")
+                          f"{r['data'].strftime('%d/%m/%Y')}  {stars_display}")
                 with st.expander(header):
                     ra, rb, rc = st.columns([1, 2.2, 1.4], gap="large")
                     with ra:
@@ -1329,10 +1367,63 @@ def main():
                         if r["brew_ratio"]: st.metric("Brew Ratio", f"1 : {r['brew_ratio']:.1f}")
                         if r["ey"]:         st.metric("EY",         f"{r['ey']:.1f}%")
                         if r["fluxo"]:      st.metric("Fluxo",      f"{r['fluxo']:.2f} g/s")
+
+                    # Classificações por Estrelas
+                    st.markdown("---")
+                    st.markdown("**⭐ Classificação Detalhada:**")
+                    cols = st.columns(4, gap="small")
+                    classificacoes = [
+                        ("CREMA", r.get('crema_stars', 0)),
+                        ("CORPO", r.get('corpo_stars', 0)),
+                        ("EQUILÍBRIO", r.get('equilibrio_stars', 0)),
+                        ("ACIDEZ", r.get('acidez_stars', 0)),
+                        ("AMARGOR", r.get('amargor_stars', 0)),
+                        ("PRESENÇA NA BOCA", r.get('presenca_boca_stars', 0)),
+                        ("DOÇURA", r.get('doçura_stars', 0)),
+                        ("NOTA FINAL", r.get('nota_final_stars', 0)),
+                    ]
+                    for idx, (label, stars) in enumerate(classificacoes):
+                        with cols[idx % 4]:
+                            stars_str = "⭐" * (stars or 0) + "☆" * (5 - (stars or 0))
+                            st.markdown(f"**{label}**\n{stars_str}", help=f"{label}: {stars or 0}/5")
+
+                    # Balanco Ideal
+                    if r.get('balanco_ideal'):
+                        st.markdown(f"**Balanço Perfeito:** {r['balanco_ideal']}")
+
                     st.markdown("")
-                    if st.button("Remover extração", key=f"tab4_del_e_{r['id']}"):
-                        _run("DELETE FROM extracoes WHERE id=%s", (r["id"],))
-                        st.rerun()
+                    col_edit, col_del = st.columns([1, 1])
+                    with col_edit:
+                        if st.button("✏️ Editar", key=f"tab4_edit_e_{r['id']}"):
+                            st.session_state[f"editing_e_{r['id']}"] = True
+                    with col_del:
+                        if st.button("🗑️ Remover", key=f"tab4_del_e_{r['id']}"):
+                            _run("DELETE FROM extracoes WHERE id=%s", (r["id"],))
+                            st.rerun()
+
+                    # Form de Edição
+                    if st.session_state.get(f"editing_e_{r['id']}"):
+                        st.markdown("---")
+                        st.markdown("**Editar Extração**")
+                        edit_col1, edit_col2 = st.columns(2, gap="large")
+                        with edit_col1:
+                            ed_gramas = st.number_input("Dose (g)", value=float(r['gramas']), key=f"edit_gramas_{r['id']}")
+                            ed_agua = st.number_input("Água (g)", value=float(r['agua_alvo']), key=f"edit_agua_{r['id']}")
+                            ed_tempo = st.number_input("Tempo (s)", value=int(r['tempo_extracao']), key=f"edit_tempo_{r['id']}")
+                        with edit_col2:
+                            ed_moedor = st.text_input("Moedor", value=r['moedor'] or "", key=f"edit_moedor_{r['id']}")
+                            ed_clicks = st.number_input("Clicks", value=int(r['clicks_moedor'] or 0), key=f"edit_clicks_{r['id']}")
+                            ed_tds = st.number_input("TDS (%)", value=float(r['tds'] or 0), key=f"edit_tds_{r['id']}")
+
+                        ed_notas = st.text_area("Notas", value=r['notas'] or "", key=f"edit_notas_{r['id']}", height=60)
+
+                        if st.button("💾 Salvar Alterações", key=f"tab4_save_e_{r['id']}", type="primary"):
+                            _run("""UPDATE extracoes SET gramas=%s, agua_alvo=%s, tempo_extracao=%s,
+                                    moedor=%s, clicks_moedor=%s, tds=%s, notas=%s WHERE id=%s""",
+                                 (ed_gramas, ed_agua, ed_tempo, ed_moedor, ed_clicks, ed_tds, ed_notas, r['id']))
+                            st.session_state.pop(f"editing_e_{r['id']}", None)
+                            st.success("Alterações salvas!")
+                            st.rerun()
 
 if __name__ == "__main__":
     main()
