@@ -16,105 +16,242 @@ st.set_page_config(
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-/* Paleta ORFEU ACAUÃ — Vinho #8B1A35 · Laranja #D4561A · Branco #F5EDE8 */
-html,body,[class*="css"],.stApp,.stMarkdown,.stTextInput,.stNumberInput,
-.stSelectbox,.stTextArea,.stRadio,.stDateInput,.stFileUploader,.stButton,
-.stMetric,div,p,span,label,h1,h2,h3,h4 {
-    font-family:'Inter',sans-serif!important; letter-spacing:-0.01em; }
+    /* ORFEU ACAUÃ — Vinho #8B1A35  Laranja #D4561A  Branco #F5EDE8 */
 
-.stApp                          { background-color:#0D0608; }
-.block-container                { padding:2rem 2.5rem!important; max-width:1280px; }
+    html, body, [class*="css"], .stApp, div, p, span, label,
+    h1, h2, h3, h4, button, input, textarea, select {
+        font-family: 'Inter', sans-serif !important;
+        letter-spacing: -0.01em;
+    }
 
-.app-header                     { display:flex; align-items:center; gap:14px;
-                                  padding:0 0 2rem; border-bottom:1px solid #271018;
-                                  margin-bottom:2rem; }
-.app-header-title               { font-size:22px; font-weight:700; color:#F5EDE8;
-                                  letter-spacing:-0.03em; margin:0; }
-.app-header-sub                 { font-size:12px; color:#6B3A4A; letter-spacing:0.06em;
-                                  text-transform:uppercase; margin:2px 0 0; }
+    .stApp { background-color: #0D0608; }
+    .block-container { padding: 2rem 2.5rem 2rem !important; max-width: 1280px; }
 
-.stTabs [data-baseweb="tab-list"]  { gap:0; background:#160C0F; border-radius:10px;
-                                     padding:4px; border:1px solid #271018; width:fit-content; }
-.stTabs [data-baseweb="tab"]       { background:transparent; border-radius:7px;
-                                     color:#6B3A4A; font-size:13px; font-weight:500;
-                                     padding:8px 20px; border:none; transition:all .15s; }
-.stTabs [aria-selected="true"]     { background:#271018!important; color:#F5EDE8!important; }
-.stTabs [data-baseweb="tab-border"]{ display:none!important; }
-.stTabs [data-baseweb="tab-panel"] { padding-top:2rem!important; }
+    /* Header */
+    .app-header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 0 2rem 0;
+        border-bottom: 1px solid #271018;
+        margin-bottom: 2rem;
+    }
+    .app-header-title {
+        font-size: 22px;
+        font-weight: 700;
+        color: #F5EDE8;
+        letter-spacing: -0.03em;
+        margin: 0;
+    }
+    .app-header-sub {
+        font-size: 12px;
+        color: #6B3A4A;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin: 2px 0 0 0;
+    }
 
-.section-label  { font-size:10px; font-weight:700; color:#6B3A4A;
-                  letter-spacing:0.12em; text-transform:uppercase; margin:0 0 1.2rem; }
-.section-divider{ border:none; border-top:1px solid #271018; margin:2rem 0; }
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0;
+        background: #160C0F;
+        border-radius: 10px;
+        padding: 4px;
+        border: 1px solid #271018;
+        width: fit-content;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background: transparent;
+        border-radius: 7px;
+        color: #6B3A4A;
+        font-size: 13px;
+        font-weight: 500;
+        padding: 8px 20px;
+        border: none;
+        transition: all 0.15s;
+    }
+    .stTabs [aria-selected="true"] {
+        background: #271018 !important;
+        color: #F5EDE8 !important;
+    }
+    .stTabs [data-baseweb="tab-border"] { display: none !important; }
+    .stTabs [data-baseweb="tab-panel"]  { padding-top: 2rem !important; }
 
-.tag            { display:inline-block; background:#1E0E14; border:1px solid #321420;
-                  border-radius:6px; font-size:11px; font-weight:500; color:#9A6070;
-                  padding:3px 10px; margin:2px 3px 2px 0; }
-.tag-accent     { border-color:#D4561A55; color:#D4561A; }
-.info-row       { display:flex; gap:6px; align-items:baseline; margin:6px 0; }
-.info-key       { font-size:11px; color:#6B3A4A; font-weight:500; min-width:80px; }
-.info-val       { font-size:13px; color:#F5EDE8; font-weight:500; }
+    /* Section */
+    .section-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: #6B3A4A;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin: 0 0 1.2rem 0;
+    }
+    .section-divider {
+        border: none;
+        border-top: 1px solid #271018;
+        margin: 2rem 0;
+    }
 
-div[data-testid="stMetric"]       { background:#160C0F!important; border:1px solid #271018!important;
-                                    border-radius:12px!important; padding:16px 20px!important; }
-div[data-testid="stMetricLabel"] p{ font-size:10px!important; font-weight:700!important;
-                                    color:#6B3A4A!important; text-transform:uppercase!important;
-                                    letter-spacing:0.1em!important; }
-div[data-testid="stMetricValue"]  { font-size:20px!important; font-weight:700!important;
-                                    color:#D4561A!important; letter-spacing:-0.02em!important; }
-div[data-testid="stMetricDelta"]  { font-size:11px!important; font-weight:500!important; }
+    /* Tags e info rows */
+    .tag {
+        display: inline-block;
+        background: #1E0E14;
+        border: 1px solid #321420;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 500;
+        color: #9A6070;
+        padding: 3px 10px;
+        margin: 2px 3px 2px 0;
+    }
+    .tag-accent { border-color: #D4561A88; color: #D4561A; }
+    .info-row   { display: flex; gap: 6px; align-items: baseline; margin: 6px 0; }
+    .info-key   { font-size: 11px; color: #6B3A4A; font-weight: 500; min-width: 80px; }
+    .info-val   { font-size: 13px; color: #F5EDE8; font-weight: 500; }
 
-.stTextInput input,.stNumberInput input,.stTextArea textarea,.stDateInput input {
-    background:#160C0F!important; border:1px solid #271018!important;
-    border-radius:8px!important; color:#F5EDE8!important;
-    font-size:14px!important; padding:10px 14px!important;
-    transition:border-color .15s!important; }
-.stTextInput input:focus,.stNumberInput input:focus,.stTextArea textarea:focus
-                                  { border-color:#D4561A!important; }
-div[data-baseweb="select"]>div    { background:#160C0F!important; border:1px solid #271018!important;
-                                    border-radius:8px!important; color:#F5EDE8!important; }
+    /* Metrics */
+    div[data-testid="stMetric"] {
+        background: #160C0F !important;
+        border: 1px solid #271018 !important;
+        border-radius: 12px !important;
+        padding: 16px 20px !important;
+    }
+    div[data-testid="stMetricLabel"] p {
+        font-size: 10px !important;
+        font-weight: 700 !important;
+        color: #6B3A4A !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.1em !important;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 20px !important;
+        font-weight: 700 !important;
+        color: #D4561A !important;
+        letter-spacing: -0.02em !important;
+    }
+    div[data-testid="stMetricDelta"] {
+        font-size: 11px !important;
+        font-weight: 500 !important;
+    }
 
-.stTextInput label,.stNumberInput label,.stSelectbox label,.stTextArea label,
-.stDateInput label,.stRadio label,.stFileUploader label,.stSlider label {
-    font-size:11px!important; font-weight:600!important; color:#6B3A4A!important;
-    text-transform:uppercase!important; letter-spacing:0.08em!important; }
+    /* Inputs */
+    .stTextInput input,
+    .stNumberInput input,
+    .stTextArea textarea,
+    .stDateInput input {
+        background: #160C0F !important;
+        border: 1px solid #271018 !important;
+        border-radius: 8px !important;
+        color: #F5EDE8 !important;
+        font-size: 14px !important;
+        padding: 10px 14px !important;
+        transition: border-color 0.15s !important;
+    }
+    .stTextInput input:focus,
+    .stNumberInput input:focus,
+    .stTextArea textarea:focus {
+        border-color: #D4561A !important;
+    }
+    div[data-baseweb="select"] > div {
+        background: #160C0F !important;
+        border: 1px solid #271018 !important;
+        border-radius: 8px !important;
+        color: #F5EDE8 !important;
+    }
 
-.stButton>button                  { background:#1E0E14!important; border:1px solid #321420!important;
-                                    border-radius:8px!important; color:#C09090!important;
-                                    font-size:13px!important; font-weight:500!important;
-                                    padding:10px 20px!important; transition:all .15s!important; }
-.stButton>button:hover            { background:#271018!important; border-color:#3D1828!important;
-                                    color:#F5EDE8!important; }
-.stButton>button[kind="primary"]  { background:#D4561A!important; border-color:#D4561A!important;
-                                    color:#FFF8F4!important; font-weight:600!important; }
-.stButton>button[kind="primary"]:hover { background:#B84514!important; border-color:#B84514!important; }
+    /* Labels */
+    .stTextInput label, .stNumberInput label, .stSelectbox label,
+    .stTextArea label, .stDateInput label, .stRadio label,
+    .stFileUploader label, .stSlider label {
+        font-size: 11px !important;
+        font-weight: 600 !important;
+        color: #6B3A4A !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.08em !important;
+    }
 
-.stRadio>div                      { gap:6px!important; }
-.stRadio>div label                { background:#160C0F!important; border:1px solid #271018!important;
-                                    border-radius:7px!important; padding:7px 14px!important;
-                                    color:#9A6070!important; font-size:13px!important;
-                                    font-weight:500!important; cursor:pointer!important;
-                                    text-transform:none!important; letter-spacing:0!important;
-                                    transition:all .12s!important; }
-.stRadio>div label:has(input:checked){ background:#2A1018!important; border-color:#8B1A35!important;
-                                       color:#F5EDE8!important; }
+    /* Buttons */
+    .stButton > button {
+        background: #1E0E14 !important;
+        border: 1px solid #321420 !important;
+        border-radius: 8px !important;
+        color: #C09090 !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        padding: 10px 20px !important;
+        transition: all 0.15s !important;
+    }
+    .stButton > button:hover {
+        background: #271018 !important;
+        border-color: #3D1828 !important;
+        color: #F5EDE8 !important;
+    }
+    .stButton > button[kind="primary"] {
+        background: #D4561A !important;
+        border-color: #D4561A !important;
+        color: #FFF8F4 !important;
+        font-weight: 600 !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background: #B84514 !important;
+        border-color: #B84514 !important;
+    }
 
-.streamlit-expanderHeader         { background:#160C0F!important; border:1px solid #271018!important;
-                                    border-radius:10px!important; color:#D0A090!important;
-                                    font-size:13px!important; font-weight:500!important;
-                                    padding:14px 18px!important; }
-.streamlit-expanderContent        { background:#120A0C!important; border:1px solid #1E1018!important;
-                                    border-top:none!important; border-radius:0 0 10px 10px!important;
-                                    padding:20px!important; }
+    /* Radio chips */
+    .stRadio > div { gap: 6px !important; }
+    .stRadio > div label {
+        background: #160C0F !important;
+        border: 1px solid #271018 !important;
+        border-radius: 7px !important;
+        padding: 7px 14px !important;
+        color: #9A6070 !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        cursor: pointer !important;
+        text-transform: none !important;
+        letter-spacing: 0 !important;
+        transition: all 0.12s !important;
+    }
+    .stRadio > div label:has(input:checked) {
+        background: #2A1018 !important;
+        border-color: #8B1A35 !important;
+        color: #F5EDE8 !important;
+    }
 
-hr                                { border-color:#271018!important; margin:1.5rem 0!important; }
-.stFileUploader>div               { background:#160C0F!important; border:1px dashed #321420!important;
-                                    border-radius:10px!important; }
-div[data-testid="stAlert"]        { border-radius:10px!important; border-left-width:3px!important;
-                                    font-size:13px!important; }
-.stSlider>div>div                 { color:#D4561A!important; }
-::-webkit-scrollbar               { width:6px; height:6px; }
-::-webkit-scrollbar-track         { background:#0D0608; }
-::-webkit-scrollbar-thumb         { background:#321420; border-radius:3px; }
+    /* Expander */
+    .streamlit-expanderHeader {
+        background: #160C0F !important;
+        border: 1px solid #271018 !important;
+        border-radius: 10px !important;
+        color: #D0A090 !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        padding: 14px 18px !important;
+    }
+    .streamlit-expanderContent {
+        background: #120A0C !important;
+        border: 1px solid #1E1018 !important;
+        border-top: none !important;
+        border-radius: 0 0 10px 10px !important;
+        padding: 20px !important;
+    }
+
+    /* Misc */
+    hr { border-color: #271018 !important; margin: 1.5rem 0 !important; }
+    .stFileUploader > div {
+        background: #160C0F !important;
+        border: 1px dashed #321420 !important;
+        border-radius: 10px !important;
+    }
+    div[data-testid="stAlert"] {
+        border-radius: 10px !important;
+        border-left-width: 3px !important;
+        font-size: 13px !important;
+    }
+    .stSlider > div > div { color: #D4561A !important; }
+    ::-webkit-scrollbar       { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0D0608; }
+    ::-webkit-scrollbar-thumb { background: #321420; border-radius: 3px; }
 </style>
 """, unsafe_allow_html=True)
 
