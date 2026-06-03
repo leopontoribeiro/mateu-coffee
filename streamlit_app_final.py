@@ -7,6 +7,8 @@ import base64
 import os
 import json
 from datetime import date
+import hashlib
+import secrets
 
 # ── Page config ────────────────────────────────────────────────────────
 st.set_page_config(
@@ -370,12 +372,53 @@ def _fetch(query, params=(), _v=0):
 def _v():
     return st.session_state.get("_v", 0)
 
+def _hash_senha(senha: str, salt: str = "") -> str:
+    """Hash simples com salt."""
+    if not salt:
+        salt = secrets.token_hex(8)
+    h = hashlib.sha256(f"{salt}{senha}".encode()).hexdigest()
+    return f"{salt}${h}"
+
+def _verify_senha(senha: str, hash_stored: str) -> bool:
+    """Verifica senha contra hash."""
+    salt = hash_stored.split("$")[0]
+    return _hash_senha(senha, salt) == hash_stored
+
+def _login(email: str, senha: str) -> bool:
+    """Valida credenciais e define sessão."""
+    try:
+        result = _fetch("SELECT id, email FROM usuarios WHERE email=%s LIMIT 1", (email,), _v=0)
+        if not result:
+            return False
+        usuario = result[0]
+        result_pwd = _fetch("SELECT senha_hash FROM usuarios WHERE id=%s", (usuario['id'],), _v=0)
+        if not result_pwd or not _verify_senha(senha, result_pwd[0]['senha_hash']):
+            return False
+        st.session_state['user_id'] = usuario['id']
+        st.session_state['user_email'] = usuario['email']
+        return True
+    except:
+        return False
+
+def _logout():
+    """Limpa sessão."""
+    st.session_state.pop('user_id', None)
+    st.session_state.pop('user_email', None)
+
 def _init_db():
     if st.session_state.get("_db_ready"):
         return
     conn = _conn()
     cur  = conn.cursor()
     try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id SERIAL PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                senha_hash TEXT NOT NULL,
+                criado_em TIMESTAMP DEFAULT NOW()
+            );
+        """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS coffees (
                 id SERIAL PRIMARY KEY, data_cadastro DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -744,8 +787,60 @@ def _analisar_embalagem(b64_img: str) -> dict:
 # ── Main ───────────────────────────────────────────────────────────────
 def main():
     _init_db()
+
+    # ── Autenticação ────────────────────────────────────────────────────
+    if 'user_id' not in st.session_state:
+        st.markdown('<p class="section-label">Mateu Coffee Production</p>', unsafe_allow_html=True)
+        st.markdown("---")
+
+        tab_login, tab_cadastro = st.tabs(["Login", "Cadastro"])
+
+        with tab_login:
+            st.markdown("### Entrar")
+            email = st.text_input("Email", key="login_email")
+            senha = st.text_input("Senha", type="password", key="login_senha")
+
+            if st.button("🔓 Entrar", use_container_width=True):
+                if _login(email, senha):
+                    st.success("Login realizado!")
+                    st.rerun()
+                else:
+                    st.error("Email ou senha inválidos.")
+
+        with tab_cadastro:
+            st.markdown("### Criar Conta")
+            new_email = st.text_input("Email", key="cadastro_email")
+            new_senha = st.text_input("Senha", type="password", key="cadastro_senha")
+            new_senha_conf = st.text_input("Confirmar Senha", type="password", key="cadastro_senha_conf")
+
+            if st.button("✅ Cadastrar", use_container_width=True):
+                if not new_email or not new_senha:
+                    st.error("Preencha todos os campos.")
+                elif new_senha != new_senha_conf:
+                    st.error("Senhas não conferem.")
+                elif len(new_senha) < 6:
+                    st.error("Senha deve ter pelo menos 6 caracteres.")
+                else:
+                    try:
+                        hash_pwd = _hash_senha(new_senha)
+                        _run("INSERT INTO usuarios (email, senha_hash) VALUES (%s, %s)",
+                             (new_email, hash_pwd))
+                        st.success("Cadastro realizado! Faça login.")
+                        st.rerun()
+                    except:
+                        st.error("Email já cadastrado.")
+        return
+
+    # ── App Logado ──────────────────────────────────────────────────────
     _show_logo()
     _show_daily_consumption()
+
+    # Botão Logout no topo
+    col_logo, col_logout = st.columns([0.85, 0.15])
+    with col_logout:
+        if st.button("🚪 Sair", use_container_width=True, key="btn_logout"):
+            _logout()
+            st.rerun()
 
     tab1, tab2, tab3, tab4 = st.tabs([
         "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ", "  Histórico  "])
