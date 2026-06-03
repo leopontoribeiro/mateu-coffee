@@ -458,6 +458,39 @@ class CoffeeEngine:
         if ey > 22:  return (3, 4, 8, 9, 4)
         return (9, 8, 8, 4, 9)
 
+def _motor_barista_params(torra: str, tipo: str) -> dict:
+    """
+    Retorna parâmetros pré-definidos para o Motor Barista baseado em torra e tipo,
+    buscando um café adocicado com equilíbrio de notas.
+
+    Torra Clara: Extração longa para sacar açúcares, temperatura alta
+    Torra Média: Extração equilibrada, temperatura padrão
+    Torra Escura: Extração curta para não queimar, temperatura moderada
+    """
+    # Padrão: dose=18, yield=36, tempo=28, temp=92, pressão=9 (1:2 ratio)
+    params = {"dose": 18.0, "yield": 36.0, "time": 28, "temp": 92.0, "pressure": 9.0}
+
+    # Ajustes por torra (visando doçura)
+    if torra == "Clara":
+        params["time"] = 32  # Tempo maior para extrair mais açúcares
+        params["temp"] = 94.0  # Temperatura maior
+        params["yield"] = 38  # Yield um pouco maior
+    elif torra == "Média":
+        params["time"] = 28
+        params["temp"] = 92.0
+        params["yield"] = 36
+    elif torra == "Escura":
+        params["time"] = 26  # Tempo menor para não queimar
+        params["temp"] = 90.0  # Temperatura menor
+        params["yield"] = 34  # Yield menor
+
+    # Ajustes adicionais por tipo
+    if tipo == "Moído":
+        params["time"] -= 2  # Café moído extrai mais rápido
+        params["pressure"] = 8.5
+
+    return params
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def _radar(profile: tuple) -> go.Figure:
     attrs = CoffeeEngine.ATTRS
@@ -789,14 +822,20 @@ def main():
             cid    = cafe_map[sel]
             metodo = st.selectbox("Método de Preparo", METODOS)
 
+            # ── Configuração de Xícaras ────────────────────────────────────
+            xicaras = st.radio("Número de Xícaras", [1, 2], horizontal=True, key="config_xicaras")
+            # Valores pré-definidos por número de xícaras (1:1 ratio padrão)
+            gramas_default = 18.0 if xicaras == 1 else 36.0
+            agua_default   = 300.0 if xicaras == 1 else 600.0
+
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             st.markdown('<p class="section-label">Parâmetros</p>', unsafe_allow_html=True)
 
             c1, c2 = st.columns(2, gap="large")
             with c1:
-                gramas = st.number_input("Pó de Café (g)",       5.0,  50.0,  18.0, 0.1,
+                gramas = st.number_input("Pó de Café (g)",       5.0,  80.0,  gramas_default, 0.1,
                                          help="Peso do pó medido na balança")
-                agua   = st.number_input("Água Alvo (g)",        50.0, 1000.0,300.0, 5.0)
+                agua   = st.number_input("Água Alvo (g)",        50.0, 2000.0, agua_default, 5.0)
                 tds    = st.number_input("TDS Medido (%)",        0.0,  5.0,   0.0,  0.01,
                                          help="Deixe 0 se não usar refratômetro")
                 tempo  = st.number_input("Tempo de Extração (s)", 1,    600,   150,  1)
@@ -848,7 +887,30 @@ def main():
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             st.markdown('<p class="section-label">Motor Barista — Simulador de Extração</p>',
                         unsafe_allow_html=True)
-            components.html(_MOTOR_BARISTA_HTML, height=660, scrolling=False)
+
+            # ── Busca dados do café para pré-definir parâmetros ──────────────
+            cafe_info = _fetch(f"SELECT tipo, torra FROM coffees WHERE id=%s LIMIT 1",
+                              (cid,), _v=_v())
+            if cafe_info:
+                cafe_tipo = cafe_info[0]["tipo"]
+                cafe_torra = cafe_info[0]["torra"]
+                params = _motor_barista_params(cafe_torra, cafe_tipo)
+            else:
+                params = _motor_barista_params("Média", "Grãos")  # fallback
+
+            # ── Motor Barista com parâmetros dinâmicos ──────────────────────
+            motor_html = _MOTOR_BARISTA_HTML.replace(
+                'value="18"', f'value="{params["dose"]}"'
+            ).replace(
+                'value="36"', f'value="{params["yield"]}"'
+            ).replace(
+                'value="28"', f'value="{params["time"]}"'
+            ).replace(
+                'value="92"', f'value="{params["temp"]}"'
+            ).replace(
+                'value="9"', f'value="{params["pressure"]}"'
+            )
+            components.html(motor_html, height=660, scrolling=False)
 
     # ── Tab 3 · Meus cafés ────────────────────────────────────────────
     with tab3:
