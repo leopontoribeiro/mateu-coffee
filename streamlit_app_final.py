@@ -294,12 +294,21 @@ def _get_conn():
     s = st.secrets["connections"]["postgresql"]
     return psycopg2.connect(
         host=s["host"], port=int(s["port"]), dbname=s["database"],
-        user=s["username"], password=s["password"], sslmode="require",
+        user=s["username"], password=s["password"],
+        sslmode="require", connect_timeout=10,
     )
 
 def _conn():
+    """Retorna conexão ativa. Reconecta automaticamente se a conexão
+    estiver fechada ou morta (desconexão server-side não detectada por c.closed)."""
     c = _get_conn()
-    if c.closed:
+    try:
+        # Ping leve — detecta conexões mortas que o servidor fechou
+        cur = c.cursor()
+        cur.execute("SELECT 1")
+        cur.close()
+        c.rollback()          # descarta transação implícita do ping
+    except Exception:
         st.cache_resource.clear()
         c = _get_conn()
     return c
@@ -307,20 +316,28 @@ def _conn():
 def _run(query, params=()):
     c = _conn()
     cur = c.cursor()
-    cur.execute(query, params)
-    c.commit()
-    cur.close()
-    _bump()           # invalidate read cache after every write
+    try:
+        cur.execute(query, params)
+        c.commit()
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        cur.close()
+    _bump()
 
 def _bump():
     st.session_state["_v"] = st.session_state.get("_v", 0) + 1
 
 @st.cache_data(ttl=600, show_spinner=False)
 def _fetch(query, params=(), _v=0):
-    cur = _conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute(query, params)
-    rows = cur.fetchall()
-    cur.close()
+    c   = _conn()
+    cur = c.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute(query, params)
+        rows = cur.fetchall()
+    finally:
+        cur.close()
     return rows
 
 def _v():
@@ -329,31 +346,39 @@ def _v():
 def _init_db():
     if st.session_state.get("_db_ready"):
         return
-    _conn().cursor().execute("""
-        CREATE TABLE IF NOT EXISTS coffees (
-            id SERIAL PRIMARY KEY, data_cadastro DATE NOT NULL DEFAULT CURRENT_DATE,
-            nome TEXT NOT NULL, tipo TEXT NOT NULL DEFAULT 'Grãos',
-            torra TEXT NOT NULL DEFAULT 'Média', notas TEXT DEFAULT '',
-            classificacao INTEGER DEFAULT 0, fazenda TEXT DEFAULT '',
-            regiao TEXT DEFAULT '', data_torra DATE,
-            tamanho_pacote INTEGER DEFAULT 250, foto_embalagem TEXT,
-            created_at TIMESTAMP DEFAULT NOW()
-        );
-        CREATE TABLE IF NOT EXISTS extracoes (
-            id SERIAL PRIMARY KEY,
-            coffee_id INTEGER REFERENCES coffees(id) ON DELETE CASCADE,
-            data DATE NOT NULL DEFAULT CURRENT_DATE,
-            metodo TEXT NOT NULL DEFAULT 'Espresso',
-            gramas FLOAT NOT NULL DEFAULT 18, moedor TEXT DEFAULT '',
-            clicks_moedor INTEGER DEFAULT 0, agua_alvo FLOAT NOT NULL DEFAULT 300,
-            tds FLOAT DEFAULT 0, tempo_extracao INTEGER NOT NULL DEFAULT 150,
-            brew_ratio FLOAT DEFAULT 0, ey FLOAT DEFAULT 0, fluxo FLOAT DEFAULT 0,
-            foto_caneca TEXT, classificacao INTEGER DEFAULT 0,
-            notas TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW()
-        );
-    """)
-    _conn().commit()
-    st.session_state["_db_ready"] = True
+    conn = _conn()
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS coffees (
+                id SERIAL PRIMARY KEY, data_cadastro DATE NOT NULL DEFAULT CURRENT_DATE,
+                nome TEXT NOT NULL, tipo TEXT NOT NULL DEFAULT 'Grãos',
+                torra TEXT NOT NULL DEFAULT 'Média', notas TEXT DEFAULT '',
+                classificacao INTEGER DEFAULT 0, fazenda TEXT DEFAULT '',
+                regiao TEXT DEFAULT '', data_torra DATE,
+                tamanho_pacote INTEGER DEFAULT 250, foto_embalagem TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS extracoes (
+                id SERIAL PRIMARY KEY,
+                coffee_id INTEGER REFERENCES coffees(id) ON DELETE CASCADE,
+                data DATE NOT NULL DEFAULT CURRENT_DATE,
+                metodo TEXT NOT NULL DEFAULT 'Espresso',
+                gramas FLOAT NOT NULL DEFAULT 18, moedor TEXT DEFAULT '',
+                clicks_moedor INTEGER DEFAULT 0, agua_alvo FLOAT NOT NULL DEFAULT 300,
+                tds FLOAT DEFAULT 0, tempo_extracao INTEGER NOT NULL DEFAULT 150,
+                brew_ratio FLOAT DEFAULT 0, ey FLOAT DEFAULT 0, fluxo FLOAT DEFAULT 0,
+                foto_caneca TEXT, classificacao INTEGER DEFAULT 0,
+                notas TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW()
+            );
+        """)
+        conn.commit()
+        st.session_state["_db_ready"] = True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
 
 # ── Helpers ────────────────────────────────────────────────────────────
 def _b64(f):
