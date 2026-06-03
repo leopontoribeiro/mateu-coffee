@@ -428,9 +428,15 @@ def _login(email: str, senha: str, remember: bool = False) -> bool:
 
 def _check_remember_token():
     """Restaura sessão se token válido."""
+    # Evita múltiplas verificações na mesma sessão
+    if st.session_state.get('_token_checked'):
+        return False
+
     token = st.session_state.get('remember_token')
     if not token:
+        st.session_state['_token_checked'] = True
         return False
+
     try:
         from datetime import datetime
         result = _fetch(
@@ -438,14 +444,18 @@ def _check_remember_token():
             (token,), _v=0
         )
         if not result:
+            st.session_state['_token_checked'] = True
             return False
         usuario = result[0]
         if usuario['remember_token_created'] and datetime.fromisoformat(usuario['remember_token_created']) < datetime.now():
+            st.session_state['_token_checked'] = True
             return False
         st.session_state['user_id'] = usuario['id']
         st.session_state['user_email'] = usuario['email']
+        st.session_state['_token_checked'] = True
         return True
     except:
+        st.session_state['_token_checked'] = True
         return False
 
 def _logout():
@@ -874,6 +884,28 @@ def main():
                 _load_logo()
 
             st.markdown("---")
+
+            # Verifica se há sessões "Remember Me" ativas no banco (para restauração rápida)
+            from datetime import datetime, timedelta
+            active_sessions = _fetch(
+                "SELECT DISTINCT id, email, remember_token FROM usuarios WHERE remember_token IS NOT NULL "
+                "AND remember_token_created > (NOW() - INTERVAL '30 days') ORDER BY email",
+                _v=0
+            )
+
+            if active_sessions:
+                with st.expander("🔑 Restaurar Sessão Anterior", expanded=True):
+                    for session in active_sessions[:3]:  # Limita a 3 para não ficar muito longo
+                        if st.button(f"📧 Continuar como {session['email']}", use_container_width=True,
+                                    key=f"restore_{session['id']}"):
+                            st.session_state['user_id'] = session['id']
+                            st.session_state['user_email'] = session['email']
+                            st.session_state['remember_token'] = session['remember_token']
+                            st.success(f"✅ Bem-vindo de volta, {session['email']}!")
+                            st.rerun()
+
+                st.markdown("---")
+
             tab_login, tab_cadastro = st.tabs(["Login", "Cadastro"])
 
             with tab_login:
