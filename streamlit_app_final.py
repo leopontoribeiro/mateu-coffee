@@ -1256,10 +1256,10 @@ def main():
                             st.markdown("---")
                             col_edit, col_del = st.columns(2)
                             with col_edit:
-                                if st.button("✏️ Editar Extração", key=f"edit_e_{e['id']}", use_container_width=True):
+                                if st.button("✏️ Editar Extração", key=f"tab3_edit_e_{e['id']}", use_container_width=True):
                                     st.session_state[f"edit_ext_{e['id']}"] = True
                             with col_del:
-                                if st.button("🗑️ Deletar", key=f"del_e_{e['id']}", use_container_width=True):
+                                if st.button("🗑️ Deletar", key=f"tab3_del_e_{e['id']}", use_container_width=True):
                                     _run("DELETE FROM extracoes WHERE id=%s", (e['id'],))
                                     st.rerun()
 
@@ -1268,16 +1268,16 @@ def main():
                                 st.markdown("**Editar Extração**")
                                 ed_col1, ed_col2 = st.columns(2)
                                 with ed_col1:
-                                    ed_gramas = st.number_input("Dose (g)", value=e['gramas'], key=f"ed_g_{e['id']}")
-                                    ed_agua = st.number_input("Água (g)", value=e['agua_alvo'], key=f"ed_a_{e['id']}")
-                                    ed_tempo = st.number_input("Tempo (s)", value=e['tempo_extracao'], key=f"ed_t_{e['id']}")
+                                    ed_gramas = st.number_input("Dose (g)", value=e['gramas'], key=f"tab3_ed_g_{e['id']}")
+                                    ed_agua = st.number_input("Água (g)", value=e['agua_alvo'], key=f"tab3_ed_a_{e['id']}")
+                                    ed_tempo = st.number_input("Tempo (s)", value=e['tempo_extracao'], key=f"tab3_ed_t_{e['id']}")
                                 with ed_col2:
                                     ed_class = st.select_slider("Classificação", options=[1,2,3,4,5],
                                                                value=e['classificacao'] or 3,
-                                                               format_func=_stars, key=f"ed_c_{e['id']}")
-                                    ed_notas = st.text_area("Comentários", value=e['notas'] or "", key=f"ed_n_{e['id']}", height=80)
+                                                               format_func=_stars, key=f"tab3_ed_c_{e['id']}")
+                                    ed_notas = st.text_area("Comentários", value=e['notas'] or "", key=f"tab3_ed_n_{e['id']}", height=80)
 
-                                if st.button("💾 Salvar Edição", key=f"save_e_{e['id']}", use_container_width=True):
+                                if st.button("💾 Salvar Edição", key=f"tab3_save_e_{e['id']}", use_container_width=True):
                                     _run(
                                         "UPDATE extracoes SET gramas=%s, agua_alvo=%s, tempo_extracao=%s, classificacao=%s, notas=%s WHERE id=%s",
                                         (ed_gramas, ed_agua, ed_tempo, ed_class, ed_notas, e['id'])
@@ -1330,7 +1330,7 @@ def main():
                         if r["ey"]:         st.metric("EY",         f"{r['ey']:.1f}%")
                         if r["fluxo"]:      st.metric("Fluxo",      f"{r['fluxo']:.2f} g/s")
                     st.markdown("")
-                    if st.button("Remover extração", key=f"del_r_{r['id']}"):
+                    if st.button("Remover extração", key=f"tab4_del_e_{r['id']}"):
                         _run("DELETE FROM extracoes WHERE id=%s", (r["id"],))
                         st.rerun()
 
