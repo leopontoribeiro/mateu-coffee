@@ -32,6 +32,7 @@ def _show_logo():
         st.markdown(
             f'<div class="mc-hero-full">'
             f'<img src="data:image/png;base64,{b64}" alt="Mateu Coffee">'
+            f'<p class="mc-tagline">Para baristas,<br>entusiastas e iniciantes</p>'
             f'</div>',
             unsafe_allow_html=True)
     else:
