@@ -29,12 +29,9 @@ def _show_logo():
         with open(logo_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
         st.markdown(
-            f'<div class="mc-hero">'
+            f'<div class="mc-hero-full">'
             f'<img src="data:image/png;base64,{b64}" alt="Mateu Coffee">'
-            f'<div class="mc-hero-text">'
-            f'<h1>Mateu Coffee Production</h1>'
-            f'<p>Cadastro · Extração · Análise · Histórico</p>'
-            f'</div></div>',
+            f'</div>',
             unsafe_allow_html=True)
     else:
         st.markdown("""

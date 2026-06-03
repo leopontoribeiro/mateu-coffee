@@ -13,6 +13,21 @@
 }
 
 /* ══ 2. HERO LOGO ════════════════════════════════════════════════ */
+
+/* Variante com logo completo (imagem contém texto) */
+.mc-hero-full {
+  padding: 0.25rem 0 1.25rem;
+  border-bottom: 1px solid #271018;
+  margin-bottom: 1.5rem;
+}
+.mc-hero-full img {
+  width: 280px;
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Variante fallback com ícone pequeno + texto */
 .mc-hero {
   display: flex;
   align-items: center;
