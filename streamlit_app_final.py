@@ -5,386 +5,262 @@ import psycopg2.extras
 import base64
 from datetime import date
 
-# ======================================================================
-# PAGE CONFIG
-# ======================================================================
+# ── Page config ────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Mateu Coffee Production",
     page_icon="☕",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
 )
 
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-/* ── Paleta ORFEU ACAUÃ ─────────────────────────────────────────────
-   Vinho  : #8B1A35   Laranja : #D4561A   Branco : #F5EDE8
-   BG     : #0D0608   Card    : #160C0F   Border : #271018
-──────────────────────────────────────────────────────────────────── */
+/* Paleta ORFEU ACAUÃ — Vinho #8B1A35 · Laranja #D4561A · Branco #F5EDE8 */
+html,body,[class*="css"],.stApp,.stMarkdown,.stTextInput,.stNumberInput,
+.stSelectbox,.stTextArea,.stRadio,.stDateInput,.stFileUploader,.stButton,
+.stMetric,div,p,span,label,h1,h2,h3,h4 {
+    font-family:'Inter',sans-serif!important; letter-spacing:-0.01em; }
 
-/* ── Base ───────────────────────────────────────────────────────── */
-html, body, [class*="css"], .stApp, .stMarkdown, .stTextInput,
-.stNumberInput, .stSelectbox, .stTextArea, .stRadio, .stDateInput,
-.stFileUploader, .stButton, .stMetric, div, p, span, label, h1, h2, h3, h4 {
-    font-family: 'Inter', sans-serif !important;
-    letter-spacing: -0.01em;
-}
+.stApp                          { background-color:#0D0608; }
+.block-container                { padding:2rem 2.5rem!important; max-width:1280px; }
 
-.stApp { background-color: #0D0608; }
-.block-container { padding: 2rem 2.5rem 2rem !important; max-width: 1280px; }
+.app-header                     { display:flex; align-items:center; gap:14px;
+                                  padding:0 0 2rem; border-bottom:1px solid #271018;
+                                  margin-bottom:2rem; }
+.app-header-title               { font-size:22px; font-weight:700; color:#F5EDE8;
+                                  letter-spacing:-0.03em; margin:0; }
+.app-header-sub                 { font-size:12px; color:#6B3A4A; letter-spacing:0.06em;
+                                  text-transform:uppercase; margin:2px 0 0; }
 
-/* ── Header ─────────────────────────────────────────────────────── */
-.app-header {
-    display: flex; align-items: center; gap: 14px;
-    padding: 0 0 2rem 0;
-    border-bottom: 1px solid #271018;
-    margin-bottom: 2rem;
-}
-.app-header-icon { font-size: 32px; line-height: 1; }
-.app-header-title {
-    font-size: 22px; font-weight: 700; color: #F5EDE8;
-    letter-spacing: -0.03em; margin: 0;
-}
-.app-header-sub {
-    font-size: 12px; font-weight: 400; color: #6B3A4A;
-    letter-spacing: 0.06em; text-transform: uppercase; margin: 2px 0 0 0;
-}
+.stTabs [data-baseweb="tab-list"]  { gap:0; background:#160C0F; border-radius:10px;
+                                     padding:4px; border:1px solid #271018; width:fit-content; }
+.stTabs [data-baseweb="tab"]       { background:transparent; border-radius:7px;
+                                     color:#6B3A4A; font-size:13px; font-weight:500;
+                                     padding:8px 20px; border:none; transition:all .15s; }
+.stTabs [aria-selected="true"]     { background:#271018!important; color:#F5EDE8!important; }
+.stTabs [data-baseweb="tab-border"]{ display:none!important; }
+.stTabs [data-baseweb="tab-panel"] { padding-top:2rem!important; }
 
-/* ── Tabs ────────────────────────────────────────────────────────── */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 0; background: #160C0F; border-radius: 10px;
-    padding: 4px; border: 1px solid #271018; width: fit-content;
-}
-.stTabs [data-baseweb="tab"] {
-    background: transparent; border-radius: 7px;
-    color: #6B3A4A; font-size: 13px; font-weight: 500;
-    padding: 8px 20px; border: none; transition: all .15s;
-}
-.stTabs [aria-selected="true"] {
-    background: #271018 !important; color: #F5EDE8 !important;
-}
-.stTabs [data-baseweb="tab-border"] { display: none !important; }
-.stTabs [data-baseweb="tab-panel"] { padding-top: 2rem !important; }
+.section-label  { font-size:10px; font-weight:700; color:#6B3A4A;
+                  letter-spacing:0.12em; text-transform:uppercase; margin:0 0 1.2rem; }
+.section-divider{ border:none; border-top:1px solid #271018; margin:2rem 0; }
 
-/* ── Section labels ──────────────────────────────────────────────── */
-.section-label {
-    font-size: 10px; font-weight: 700; color: #6B3A4A;
-    letter-spacing: 0.12em; text-transform: uppercase;
-    margin: 0 0 1.2rem 0;
-}
-.section-divider {
-    border: none; border-top: 1px solid #271018;
-    margin: 2rem 0;
-}
+.tag            { display:inline-block; background:#1E0E14; border:1px solid #321420;
+                  border-radius:6px; font-size:11px; font-weight:500; color:#9A6070;
+                  padding:3px 10px; margin:2px 3px 2px 0; }
+.tag-accent     { border-color:#D4561A55; color:#D4561A; }
+.info-row       { display:flex; gap:6px; align-items:baseline; margin:6px 0; }
+.info-key       { font-size:11px; color:#6B3A4A; font-weight:500; min-width:80px; }
+.info-val       { font-size:13px; color:#F5EDE8; font-weight:500; }
 
-/* ── Cards ───────────────────────────────────────────────────────── */
-.metric-card {
-    background: #160C0F; border: 1px solid #271018;
-    border-radius: 12px; padding: 16px 20px;
-}
-.metric-label {
-    font-size: 11px; font-weight: 600; color: #6B3A4A;
-    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;
-}
-.metric-value {
-    font-size: 22px; font-weight: 700; color: #D4561A;
-    letter-spacing: -0.03em;
-}
-.metric-sub { font-size: 12px; color: #6B3A4A; margin-top: 4px; }
+div[data-testid="stMetric"]       { background:#160C0F!important; border:1px solid #271018!important;
+                                    border-radius:12px!important; padding:16px 20px!important; }
+div[data-testid="stMetricLabel"] p{ font-size:10px!important; font-weight:700!important;
+                                    color:#6B3A4A!important; text-transform:uppercase!important;
+                                    letter-spacing:0.1em!important; }
+div[data-testid="stMetricValue"]  { font-size:20px!important; font-weight:700!important;
+                                    color:#D4561A!important; letter-spacing:-0.02em!important; }
+div[data-testid="stMetricDelta"]  { font-size:11px!important; font-weight:500!important; }
 
-.coffee-card {
-    background: #160C0F; border: 1px solid #271018;
-    border-radius: 14px; padding: 20px 24px; margin: 10px 0;
-}
-.tag {
-    display: inline-block; background: #1E0E14;
-    border: 1px solid #321420; border-radius: 6px;
-    font-size: 11px; font-weight: 500; color: #9A6070;
-    padding: 3px 10px; margin: 2px 3px 2px 0;
-}
-.tag-accent { border-color: #D4561A55; color: #D4561A; }
-.info-row {
-    display: flex; gap: 6px; align-items: baseline;
-    margin: 6px 0;
-}
-.info-key { font-size: 11px; color: #6B3A4A; font-weight: 500; min-width: 80px; }
-.info-val { font-size: 13px; color: #F5EDE8; font-weight: 500; }
+.stTextInput input,.stNumberInput input,.stTextArea textarea,.stDateInput input {
+    background:#160C0F!important; border:1px solid #271018!important;
+    border-radius:8px!important; color:#F5EDE8!important;
+    font-size:14px!important; padding:10px 14px!important;
+    transition:border-color .15s!important; }
+.stTextInput input:focus,.stNumberInput input:focus,.stTextArea textarea:focus
+                                  { border-color:#D4561A!important; }
+div[data-baseweb="select"]>div    { background:#160C0F!important; border:1px solid #271018!important;
+                                    border-radius:8px!important; color:#F5EDE8!important; }
 
-/* ── Native Streamlit metrics ────────────────────────────────────── */
-div[data-testid="stMetric"] {
-    background: #160C0F !important; border: 1px solid #271018 !important;
-    border-radius: 12px !important; padding: 16px 20px !important;
-}
-div[data-testid="stMetricLabel"] p {
-    font-size: 10px !important; font-weight: 700 !important;
-    color: #6B3A4A !important; text-transform: uppercase !important;
-    letter-spacing: 0.1em !important;
-}
-div[data-testid="stMetricValue"] {
-    font-size: 20px !important; font-weight: 700 !important;
-    color: #D4561A !important; letter-spacing: -0.02em !important;
-}
-div[data-testid="stMetricDelta"] {
-    font-size: 11px !important; font-weight: 500 !important;
-}
+.stTextInput label,.stNumberInput label,.stSelectbox label,.stTextArea label,
+.stDateInput label,.stRadio label,.stFileUploader label,.stSlider label {
+    font-size:11px!important; font-weight:600!important; color:#6B3A4A!important;
+    text-transform:uppercase!important; letter-spacing:0.08em!important; }
 
-/* ── Inputs ──────────────────────────────────────────────────────── */
-.stTextInput input, .stNumberInput input, .stTextArea textarea,
-.stDateInput input {
-    background: #160C0F !important; border: 1px solid #271018 !important;
-    border-radius: 8px !important; color: #F5EDE8 !important;
-    font-size: 14px !important; font-weight: 400 !important;
-    padding: 10px 14px !important;
-    transition: border-color .15s !important;
-}
-.stTextInput input:focus, .stNumberInput input:focus,
-.stTextArea textarea:focus { border-color: #D4561A !important; }
+.stButton>button                  { background:#1E0E14!important; border:1px solid #321420!important;
+                                    border-radius:8px!important; color:#C09090!important;
+                                    font-size:13px!important; font-weight:500!important;
+                                    padding:10px 20px!important; transition:all .15s!important; }
+.stButton>button:hover            { background:#271018!important; border-color:#3D1828!important;
+                                    color:#F5EDE8!important; }
+.stButton>button[kind="primary"]  { background:#D4561A!important; border-color:#D4561A!important;
+                                    color:#FFF8F4!important; font-weight:600!important; }
+.stButton>button[kind="primary"]:hover { background:#B84514!important; border-color:#B84514!important; }
 
-.stSelectbox select, div[data-baseweb="select"] {
-    background: #160C0F !important; border: 1px solid #271018 !important;
-    border-radius: 8px !important;
-}
-div[data-baseweb="select"] > div {
-    background: #160C0F !important; border: 1px solid #271018 !important;
-    border-radius: 8px !important; color: #F5EDE8 !important;
-}
+.stRadio>div                      { gap:6px!important; }
+.stRadio>div label                { background:#160C0F!important; border:1px solid #271018!important;
+                                    border-radius:7px!important; padding:7px 14px!important;
+                                    color:#9A6070!important; font-size:13px!important;
+                                    font-weight:500!important; cursor:pointer!important;
+                                    text-transform:none!important; letter-spacing:0!important;
+                                    transition:all .12s!important; }
+.stRadio>div label:has(input:checked){ background:#2A1018!important; border-color:#8B1A35!important;
+                                       color:#F5EDE8!important; }
 
-/* ── Labels ──────────────────────────────────────────────────────── */
-.stTextInput label, .stNumberInput label, .stSelectbox label,
-.stTextArea label, .stDateInput label, .stRadio label,
-.stFileUploader label, .stSlider label {
-    font-size: 11px !important; font-weight: 600 !important;
-    color: #6B3A4A !important; text-transform: uppercase !important;
-    letter-spacing: 0.08em !important; margin-bottom: 4px !important;
-}
+.streamlit-expanderHeader         { background:#160C0F!important; border:1px solid #271018!important;
+                                    border-radius:10px!important; color:#D0A090!important;
+                                    font-size:13px!important; font-weight:500!important;
+                                    padding:14px 18px!important; }
+.streamlit-expanderContent        { background:#120A0C!important; border:1px solid #1E1018!important;
+                                    border-top:none!important; border-radius:0 0 10px 10px!important;
+                                    padding:20px!important; }
 
-/* ── Buttons ─────────────────────────────────────────────────────── */
-.stButton > button {
-    background: #1E0E14 !important; border: 1px solid #321420 !important;
-    border-radius: 8px !important; color: #C09090 !important;
-    font-size: 13px !important; font-weight: 500 !important;
-    padding: 10px 20px !important; transition: all .15s !important;
-}
-.stButton > button:hover {
-    background: #271018 !important; border-color: #3D1828 !important;
-    color: #F5EDE8 !important;
-}
-.stButton > button[kind="primary"] {
-    background: #D4561A !important; border-color: #D4561A !important;
-    color: #FFF8F4 !important; font-weight: 600 !important;
-}
-.stButton > button[kind="primary"]:hover {
-    background: #B8451400 !important; border-color: #B84514 !important;
-    background: #B84514 !important;
-}
-
-/* ── Radio ───────────────────────────────────────────────────────── */
-.stRadio > div { gap: 6px !important; }
-.stRadio > div label {
-    background: #160C0F !important; border: 1px solid #271018 !important;
-    border-radius: 7px !important; padding: 7px 14px !important;
-    color: #9A6070 !important; font-size: 13px !important;
-    font-weight: 500 !important; cursor: pointer !important;
-    text-transform: none !important; letter-spacing: 0 !important;
-    transition: all .12s !important;
-}
-.stRadio > div label:has(input:checked) {
-    background: #2A1018 !important; border-color: #8B1A35 !important;
-    color: #F5EDE8 !important;
-}
-
-/* ── Expander ────────────────────────────────────────────────────── */
-.streamlit-expanderHeader {
-    background: #160C0F !important; border: 1px solid #271018 !important;
-    border-radius: 10px !important; color: #D0A090 !important;
-    font-size: 13px !important; font-weight: 500 !important;
-    padding: 14px 18px !important;
-}
-.streamlit-expanderContent {
-    background: #120A0C !important; border: 1px solid #1E1018 !important;
-    border-top: none !important; border-radius: 0 0 10px 10px !important;
-    padding: 20px !important;
-}
-
-/* ── Divider ─────────────────────────────────────────────────────── */
-hr { border-color: #271018 !important; margin: 1.5rem 0 !important; }
-
-/* ── File uploader ───────────────────────────────────────────────── */
-.stFileUploader > div {
-    background: #160C0F !important; border: 1px dashed #321420 !important;
-    border-radius: 10px !important;
-}
-
-/* ── Alerts ──────────────────────────────────────────────────────── */
-div[data-testid="stAlert"] {
-    border-radius: 10px !important; border-left-width: 3px !important;
-    font-size: 13px !important;
-}
-
-/* ── Select slider ───────────────────────────────────────────────── */
-.stSlider > div > div { color: #10B981 !important; }
-
-/* ── Scrollbar ───────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #0C0C0C; }
-::-webkit-scrollbar-thumb { background: #2A2A2A; border-radius: 3px; }
+hr                                { border-color:#271018!important; margin:1.5rem 0!important; }
+.stFileUploader>div               { background:#160C0F!important; border:1px dashed #321420!important;
+                                    border-radius:10px!important; }
+div[data-testid="stAlert"]        { border-radius:10px!important; border-left-width:3px!important;
+                                    font-size:13px!important; }
+.stSlider>div>div                 { color:#D4561A!important; }
+::-webkit-scrollbar               { width:6px; height:6px; }
+::-webkit-scrollbar-track         { background:#0D0608; }
+::-webkit-scrollbar-thumb         { background:#321420; border-radius:3px; }
 </style>
 """, unsafe_allow_html=True)
 
-# ======================================================================
-# DATABASE
-# ======================================================================
+# ── Database layer ─────────────────────────────────────────────────────
 @st.cache_resource
-def get_conn():
+def _get_conn():
     s = st.secrets["connections"]["postgresql"]
     return psycopg2.connect(
         host=s["host"], port=int(s["port"]), dbname=s["database"],
-        user=s["username"], password=s["password"], sslmode="require"
+        user=s["username"], password=s["password"], sslmode="require",
     )
 
-def conn():
-    c = get_conn()
+def _conn():
+    c = _get_conn()
     if c.closed:
         st.cache_resource.clear()
-        c = get_conn()
+        c = _get_conn()
     return c
 
-def init_db():
-    cur = conn().cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS coffees (
-            id              SERIAL PRIMARY KEY,
-            data_cadastro   DATE    NOT NULL DEFAULT CURRENT_DATE,
-            nome            TEXT    NOT NULL,
-            tipo            TEXT    NOT NULL DEFAULT 'Grãos',
-            torra           TEXT    NOT NULL DEFAULT 'Média',
-            notas           TEXT    DEFAULT '',
-            classificacao   INTEGER DEFAULT 0,
-            fazenda         TEXT    DEFAULT '',
-            regiao          TEXT    DEFAULT '',
-            data_torra      DATE,
-            tamanho_pacote  INTEGER DEFAULT 250,
-            foto_embalagem  TEXT,
-            created_at      TIMESTAMP DEFAULT NOW()
-        );
-        CREATE TABLE IF NOT EXISTS extracoes (
-            id              SERIAL PRIMARY KEY,
-            coffee_id       INTEGER REFERENCES coffees(id) ON DELETE CASCADE,
-            data            DATE    NOT NULL DEFAULT CURRENT_DATE,
-            metodo          TEXT    NOT NULL DEFAULT 'Espresso',
-            gramas          FLOAT   NOT NULL DEFAULT 18,
-            moedor          TEXT    DEFAULT '',
-            clicks_moedor   INTEGER DEFAULT 0,
-            agua_alvo       FLOAT   NOT NULL DEFAULT 300,
-            tds             FLOAT   DEFAULT 0,
-            tempo_extracao  INTEGER NOT NULL DEFAULT 150,
-            brew_ratio      FLOAT   DEFAULT 0,
-            ey              FLOAT   DEFAULT 0,
-            fluxo           FLOAT   DEFAULT 0,
-            foto_caneca     TEXT,
-            classificacao   INTEGER DEFAULT 0,
-            notas           TEXT    DEFAULT '',
-            created_at      TIMESTAMP DEFAULT NOW()
-        );
-    """)
-    conn().commit()
+def _run(query, params=()):
+    c = _conn()
+    cur = c.cursor()
+    cur.execute(query, params)
+    c.commit()
     cur.close()
+    _bump()           # invalidate read cache after every write
 
-def fetch(query, params=()):
-    cur = conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+def _bump():
+    st.session_state["_v"] = st.session_state.get("_v", 0) + 1
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _fetch(query, params=(), _v=0):
+    cur = _conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute(query, params)
     rows = cur.fetchall()
     cur.close()
     return rows
 
-def run(query, params=()):
-    c = conn()
-    cur = c.cursor()
-    cur.execute(query, params)
-    c.commit()
-    cur.close()
+def _v():
+    return st.session_state.get("_v", 0)
 
-# ======================================================================
-# HELPERS
-# ======================================================================
-def to_b64(f):
-    if f is None:
-        return None
-    data = f.read()
-    f.seek(0)
-    return base64.b64encode(data).decode()
+def _init_db():
+    if st.session_state.get("_db_ready"):
+        return
+    _conn().cursor().execute("""
+        CREATE TABLE IF NOT EXISTS coffees (
+            id SERIAL PRIMARY KEY, data_cadastro DATE NOT NULL DEFAULT CURRENT_DATE,
+            nome TEXT NOT NULL, tipo TEXT NOT NULL DEFAULT 'Grãos',
+            torra TEXT NOT NULL DEFAULT 'Média', notas TEXT DEFAULT '',
+            classificacao INTEGER DEFAULT 0, fazenda TEXT DEFAULT '',
+            regiao TEXT DEFAULT '', data_torra DATE,
+            tamanho_pacote INTEGER DEFAULT 250, foto_embalagem TEXT,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS extracoes (
+            id SERIAL PRIMARY KEY,
+            coffee_id INTEGER REFERENCES coffees(id) ON DELETE CASCADE,
+            data DATE NOT NULL DEFAULT CURRENT_DATE,
+            metodo TEXT NOT NULL DEFAULT 'Espresso',
+            gramas FLOAT NOT NULL DEFAULT 18, moedor TEXT DEFAULT '',
+            clicks_moedor INTEGER DEFAULT 0, agua_alvo FLOAT NOT NULL DEFAULT 300,
+            tds FLOAT DEFAULT 0, tempo_extracao INTEGER NOT NULL DEFAULT 150,
+            brew_ratio FLOAT DEFAULT 0, ey FLOAT DEFAULT 0, fluxo FLOAT DEFAULT 0,
+            foto_caneca TEXT, classificacao INTEGER DEFAULT 0,
+            notas TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+    _conn().commit()
+    st.session_state["_db_ready"] = True
 
-def show_img(b64, width=170):
+# ── Helpers ────────────────────────────────────────────────────────────
+def _b64(f):
+    if not f: return None
+    d = f.read(); f.seek(0)
+    return base64.b64encode(d).decode()
+
+def _img(b64, w=170):
     if b64:
         st.markdown(
-            f'<img src="data:image/jpeg;base64,{b64}" width="{width}" '
+            f'<img src="data:image/jpeg;base64,{b64}" width="{w}" '
             f'style="border-radius:10px;margin-top:4px;display:block;">',
-            unsafe_allow_html=True
-        )
+            unsafe_allow_html=True)
 
-def stars(n):
+def _stars(n):
     n = int(n or 0)
     return "★" * n + "☆" * (5 - n)
 
-def tag(text, accent=False):
-    cls = "tag tag-accent" if accent else "tag"
-    return f'<span class="{cls}">{text}</span>'
+def _tag(t, accent=False):
+    return f'<span class="tag{" tag-accent" if accent else ""}">{t}</span>'
 
-def info_row(key, val):
-    return f'<div class="info-row"><span class="info-key">{key}</span><span class="info-val">{val}</span></div>'
+def _irow(k, v):
+    return f'<div class="info-row"><span class="info-key">{k}</span><span class="info-val">{v}</span></div>'
 
-METODOS = ["Espresso", "Pour Over", "French Press", "Aeropress",
-           "Chemex", "Moka Pot", "Cold Brew", "Sifão", "Drip", "Outro"]
+def _ph():
+    return ('<div style="width:150px;height:150px;background:#160C0F;border:1px solid #271018;'
+            'border-radius:10px;display:flex;align-items:center;justify-content:center;'
+            'color:#3D1828;font-size:28px;">☕</div>')
 
-# ======================================================================
-# COFFEE ENGINE
-# ======================================================================
-class Engine:
+METODOS = ["Espresso","Pour Over","French Press","Aeropress",
+           "Chemex","Moka Pot","Cold Brew","Sifão","Drip","Outro"]
+
+# ── Coffee Engine ──────────────────────────────────────────────────────
+class CoffeeEngine:
+    ATTRS    = ("Doçura","Acidez","Corpo","Amargor","Finalização")
+    TARGET   = (8, 7, 7, 4, 8)
+    EY_LOW   = 18.0
+    EY_HIGH  = 22.0
+
     @staticmethod
-    def calc(coffee_g, water_g, tds=None, time_s=1):
+    def calc(coffee_g: float, water_g: float, tds: float | None, time_s: int) -> dict:
         if coffee_g <= 0:
             return {}
         ratio = water_g / coffee_g
-        fluxo = water_g / max(time_s, 1)
         out = {
             "ratio_text": f"1 : {ratio:.1f}",
             "ratio": ratio,
             "ey": 0.0,
             "status": "Aguardando TDS",
             "delta_color": "off",
-            "fluxo": fluxo,
+            "fluxo": water_g / max(time_s, 1),
         }
         if tds and tds > 0:
-            bev = max(water_g - 2.0 * coffee_g, 0)
-            ey = (bev * tds) / coffee_g
+            bev = max(water_g - 2.0 * coffee_g, 0)   # retenção ≈ 2× pó
+            ey  = (bev * tds) / coffee_g
             out["ey"] = ey
-            if ey < 18.0:
-                out["status"] = "Subextraído"
-                out["delta_color"] = "inverse"
-            elif ey <= 22.0:
-                out["status"] = "Ideal — Sweet Spot"
-                out["delta_color"] = "off"
+            if ey < CoffeeEngine.EY_LOW:
+                out.update(status="Subextraído", delta_color="inverse")
+            elif ey <= CoffeeEngine.EY_HIGH:
+                out.update(status="Ideal — Sweet Spot", delta_color="off")
             else:
-                out["status"] = "Superextraído"
-                out["delta_color"] = "inverse"
+                out.update(status="Superextraído", delta_color="inverse")
         return out
 
-@st.cache_data(ttl=86400)
-def _wheel():
-    return ["Doçura", "Acidez", "Corpo", "Amargor", "Finalização"]
+    @staticmethod
+    def sensory(ey: float) -> tuple:
+        if ey <= 0:  return (7, 7, 7, 5, 7)
+        if ey < 18:  return (4, 9, 4, 3, 5)
+        if ey > 22:  return (3, 4, 8, 9, 4)
+        return (9, 8, 8, 4, 9)
 
-def sensory(ey):
-    if ey <= 0:  return [7, 7, 7, 5, 7]
-    if ey < 18:  return [4, 9, 4, 3, 5]
-    if ey > 22:  return [3, 4, 8, 9, 4]
-    return [9, 8, 8, 4, 9]
-
-def radar(profile):
-    attrs = _wheel()
-    fig = go.Figure()
+@st.cache_data(ttl=86400, show_spinner=False)
+def _radar(profile: tuple) -> go.Figure:
+    attrs = CoffeeEngine.ATTRS
+    fig   = go.Figure()
     fig.add_trace(go.Scatterpolar(
-        r=[8, 7, 7, 4, 8], theta=attrs, fill='toself',
+        r=CoffeeEngine.TARGET, theta=attrs, fill='toself',
         name='Target', line_color='#8B1A35', fillcolor='rgba(139,26,53,0.15)'))
     fig.add_trace(go.Scatterpolar(
         r=profile, theta=attrs, fill='toself',
@@ -392,101 +268,84 @@ def radar(profile):
     fig.update_layout(
         polar=dict(
             bgcolor='rgba(0,0,0,0)',
-            radialaxis=dict(visible=True, range=[0, 10],
-                            gridcolor='#271018', linecolor='#271018',
-                            tickfont=dict(color='#6B3A4A', size=9)),
-            angularaxis=dict(gridcolor='#271018', linecolor='#271018')
-        ),
+            radialaxis=dict(visible=True, range=[0,10], gridcolor='#271018',
+                            linecolor='#271018', tickfont=dict(color='#6B3A4A', size=9)),
+            angularaxis=dict(gridcolor='#271018', linecolor='#271018')),
         showlegend=True,
         legend=dict(font=dict(color='#9A6070', size=10), bgcolor='rgba(0,0,0,0)'),
-        height=270,
-        margin=dict(l=20, r=20, t=20, b=20),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
+        height=270, margin=dict(l=20,r=20,t=20,b=20),
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         font=dict(color='#9A6070', size=11, family='Inter'),
     )
     return fig
 
-# ======================================================================
-# MAIN
-# ======================================================================
+# ── Main ───────────────────────────────────────────────────────────────
 def main():
-    init_db()
+    _init_db()
 
     st.markdown("""
     <div class="app-header">
-        <div class="app-header-icon">☕</div>
-        <div>
-            <div class="app-header-title">Mateu Coffee Production</div>
-            <div class="app-header-sub">Cadastro · Extração · Análise · Histórico</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+      <div style="font-size:32px">☕</div>
+      <div>
+        <div class="app-header-title">Mateu Coffee Production</div>
+        <div class="app-header-sub">Cadastro · Extração · Análise · Histórico</div>
+      </div>
+    </div>""", unsafe_allow_html=True)
 
     tab1, tab2, tab3, tab4 = st.tabs([
-        "  Novo Café  ",
-        "  Nova Extração  ",
-        "  Meus Cafés  ",
-        "  Histórico  ",
-    ])
+        "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ", "  Histórico  "])
 
-    # ──────────────────────────────────────────────────────────────────
-    # TAB 1 — CADASTRAR CAFÉ
-    # ──────────────────────────────────────────────────────────────────
+    # ── Tab 1 · Cadastrar café ─────────────────────────────────────────
     with tab1:
         st.markdown('<p class="section-label">Cadastrar Novo Café</p>', unsafe_allow_html=True)
-
         c1, c2 = st.columns(2, gap="large")
 
         with c1:
             data_cad  = st.date_input("Data de Cadastro", value=date.today())
             nome      = st.text_input("Nome do Café *", placeholder="Ex: Ethiopian Yirgacheffe")
             fazenda   = st.text_input("Fazenda", placeholder="Ex: Fazenda Santa Inês")
-            regiao    = st.text_input("Região", placeholder="Ex: Sul de Minas / Etiópia")
+            regiao    = st.text_input("Região",  placeholder="Ex: Sul de Minas / Etiópia")
             data_tort = st.date_input("Data da Torra", value=None)
             tamanho   = st.radio("Pacote", [250, 500, 1000], horizontal=True,
                                  format_func=lambda x: f"{x}g")
 
         with c2:
-            tipo    = st.radio("Tipo", ["Grãos", "Moído"], horizontal=True)
-            torra   = st.radio("Torra", ["Clara", "Média", "Escura"], horizontal=True)
+            tipo    = st.radio("Tipo",  ["Grãos","Moído"], horizontal=True)
+            torra   = st.radio("Torra", ["Clara","Média","Escura"], horizontal=True)
             notas   = st.text_area("Notas de Sabor / Torra",
                                    placeholder="Ex: Blueberry, chocolate, floral...", height=108)
-            class_c = st.select_slider("Classificação",
-                                       options=[1, 2, 3, 4, 5], format_func=stars, value=3)
+            class_c = st.select_slider("Classificação", options=[1,2,3,4,5],
+                                       format_func=_stars, value=3)
             foto_emb = st.file_uploader("Foto da Embalagem", type=["jpg","jpeg","png"],
                                         key="foto_emb")
             if foto_emb:
-                show_img(to_b64(foto_emb), width=160)
+                _img(_b64(foto_emb), w=160)
 
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         if st.button("Salvar Café", type="primary", use_container_width=True):
             if not nome.strip():
                 st.error("Nome do café é obrigatório.")
             else:
-                run("""
-                    INSERT INTO coffees
-                        (data_cadastro, nome, tipo, torra, notas, classificacao,
-                         fazenda, regiao, data_torra, tamanho_pacote, foto_embalagem)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """, (data_cad, nome.strip(), tipo, torra, notas, class_c,
-                      fazenda, regiao, data_tort, tamanho, to_b64(foto_emb)))
+                _run("""INSERT INTO coffees
+                    (data_cadastro,nome,tipo,torra,notas,classificacao,
+                     fazenda,regiao,data_torra,tamanho_pacote,foto_embalagem)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (data_cad, nome.strip(), tipo, torra, notas, class_c,
+                     fazenda, regiao, data_tort, tamanho, _b64(foto_emb)))
                 st.success(f"**{nome}** cadastrado com sucesso.")
                 st.balloons()
 
-    # ──────────────────────────────────────────────────────────────────
-    # TAB 2 — NOVA EXTRAÇÃO
-    # ──────────────────────────────────────────────────────────────────
+    # ── Tab 2 · Nova extração ──────────────────────────────────────────
     with tab2:
         st.markdown('<p class="section-label">Registrar Extração</p>', unsafe_allow_html=True)
 
-        cafes = fetch("SELECT id, nome, torra FROM coffees ORDER BY nome")
+        cafes = _fetch("SELECT id, nome, torra FROM coffees ORDER BY nome", _v=_v())
         if not cafes:
             st.info("Cadastre um café primeiro na aba Novo Café.")
         else:
             cafe_map = {f"{c['nome']}  ·  {c['torra']}": c['id'] for c in cafes}
-            sel = st.selectbox("Café", list(cafe_map.keys()))
-            cid = cafe_map[sel]
+            sel    = st.selectbox("Café", list(cafe_map.keys()))
+            cid    = cafe_map[sel]
             metodo = st.selectbox("Método de Preparo", METODOS)
 
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -494,202 +353,136 @@ def main():
 
             c1, c2 = st.columns(2, gap="large")
             with c1:
-                gramas = st.number_input("Pó de Café (g)",        5.0,  50.0,  18.0, 0.1,
+                gramas = st.number_input("Pó de Café (g)",       5.0,  50.0,  18.0, 0.1,
                                          help="Peso do pó medido na balança")
-                agua   = st.number_input("Água Alvo (g)",         50.0, 1000.0,300.0, 5.0)
-                tds    = st.number_input("TDS Medido (%)",         0.0,  5.0,   0.0,  0.01,
+                agua   = st.number_input("Água Alvo (g)",        50.0, 1000.0,300.0, 5.0)
+                tds    = st.number_input("TDS Medido (%)",        0.0,  5.0,   0.0,  0.01,
                                          help="Deixe 0 se não usar refratômetro")
-                tempo  = st.number_input("Tempo de Extração (s)",  1,    600,   150,  1)
-
+                tempo  = st.number_input("Tempo de Extração (s)", 1,    600,   150,  1)
             with c2:
                 moedor   = st.text_input("Moedor", placeholder="Ex: Comandante C40")
                 clicks   = st.number_input("Clicks do Moedor", 0, 200, 0, 1)
                 data_ext = st.date_input("Data", value=date.today(), key="data_ext")
-                class_e  = st.select_slider("Classificação",
-                                            options=[1,2,3,4,5], format_func=stars, value=3)
-                notas_e  = st.text_area("Notas", placeholder="Impressões da extração...", height=80)
+                class_e  = st.select_slider("Classificação", options=[1,2,3,4,5],
+                                            format_func=_stars, value=3)
+                notas_e  = st.text_area("Notas", placeholder="Impressões da extração...",
+                                        height=80)
 
-            # ── Análise em tempo real ──────────────────────────────
-            m  = Engine.calc(gramas, agua, tds if tds > 0 else None, tempo)
+            m  = CoffeeEngine.calc(gramas, agua, tds if tds > 0 else None, tempo)
             ey = m.get("ey", 0.0)
 
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            st.markdown('<p class="section-label">Análise em Tempo Real</p>', unsafe_allow_html=True)
+            st.markdown('<p class="section-label">Análise em Tempo Real</p>',
+                        unsafe_allow_html=True)
 
             mc1, mc2, mc3, mc4 = st.columns(4)
             mc1.metric("Brew Ratio",       m.get("ratio_text", "—"))
             mc2.metric("Extraction Yield", f"{ey:.2f}%" if ey > 0 else "—",
                        delta=m.get("status") if ey > 0 else None,
                        delta_color=m.get("delta_color", "off"))
-            mc3.metric("Fluxo Médio",      f"{m.get('fluxo', 0):.2f} g/s")
+            mc3.metric("Fluxo Médio",      f"{m.get('fluxo',0):.2f} g/s")
             mc4.metric("Status",           m.get("status", "—"))
 
             col_r, col_p = st.columns([1.6, 1], gap="large")
             with col_r:
-                st.plotly_chart(radar(sensory(ey)), use_container_width=True,
-                                config={'displayModeBar': False})
+                st.plotly_chart(_radar(CoffeeEngine.sensory(ey)),
+                                use_container_width=True, config={'displayModeBar': False})
             with col_p:
                 foto_can = st.file_uploader("Foto da Caneca", type=["jpg","jpeg","png"],
                                             key="foto_can")
                 if foto_can:
-                    show_img(to_b64(foto_can), width=210)
+                    _img(_b64(foto_can), w=210)
 
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             if st.button("Salvar Extração", type="primary", use_container_width=True):
-                run("""
-                    INSERT INTO extracoes
-                        (coffee_id, data, metodo, gramas, moedor, clicks_moedor,
-                         agua_alvo, tds, tempo_extracao, brew_ratio, ey, fluxo,
-                         foto_caneca, classificacao, notas)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """, (cid, data_ext, metodo, gramas, moedor, clicks,
-                      agua, tds, tempo,
-                      m.get("ratio", 0), ey, m.get("fluxo", 0),
-                      to_b64(foto_can) if foto_can else None,
-                      class_e, notas_e))
+                _run("""INSERT INTO extracoes
+                    (coffee_id,data,metodo,gramas,moedor,clicks_moedor,agua_alvo,tds,
+                     tempo_extracao,brew_ratio,ey,fluxo,foto_caneca,classificacao,notas)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (cid, data_ext, metodo, gramas, moedor, clicks, agua, tds, tempo,
+                     m.get("ratio",0), ey, m.get("fluxo",0),
+                     _b64(foto_can) if foto_can else None, class_e, notas_e))
                 st.success("Extração registrada.")
 
-    # ──────────────────────────────────────────────────────────────────
-    # TAB 3 — MEUS CAFÉS
-    # ──────────────────────────────────────────────────────────────────
+    # ── Tab 3 · Meus cafés ────────────────────────────────────────────
     with tab3:
         st.markdown('<p class="section-label">Biblioteca de Cafés</p>', unsafe_allow_html=True)
 
-        cafes = fetch("""
-            SELECT c.*,
-                   COUNT(e.id)           AS total_ext,
-                   AVG(e.ey)             AS avg_ey,
-                   AVG(e.classificacao)  AS avg_nota
-            FROM coffees c
-            LEFT JOIN extracoes e ON e.coffee_id = c.id
-            GROUP BY c.id
-            ORDER BY c.data_cadastro DESC
-        """)
+        cafes = _fetch("""
+            SELECT c.*, COUNT(e.id) AS total_ext,
+                   AVG(e.ey) AS avg_ey, AVG(e.classificacao) AS avg_nota
+            FROM coffees c LEFT JOIN extracoes e ON e.coffee_id=c.id
+            GROUP BY c.id ORDER BY c.data_cadastro DESC""", _v=_v())
 
         if not cafes:
             st.info("Nenhum café cadastrado ainda.")
         else:
             for c in cafes:
-                nota_str = stars(c['classificacao'] or 0)
-                header = f"{c['nome']}  ·  {c['torra']}  ·  {nota_str}"
-                with st.expander(header):
+                with st.expander(f"{c['nome']}  ·  {c['torra']}  ·  {_stars(c['classificacao'] or 0)}"):
                     ca, cb, cc = st.columns([1, 2.2, 1.4], gap="large")
-
                     with ca:
-                        if c["foto_embalagem"]:
-                            show_img(c["foto_embalagem"], width=150)
-                        else:
-                            st.markdown(
-                                '<div style="width:150px;height:150px;background:#160C0F;'
-                                'border:1px solid #271018;border-radius:10px;display:flex;'
-                                'align-items:center;justify-content:center;color:#3D1828;font-size:28px;">☕</div>',
-                                unsafe_allow_html=True
-                            )
-
+                        _img(c["foto_embalagem"], w=150) if c["foto_embalagem"] \
+                            else st.markdown(_ph(), unsafe_allow_html=True)
                     with cb:
-                        tags_html = (
-                            tag(c['tipo']) +
-                            tag(c['torra']) +
-                            tag(f"{c['tamanho_pacote']}g") +
-                            (tag("Torra: " + c['data_torra'].strftime('%d/%m/%y'), accent=True)
-                             if c['data_torra'] else "")
-                        )
-                        rows_html = (
-                            info_row("Fazenda", c['fazenda'] or "—") +
-                            info_row("Região",  c['regiao']  or "—") +
-                            info_row("Cadastro", c['data_cadastro'].strftime('%d/%m/%y'))
-                        )
-                        notes_html = (
-                            f'<div style="margin-top:10px;font-size:12px;color:#666;'
-                            f'font-style:italic;">{c["notas"]}</div>'
-                            if c["notas"] else ""
-                        )
-                        st.markdown(
-                            f'<div>{tags_html}</div>'
-                            f'<div style="margin-top:12px;">{rows_html}</div>'
-                            f'{notes_html}',
-                            unsafe_allow_html=True
-                        )
-
+                        tags = (_tag(c['tipo']) + _tag(c['torra']) +
+                                _tag(f"{c['tamanho_pacote']}g") +
+                                (_tag("Torra " + c['data_torra'].strftime('%d/%m/%y'), True)
+                                 if c['data_torra'] else ""))
+                        info = (_irow("Fazenda",  c['fazenda'] or "—") +
+                                _irow("Região",   c['regiao']  or "—") +
+                                _irow("Cadastro", c['data_cadastro'].strftime('%d/%m/%y')))
+                        note = (f'<div style="margin-top:10px;font-size:12px;color:#6B3A4A;'
+                                f'font-style:italic;">{c["notas"]}</div>' if c["notas"] else "")
+                        st.markdown(f'<div>{tags}</div><div style="margin-top:12px">{info}</div>{note}',
+                                    unsafe_allow_html=True)
                     with cc:
-                        st.metric("Extrações",  int(c["total_ext"] or 0))
-                        if c["avg_ey"]:
-                            st.metric("EY Médio", f"{c['avg_ey']:.1f}%")
-                        if c["avg_nota"]:
-                            st.metric("Nota Média", stars(round(c["avg_nota"])))
-
+                        st.metric("Extrações", int(c["total_ext"] or 0))
+                        if c["avg_ey"]:   st.metric("EY Médio",   f"{c['avg_ey']:.1f}%")
+                        if c["avg_nota"]: st.metric("Nota Média", _stars(round(c["avg_nota"])))
                     st.markdown("")
                     if st.button("Remover café", key=f"del_c_{c['id']}"):
-                        run("DELETE FROM coffees WHERE id=%s", (c["id"],))
+                        _run("DELETE FROM coffees WHERE id=%s", (c["id"],))
                         st.rerun()
 
-    # ──────────────────────────────────────────────────────────────────
-    # TAB 4 — HISTÓRICO
-    # ──────────────────────────────────────────────────────────────────
+    # ── Tab 4 · Histórico ─────────────────────────────────────────────
     with tab4:
         st.markdown('<p class="section-label">Histórico de Extrações</p>', unsafe_allow_html=True)
 
-        rows = fetch("""
-            SELECT e.*, c.nome AS cafe_nome, c.torra
-            FROM extracoes e
-            JOIN coffees c ON c.id = e.coffee_id
-            ORDER BY e.data DESC, e.created_at DESC
-            LIMIT 200
-        """)
+        rows = _fetch("""
+            SELECT e.*, c.nome AS cafe_nome, c.torra FROM extracoes e
+            JOIN coffees c ON c.id=e.coffee_id
+            ORDER BY e.data DESC, e.created_at DESC LIMIT 200""", _v=_v())
 
         if not rows:
             st.info("Nenhuma extração registrada ainda.")
         else:
             for r in rows:
-                nota_str = stars(r['classificacao'] or 0)
-                header = f"{r['cafe_nome']}  ·  {r['metodo']}  ·  {r['data'].strftime('%d/%m/%y')}  ·  {nota_str}"
+                header = (f"{r['cafe_nome']}  ·  {r['metodo']}  ·  "
+                          f"{r['data'].strftime('%d/%m/%y')}  ·  {_stars(r['classificacao'] or 0)}")
                 with st.expander(header):
                     ra, rb, rc = st.columns([1, 2.2, 1.4], gap="large")
-
                     with ra:
-                        if r["foto_caneca"]:
-                            show_img(r["foto_caneca"], width=150)
-                        else:
-                            st.markdown(
-                                '<div style="width:150px;height:150px;background:#160C0F;'
-                                'border:1px solid #271018;border-radius:10px;display:flex;'
-                                'align-items:center;justify-content:center;color:#3D1828;font-size:28px;">☕</div>',
-                                unsafe_allow_html=True
-                            )
-
+                        _img(r["foto_caneca"], w=150) if r["foto_caneca"] \
+                            else st.markdown(_ph(), unsafe_allow_html=True)
                     with rb:
-                        tags_html = tag(r['metodo'], accent=True) + tag(r['torra'])
-                        rows_html = (
-                            info_row("Dose",    f"{r['gramas']}g") +
-                            info_row("Água",    f"{r['agua_alvo']}g") +
-                            info_row("Tempo",   f"{r['tempo_extracao']}s") +
-                            info_row("TDS",     f"{r['tds']}%" if r['tds'] else "—") +
-                            (info_row("Moedor", f"{r['moedor']}  ·  {r['clicks_moedor']} clicks")
-                             if r["moedor"] else "")
-                        )
-                        notes_html = (
-                            f'<div style="margin-top:10px;font-size:12px;color:#666;'
-                            f'font-style:italic;">{r["notas"]}</div>'
-                            if r["notas"] else ""
-                        )
-                        st.markdown(
-                            f'<div>{tags_html}</div>'
-                            f'<div style="margin-top:12px;">{rows_html}</div>'
-                            f'{notes_html}',
-                            unsafe_allow_html=True
-                        )
-
+                        tags = _tag(r['metodo'], True) + _tag(r['torra'])
+                        info = (_irow("Dose",  f"{r['gramas']}g") +
+                                _irow("Água",  f"{r['agua_alvo']}g") +
+                                _irow("Tempo", f"{r['tempo_extracao']}s") +
+                                _irow("TDS",   f"{r['tds']}%" if r['tds'] else "—") +
+                                (_irow("Moedor", f"{r['moedor']}  ·  {r['clicks_moedor']} clicks")
+                                 if r["moedor"] else ""))
+                        note = (f'<div style="margin-top:10px;font-size:12px;color:#6B3A4A;'
+                                f'font-style:italic;">{r["notas"]}</div>' if r["notas"] else "")
+                        st.markdown(f'<div>{tags}</div><div style="margin-top:12px">{info}</div>{note}',
+                                    unsafe_allow_html=True)
                     with rc:
-                        if r["brew_ratio"]:
-                            st.metric("Brew Ratio", f"1 : {r['brew_ratio']:.1f}")
-                        if r["ey"]:
-                            st.metric("EY", f"{r['ey']:.1f}%")
-                        if r["fluxo"]:
-                            st.metric("Fluxo", f"{r['fluxo']:.2f} g/s")
-
+                        if r["brew_ratio"]: st.metric("Brew Ratio", f"1 : {r['brew_ratio']:.1f}")
+                        if r["ey"]:         st.metric("EY",         f"{r['ey']:.1f}%")
+                        if r["fluxo"]:      st.metric("Fluxo",      f"{r['fluxo']:.2f} g/s")
                     st.markdown("")
                     if st.button("Remover extração", key=f"del_e_{r['id']}"):
-                        run("DELETE FROM extracoes WHERE id=%s", (r["id"],))
+                        _run("DELETE FROM extracoes WHERE id=%s", (r["id"],))
                         st.rerun()
 
 if __name__ == "__main__":
