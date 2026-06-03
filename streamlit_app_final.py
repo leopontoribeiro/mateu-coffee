@@ -5,6 +5,7 @@ import psycopg2
 import psycopg2.extras
 import base64
 import os
+import json
 from datetime import date
 
 # ── Page config ────────────────────────────────────────────────────────
@@ -607,6 +608,47 @@ sim();
 </body>
 </html>"""
 
+# ── Vision · leitura de embalagem ──────────────────────────────────────
+def _analisar_embalagem(b64_img: str) -> dict:
+    import anthropic
+    api_key = (st.secrets.get("ANTHROPIC_API_KEY")
+               or os.environ.get("ANTHROPIC_API_KEY", ""))
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY não configurada.")
+
+    client = anthropic.Anthropic(api_key=api_key)
+    resp = client.messages.create(
+        model="claude-opus-4-8",
+        max_tokens=512,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image",
+                 "source": {"type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": b64_img}},
+                {"type": "text",
+                 "text": (
+                    "Analise esta embalagem de café. "
+                    "Retorne APENAS um JSON com os campos:\n"
+                    "  nome: string (marca + nome do café),\n"
+                    "  fazenda: string ou null,\n"
+                    "  regiao: string ou null (país/estado de origem),\n"
+                    "  torra: \"Clara\" | \"Média\" | \"Escura\",\n"
+                    "  tipo: \"Grãos\" | \"Moído\",\n"
+                    "  notas: string (notas de sabor se visíveis, senão null),\n"
+                    "  tamanho_pacote: 250 | 500 | 1000 (em g, ou null).\n"
+                    "Se um campo não for identificável, use null. "
+                    "Responda SOMENTE o JSON, sem markdown."
+                 )}
+            ]
+        }]
+    )
+
+    raw = resp.content[0].text.strip()
+    raw = raw.lstrip("```json").lstrip("```").rstrip("```").strip()
+    return json.loads(raw)
+
 # ── Main ───────────────────────────────────────────────────────────────
 def main():
     _init_db()
@@ -618,21 +660,40 @@ def main():
     # ── Tab 1 · Cadastrar café ─────────────────────────────────────────
     with tab1:
         st.markdown('<p class="section-label">Cadastrar Novo Café</p>', unsafe_allow_html=True)
+
+        # Aplica resultado da análise de IA antes de renderizar os widgets
+        if "ai_result" in st.session_state:
+            r = st.session_state.pop("ai_result")
+            if r.get("nome"):    st.session_state["inp_nome"]    = r["nome"]
+            if r.get("fazenda"): st.session_state["inp_fazenda"] = r["fazenda"]
+            if r.get("regiao"):  st.session_state["inp_regiao"]  = r["regiao"]
+            if r.get("notas"):   st.session_state["inp_notas"]   = r["notas"]
+            if r.get("torra")  in ["Clara","Média","Escura"]:
+                st.session_state["inp_torra"]   = r["torra"]
+            if r.get("tipo")   in ["Grãos","Moído"]:
+                st.session_state["inp_tipo"]    = r["tipo"]
+            if r.get("tamanho_pacote") in [250, 500, 1000]:
+                st.session_state["inp_tamanho"] = r["tamanho_pacote"]
+
         c1, c2 = st.columns(2, gap="large")
 
         with c1:
-            data_cad  = st.date_input("Data de Cadastro", value=date.today())
-            nome      = st.text_input("Nome do Café *", placeholder="Ex: Ethiopian Yirgacheffe")
-            fazenda   = st.text_input("Fazenda", placeholder="Ex: Fazenda Santa Inês")
-            regiao    = st.text_input("Região",  placeholder="Ex: Sul de Minas / Etiópia")
+            data_cad = st.date_input("Data de Cadastro", value=date.today())
+            nome     = st.text_input("Nome do Café *", key="inp_nome",
+                                     placeholder="Ex: Ethiopian Yirgacheffe")
+            fazenda  = st.text_input("Fazenda", key="inp_fazenda",
+                                     placeholder="Ex: Fazenda Santa Inês")
+            regiao   = st.text_input("Região",  key="inp_regiao",
+                                     placeholder="Ex: Sul de Minas / Etiópia")
             data_tort = st.date_input("Data da Torra", value=None)
-            tamanho   = st.radio("Pacote", [250, 500, 1000], horizontal=True,
-                                 format_func=lambda x: f"{x}g")
+            tamanho  = st.radio("Pacote", [250, 500, 1000], key="inp_tamanho",
+                                horizontal=True, format_func=lambda x: f"{x}g")
 
         with c2:
-            tipo    = st.radio("Tipo",  ["Grãos","Moído"], horizontal=True)
-            torra   = st.radio("Torra", ["Clara","Média","Escura"], horizontal=True)
-            notas   = st.text_area("Notas de Sabor / Torra",
+            tipo    = st.radio("Tipo",  ["Grãos","Moído"], key="inp_tipo",  horizontal=True)
+            torra   = st.radio("Torra", ["Clara","Média","Escura"], key="inp_torra",
+                               horizontal=True)
+            notas   = st.text_area("Notas de Sabor / Torra", key="inp_notas",
                                    placeholder="Ex: Blueberry, chocolate, floral...", height=108)
             class_c = st.select_slider("Classificação", options=[1,2,3,4,5],
                                        format_func=_stars, value=3, key="class_cafe")
@@ -640,6 +701,15 @@ def main():
                                         key="foto_emb")
             if foto_emb:
                 _img(_b64(foto_emb), w=160)
+                if st.button("🔍 Analisar Embalagem com IA",
+                             use_container_width=True, key="btn_ai"):
+                    with st.spinner("Lendo a embalagem..."):
+                        try:
+                            result = _analisar_embalagem(_b64(foto_emb))
+                            st.session_state["ai_result"] = result
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro na análise: {e}")
 
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         if st.button("Salvar Café", type="primary", use_container_width=True):
