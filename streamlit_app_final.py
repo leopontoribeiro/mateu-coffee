@@ -26,6 +26,20 @@ def _load_mobile_css():
         with open(css_path) as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
+def _load_logo(max_width=300):
+    """Carrega logo com fallback para emoji."""
+    try:
+        logo_path = os.path.join(_DIR, "assets", "mateu_coffee_logo.png")
+        if os.path.exists(logo_path):
+            img = st.image(logo_path, use_container_width=True)
+            return True
+        else:
+            st.markdown("<h2 style='text-align:center'>☕ MATEU COFFEE</h2>", unsafe_allow_html=True)
+            return False
+    except Exception as e:
+        st.markdown("<h2 style='text-align:center'>☕ MATEU COFFEE</h2>", unsafe_allow_html=True)
+        return False
+
 def _show_daily_consumption():
     """Exibe widget com o consumo total de café do dia."""
     from datetime import datetime
@@ -868,12 +882,10 @@ def main():
                 </div>
             """, unsafe_allow_html=True)
 
-            # Exibe logo usando file path direto
-            logo_path = os.path.join(_DIR, "assets", "mateu_coffee_logo.png")
-            if os.path.exists(logo_path):
-                col_logo_center = st.columns([0.15, 0.7, 0.15])[1]
-                with col_logo_center:
-                    st.image(logo_path, use_container_width=True)
+            # Exibe logo centralizada
+            col_logo_center = st.columns([0.15, 0.7, 0.15])[1]
+            with col_logo_center:
+                _load_logo()
 
             st.markdown("---")
             tab_login, tab_cadastro = st.tabs(["Login", "Cadastro"])
