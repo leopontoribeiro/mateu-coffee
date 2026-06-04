@@ -1,6 +1,6 @@
 /* ─────────────────────────────────────────────
    Mateu Coffee Production — Mobile Design System
-   Palette: Vinho #8B1A35 · Laranja #D4561A · Creme #F5EDE8
+   Palette: Preto #0A0A0A · Laranja #E8722E · Creme #F5EDE8
    ───────────────────────────────────────────── */
 
 /* ══ 1. SAFE AREA (iPhone notch / Dynamic Island) ═══════════════ */
@@ -20,7 +20,7 @@
   align-items: center;
   gap: 24px;
   padding: 0 0 0.6rem;
-  border-bottom: 1px solid #271018;
+  border-bottom: 1px solid #2A2A2A;
   margin-bottom: 1rem;
 }
 .mc-hero-full img {
@@ -32,7 +32,7 @@
 }
 .mc-tagline {
   font-size: 15px;
-  color: #9A6070;
+  color: #B8B0A8;
   font-style: italic;
   line-height: 1.55;
   letter-spacing: 0.01em;
@@ -62,7 +62,7 @@
   align-items: center;
   gap: 14px;
   padding: 0.5rem 0 1.25rem;
-  border-bottom: 1px solid #271018;
+  border-bottom: 1px solid #2A2A2A;
   margin-bottom: 1.5rem;
 }
 .mc-hero img {
@@ -81,7 +81,7 @@
 }
 .mc-hero-text p {
   font-size: 10px;
-  color: #6B3A4A;
+  color: #8A8278;
   margin: 2px 0 0;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -95,7 +95,7 @@ p[class*="section-label"] {
   font-size: 12px !important;
   font-weight: 800 !important;
   letter-spacing: 0.12em !important;
-  color: #9A6070 !important;
+  color: #B8B0A8 !important;
 }
 
 /* info-key e info-val dos cards Meus Cafés / Histórico */
@@ -161,7 +161,7 @@ p[class*="section-label"] {
     scrollbar-width: none;
     flex-wrap: nowrap !important;
     gap: 0 !important;
-    border-bottom: 1px solid #271018 !important;
+    border-bottom: 1px solid #2A2A2A !important;
   }
   [data-testid="stTabs"] > div:first-child::-webkit-scrollbar { display: none; }
 
@@ -330,11 +330,11 @@ p[class*="section-label"] {
 
 /* ══ 6. SCROLLBAR STYLING ════════════════════════════════════════ */
 ::-webkit-scrollbar       { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: #0D0608; }
-::-webkit-scrollbar-thumb { background: #321420; border-radius: 4px; }
+::-webkit-scrollbar-track { background: #0A0A0A; }
+::-webkit-scrollbar-thumb { background: #3A3A3A; border-radius: 4px; }
 
 /* ══ 7. FOCUS / ACCESSIBILITY ════════════════════════════════════ */
 :focus-visible {
-  outline: 2px solid #D4561A !important;
+  outline: 2px solid #E8722E !important;
   outline-offset: 2px !important;
 }

@@ -6,10 +6,11 @@ import psycopg2.extras
 import base64
 import os
 import json
-from datetime import date
+from datetime import date, datetime, timedelta
 import hashlib
 import secrets
 from typing import Optional
+import anthropic
 
 # ── Page config ────────────────────────────────────────────────────────
 st.set_page_config(
@@ -21,13 +22,13 @@ st.set_page_config(
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 
-def _load_mobile_css():
+def _load_mobile_css() -> None:
     css_path = os.path.join(_DIR, ".streamlit", "static", "mateu_coffee_mobile.css")
     if os.path.exists(css_path):
         with open(css_path) as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-def _load_logo(max_width=300):
+def _load_logo(max_width: int = 300) -> bool:
     """Carrega logo com fallback para emoji."""
     try:
         logo_path = os.path.join(_DIR, "assets", "mateu_coffee_logo.png")
@@ -41,37 +42,45 @@ def _load_logo(max_width=300):
         st.markdown("<h2 style='text-align:center'>☕ MATEU COFFEE</h2>", unsafe_allow_html=True)
         return False
 
-def _show_daily_consumption():
-    """Exibe widget com o consumo total de café do dia."""
-    from datetime import datetime
+def _show_daily_consumption() -> None:
+    """Exibe widget com o consumo total de café do dia (apenas do usuário logado)."""
     hoje = date.today()
     agora = datetime.now().strftime("%H:%M")
+    user_id = st.session_state.get('user_id')
 
-    # Soma todas as extrações de hoje
     result = _fetch("""
         SELECT COALESCE(SUM(gramas), 0) as total
         FROM extracoes
-        WHERE DATE(data) = %s
-    """, (hoje,), _v=_v())
+        WHERE data = %s AND user_id = %s
+    """, (hoje, user_id), _v=_v())
 
     consumo_total = result[0]["total"] if result else 0
 
     st.markdown(
-        f'<div style="background:#1E0E14;border:1px solid #271018;border-radius:8px;'
-        f'padding:14px;margin-bottom:1.5rem;text-align:center">'
-        f'<div style="font-size:12px;color:#6B3A4A;margin-bottom:6px">'
-        f'📅 {hoje.strftime("%d/%m/%Y")} | ⏰ {agora}</div>'
-        f'<div style="font-size:14px;font-weight:700;color:#F5EDE8;'
-        f'text-transform:uppercase;letter-spacing:0.05em">'
-        f'EU JÁ CONSUMI {consumo_total:.1f}g DE CAFÉ AUDITADOS PELO MATEU COFFEE</div>'
-        f'</div>',
+        f'<div style="background:linear-gradient(135deg,#141414 0%,#1C1C1C 100%);'
+        f'border:1px solid #2A2A2A;border-left:4px solid #E8722E;border-radius:10px;'
+        f'padding:16px 20px;margin:0 0 1.75rem 0">'
+        f'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'
+        f'<div style="font-size:11px;color:#8A8278;font-weight:700;letter-spacing:0.12em;text-transform:uppercase">'
+        f'📅 {hoje.strftime("%d/%m/%Y")} · ⏰ {agora}</div>'
+        f'<div style="font-size:13px;font-weight:600;color:#B8B0A8">'
+        f'Consumo do dia: <span style="color:#E8722E;font-weight:800;font-size:18px">'
+        f'{consumo_total:.1f}g</span></div>'
+        f'</div></div>',
         unsafe_allow_html=True)
 
-def _show_logo():
+@st.cache_data(show_spinner=False)
+def _logo_b64() -> Optional[str]:
+    """Lê o logo uma vez e cacheia indefinidamente (arquivo estático)."""
     logo_path = os.path.join(_DIR, "assets", "mateu_coffee_logo.png")
     if os.path.exists(logo_path):
         with open(logo_path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode()
+            return base64.b64encode(f.read()).decode()
+    return None
+
+def _show_logo() -> None:
+    b64 = _logo_b64()
+    if b64:
         st.markdown(
             f'<div class="mc-hero-full">'
             f'<img src="data:image/png;base64,{b64}" alt="Mateu Coffee">'
@@ -91,250 +100,519 @@ def _show_logo():
 _load_mobile_css()
 
 st.markdown("""
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-    /* ORFEU ACAUÃ — Vinho #8B1A35  Laranja #D4561A  Branco #F5EDE8 */
+    /* ═══════════════════════════════════════════════════════════════
+       MATEU COFFEE — DESIGN TOKENS
+       Paleta extraída do logo oficial: gato + xícara em laranja vibrante
+       sobre preto puro, com "COFFEE" em cinza quente.
+       ═══════════════════════════════════════════════════════════════ */
+    :root {
+        --mc-bg: #0A0A0A;
+        --mc-surface: #141414;
+        --mc-surface-2: #1C1C1C;
+        --mc-surface-3: #242424;
+        --mc-border: #2A2A2A;
+        --mc-border-strong: #3A3A3A;
 
-    html, body, [class*="css"], .stApp, div, p, span, label,
-    h1, h2, h3, h4, button, input, textarea, select {
-        font-family: 'Inter', sans-serif !important;
-        letter-spacing: -0.01em;
+        --mc-orange: #E8722E;
+        --mc-orange-hover: #F08842;
+        --mc-orange-soft: #3A1E10;
+        --mc-orange-glow: rgba(232, 114, 46, 0.18);
+
+        --mc-text: #F5EDE8;
+        --mc-text-2: #B8B0A8;
+        --mc-text-3: #8A8278;
+        --mc-text-muted: #6C6660;
+
+        --mc-success: #4CAF6F;
+        --mc-error: #E55A4C;
+        --mc-warning: #E8A23E;
+        --mc-info: #5BB0E8;
     }
 
-    .stApp { background-color: #0D0608; }
-    .block-container { padding: 2rem 2.5rem 2rem !important; max-width: 1280px; }
+    /* ─── Tipografia base ─────────────────────────────────────────── */
+    html, body, [class*="css"], .stApp, div, p, span, label,
+    h1, h2, h3, h4, h5, h6, button, input, textarea, select {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
 
-    /* Header */
+    .stApp { background-color: var(--mc-bg); color: var(--mc-text); }
+    .block-container {
+        padding: 2rem 2.5rem 3rem !important;
+        max-width: 1280px;
+    }
+
+    /* ─── Hierarquia de títulos (h1 > h2 > h3) ──────────────────────
+       Contraste sobre #0A0A0A:
+         #F5EDE8 = 17.3:1 (AAA)
+         #B8B0A8 = 9.4:1  (AAA)
+         #8A8278 = 5.0:1  (AA texto comum)
+         #6C6660 = 3.3:1  (AA texto grande apenas)
+       ──────────────────────────────────────────────────────────── */
+    h1 {
+        font-size: 28px !important;
+        font-weight: 800 !important;
+        color: var(--mc-text) !important;
+        letter-spacing: -0.025em !important;
+        margin: 0 0 1rem 0 !important;
+    }
+    h2 {
+        font-size: 22px !important;
+        font-weight: 700 !important;
+        color: var(--mc-text) !important;
+        letter-spacing: -0.02em !important;
+        margin: 1.5rem 0 0.75rem 0 !important;
+    }
+    h3 {
+        font-size: 17px !important;
+        font-weight: 600 !important;
+        color: var(--mc-text) !important;
+        letter-spacing: -0.01em !important;
+        margin: 1rem 0 0.5rem 0 !important;
+    }
+    h4 {
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        color: var(--mc-text-2) !important;
+        margin: 0.75rem 0 0.4rem 0 !important;
+    }
+
+    /* Markdown geral */
+    .stMarkdown p, .stMarkdown li {
+        color: var(--mc-text) !important;
+        font-size: 14px !important;
+        line-height: 1.65 !important;
+    }
+    .stMarkdown strong { color: var(--mc-text) !important; font-weight: 700 !important; }
+    .stMarkdown em     { color: var(--mc-text-2) !important; }
+
+    /* ─── Header da aplicação ───────────────────────────────────── */
     .app-header {
         display: flex;
         align-items: center;
-        gap: 14px;
-        padding: 0 0 2rem 0;
-        border-bottom: 1px solid #271018;
+        gap: 16px;
+        padding: 0 0 1.5rem 0;
+        border-bottom: 1px solid var(--mc-border);
         margin-bottom: 2rem;
     }
     .app-header-title {
-        font-size: 22px;
-        font-weight: 700;
-        color: #F5EDE8;
+        font-size: 24px;
+        font-weight: 800;
+        color: var(--mc-text);
         letter-spacing: -0.03em;
         margin: 0;
     }
     .app-header-sub {
-        font-size: 12px;
-        color: #6B3A4A;
-        letter-spacing: 0.06em;
+        font-size: 11px;
+        color: var(--mc-text-3);
+        letter-spacing: 0.12em;
         text-transform: uppercase;
-        margin: 2px 0 0 0;
+        margin: 4px 0 0 0;
+        font-weight: 600;
     }
 
-    /* Tabs */
+    /* ─── Tabs (navegação principal) ────────────────────────────── */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 0;
-        background: #160C0F;
-        border-radius: 10px;
-        padding: 4px;
-        border: 1px solid #271018;
+        gap: 4px;
+        background: var(--mc-surface);
+        border-radius: 12px;
+        padding: 6px;
+        border: 1px solid var(--mc-border);
         width: fit-content;
+        margin-bottom: 0.5rem;
     }
     .stTabs [data-baseweb="tab"] {
         background: transparent;
-        border-radius: 7px;
-        color: #6B3A4A;
+        border-radius: 8px;
+        color: var(--mc-text-2);
         font-size: 13px;
-        font-weight: 500;
-        padding: 8px 20px;
+        font-weight: 600;
+        padding: 9px 22px;
         border: none;
-        transition: all 0.15s;
+        transition: all 0.18s ease;
+        letter-spacing: 0;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        background: var(--mc-surface-2);
+        color: var(--mc-text);
     }
     .stTabs [aria-selected="true"] {
-        background: #271018 !important;
-        color: #F5EDE8 !important;
+        background: var(--mc-orange) !important;
+        color: #0A0A0A !important;
+        font-weight: 700 !important;
+        box-shadow: 0 4px 12px var(--mc-orange-glow) !important;
     }
     .stTabs [data-baseweb="tab-border"] { display: none !important; }
     .stTabs [data-baseweb="tab-panel"]  { padding-top: 2rem !important; }
 
-    /* Section */
+    /* ─── Section labels (eyebrow) ──────────────────────────────── */
     .section-label {
         font-size: 11px;
-        font-weight: 800;
-        color: #6B3A4A;
-        letter-spacing: 0.12em;
+        font-weight: 700;
+        color: var(--mc-orange);
+        letter-spacing: 0.16em;
         text-transform: uppercase;
-        margin: 0 0 1.2rem 0;
+        margin: 0 0 1.25rem 0;
+        display: inline-block;
+        padding-bottom: 6px;
+        border-bottom: 2px solid var(--mc-orange);
     }
     .section-divider {
         border: none;
-        border-top: 1px solid #271018;
-        margin: 2rem 0;
+        border-top: 1px solid var(--mc-border);
+        margin: 2.25rem 0;
     }
 
-    /* Tags e info rows */
+    /* ─── Tags / chips ─────────────────────────────────────────── */
     .tag {
         display: inline-block;
-        background: #1E0E14;
-        border: 1px solid #321420;
+        background: var(--mc-surface-2);
+        border: 1px solid var(--mc-border);
         border-radius: 6px;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 600;
-        color: #9A6070;
-        padding: 3px 10px;
-        margin: 2px 3px 2px 0;
+        color: var(--mc-text-2);
+        padding: 4px 10px;
+        margin: 2px 4px 2px 0;
+        letter-spacing: 0.02em;
     }
-    .tag-accent { border-color: #D4561A88; color: #D4561A; }
-    .info-row   { display: flex; gap: 6px; align-items: baseline; margin: 7px 0; }
-    .info-key   { font-size: 12px; color: #6B3A4A; font-weight: 600; min-width: 90px; }
-    .info-val   { font-size: 14px; color: #F5EDE8; font-weight: 500; }
+    .tag-accent {
+        border-color: var(--mc-orange);
+        color: var(--mc-orange);
+        background: var(--mc-orange-soft);
+    }
 
-    /* Metrics */
+    /* ─── Info rows (label · valor) ────────────────────────────── */
+    .info-row {
+        display: flex;
+        gap: 12px;
+        align-items: baseline;
+        margin: 8px 0;
+        padding: 4px 0;
+    }
+    .info-key {
+        font-size: 11px;
+        color: var(--mc-text-3);
+        font-weight: 700;
+        min-width: 100px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+    .info-val {
+        font-size: 14px;
+        color: var(--mc-text);
+        font-weight: 500;
+    }
+
+    /* ─── Métricas (cards de KPI) ──────────────────────────────── */
     div[data-testid="stMetric"] {
-        background: #160C0F !important;
-        border: 1px solid #271018 !important;
+        background: var(--mc-surface) !important;
+        border: 1px solid var(--mc-border) !important;
         border-radius: 12px !important;
-        padding: 16px 20px !important;
+        padding: 18px 22px !important;
+        transition: border-color 0.18s ease;
+    }
+    div[data-testid="stMetric"]:hover {
+        border-color: var(--mc-border-strong) !important;
     }
     div[data-testid="stMetricLabel"] p {
         font-size: 10px !important;
         font-weight: 700 !important;
-        color: #6B3A4A !important;
+        color: var(--mc-text-3) !important;
         text-transform: uppercase !important;
-        letter-spacing: 0.1em !important;
+        letter-spacing: 0.12em !important;
     }
     div[data-testid="stMetricValue"] {
-        font-size: 20px !important;
-        font-weight: 700 !important;
-        color: #D4561A !important;
-        letter-spacing: -0.02em !important;
+        font-size: 22px !important;
+        font-weight: 800 !important;
+        color: var(--mc-orange) !important;
+        letter-spacing: -0.025em !important;
     }
     div[data-testid="stMetricDelta"] {
         font-size: 11px !important;
-        font-weight: 500 !important;
+        font-weight: 600 !important;
     }
 
-    /* Inputs */
+    /* ─── Inputs (text, number, textarea, date) ────────────────── */
     .stTextInput input,
     .stNumberInput input,
     .stTextArea textarea,
-    .stDateInput input {
-        background: #160C0F !important;
-        border: 1px solid #271018 !important;
+    .stDateInput input,
+    .stTimeInput input {
+        background: var(--mc-surface) !important;
+        border: 1px solid var(--mc-border) !important;
         border-radius: 8px !important;
-        color: #F5EDE8 !important;
+        color: var(--mc-text) !important;
         font-size: 14px !important;
-        padding: 10px 14px !important;
-        transition: border-color 0.15s !important;
+        font-weight: 500 !important;
+        padding: 11px 14px !important;
+        transition: border-color 0.18s ease, box-shadow 0.18s ease !important;
+    }
+    .stTextInput input::placeholder,
+    .stNumberInput input::placeholder,
+    .stTextArea textarea::placeholder {
+        color: var(--mc-text-muted) !important;
+        font-weight: 400 !important;
     }
     .stTextInput input:focus,
     .stNumberInput input:focus,
-    .stTextArea textarea:focus {
-        border-color: #D4561A !important;
+    .stTextArea textarea:focus,
+    .stDateInput input:focus,
+    .stTimeInput input:focus {
+        border-color: var(--mc-orange) !important;
+        box-shadow: 0 0 0 3px var(--mc-orange-glow) !important;
+        outline: none !important;
     }
+    .stTextInput input:disabled,
+    .stNumberInput input:disabled {
+        background: var(--mc-surface-2) !important;
+        color: var(--mc-text-3) !important;
+        opacity: 0.7;
+    }
+
+    /* Selects */
     div[data-baseweb="select"] > div {
-        background: #160C0F !important;
-        border: 1px solid #271018 !important;
+        background: var(--mc-surface) !important;
+        border: 1px solid var(--mc-border) !important;
         border-radius: 8px !important;
-        color: #F5EDE8 !important;
+        color: var(--mc-text) !important;
+        min-height: 42px !important;
+    }
+    div[data-baseweb="select"] > div:focus-within {
+        border-color: var(--mc-orange) !important;
+        box-shadow: 0 0 0 3px var(--mc-orange-glow) !important;
+    }
+    div[data-baseweb="popover"] ul {
+        background: var(--mc-surface-2) !important;
+        border: 1px solid var(--mc-border) !important;
+    }
+    div[data-baseweb="popover"] li {
+        color: var(--mc-text) !important;
+    }
+    div[data-baseweb="popover"] li:hover {
+        background: var(--mc-orange-soft) !important;
     }
 
-    /* Labels */
+    /* ─── Labels (acima dos inputs) ─────────────────────────────
+       11px com peso 700 e cor #B8B0A8 — contraste 9.4:1 (AAA).
+       Antes era #6B3A4A com contraste 2.1:1 (falha WCAG).
+       ─────────────────────────────────────────────────────── */
     .stTextInput label, .stNumberInput label, .stSelectbox label,
-    .stTextArea label, .stDateInput label, .stRadio label,
-    .stFileUploader label, .stSlider label {
+    .stTextArea label, .stDateInput label, .stTimeInput label,
+    .stRadio label, .stFileUploader label, .stSlider label,
+    .stCheckbox label, label[data-testid="stWidgetLabel"] {
         font-size: 11px !important;
-        font-weight: 600 !important;
-        color: #6B3A4A !important;
+        font-weight: 700 !important;
+        color: var(--mc-text-2) !important;
         text-transform: uppercase !important;
-        letter-spacing: 0.08em !important;
+        letter-spacing: 0.1em !important;
+        margin-bottom: 6px !important;
+    }
+    .stRadio > label > div:first-child,
+    .stCheckbox > label > div:first-child {
+        color: var(--mc-text-2) !important;
     }
 
-    /* Buttons */
+    /* Helper text dos inputs */
+    .stTextInput div[data-testid="InputInstructions"],
+    .stNumberInput div[data-testid="InputInstructions"] {
+        color: var(--mc-text-3) !important;
+        font-size: 11px !important;
+    }
+
+    /* ─── Botões ────────────────────────────────────────────── */
     .stButton > button {
-        background: #1E0E14 !important;
-        border: 1px solid #321420 !important;
+        background: var(--mc-surface-2) !important;
+        border: 1px solid var(--mc-border) !important;
         border-radius: 8px !important;
-        color: #C09090 !important;
+        color: var(--mc-text) !important;
         font-size: 13px !important;
-        font-weight: 500 !important;
-        padding: 10px 20px !important;
-        transition: all 0.15s !important;
+        font-weight: 600 !important;
+        padding: 10px 22px !important;
+        transition: all 0.18s ease !important;
+        letter-spacing: 0;
     }
     .stButton > button:hover {
-        background: #271018 !important;
-        border-color: #3D1828 !important;
-        color: #F5EDE8 !important;
+        background: var(--mc-surface-3) !important;
+        border-color: var(--mc-border-strong) !important;
+        color: var(--mc-text) !important;
+        transform: translateY(-1px);
     }
+    .stButton > button:active { transform: translateY(0); }
+
     .stButton > button[kind="primary"] {
-        background: #D4561A !important;
-        border-color: #D4561A !important;
-        color: #FFF8F4 !important;
-        font-weight: 600 !important;
+        background: var(--mc-orange) !important;
+        border-color: var(--mc-orange) !important;
+        color: #0A0A0A !important;
+        font-weight: 700 !important;
+        box-shadow: 0 2px 8px var(--mc-orange-glow) !important;
     }
     .stButton > button[kind="primary"]:hover {
-        background: #B84514 !important;
-        border-color: #B84514 !important;
+        background: var(--mc-orange-hover) !important;
+        border-color: var(--mc-orange-hover) !important;
+        box-shadow: 0 6px 16px var(--mc-orange-glow) !important;
+        transform: translateY(-1px);
     }
 
-    /* Radio chips */
-    .stRadio > div { gap: 6px !important; }
-    .stRadio > div label {
-        background: #160C0F !important;
-        border: 1px solid #271018 !important;
-        border-radius: 7px !important;
-        padding: 7px 14px !important;
-        color: #9A6070 !important;
+    /* Download button */
+    .stDownloadButton > button {
+        background: var(--mc-surface-2) !important;
+        border: 1px solid var(--mc-border) !important;
+        color: var(--mc-text) !important;
+    }
+
+    /* ─── Radio chips ─────────────────────────────────────────── */
+    .stRadio > div { gap: 8px !important; }
+    .stRadio > div > label {
+        background: var(--mc-surface) !important;
+        border: 1px solid var(--mc-border) !important;
+        border-radius: 8px !important;
+        padding: 9px 16px !important;
+        color: var(--mc-text-2) !important;
         font-size: 13px !important;
         font-weight: 500 !important;
         cursor: pointer !important;
         text-transform: none !important;
         letter-spacing: 0 !important;
-        transition: all 0.12s !important;
+        transition: all 0.15s ease !important;
     }
-    .stRadio > div label:has(input:checked) {
-        background: #2A1018 !important;
-        border-color: #8B1A35 !important;
-        color: #F5EDE8 !important;
+    .stRadio > div > label:hover {
+        border-color: var(--mc-border-strong) !important;
+        color: var(--mc-text) !important;
+    }
+    .stRadio > div > label:has(input:checked) {
+        background: var(--mc-orange-soft) !important;
+        border-color: var(--mc-orange) !important;
+        color: var(--mc-orange) !important;
+        font-weight: 600 !important;
     }
 
-    /* Expander */
-    .streamlit-expanderHeader {
-        background: #160C0F !important;
-        border: 1px solid #271018 !important;
-        border-radius: 10px !important;
-        color: #D0A090 !important;
-        font-size: 13px !important;
-        font-weight: 500 !important;
+    /* ─── Sliders ─────────────────────────────────────────────── */
+    .stSlider [data-baseweb="slider"] [role="slider"] {
+        background: var(--mc-orange) !important;
+        border-color: var(--mc-orange) !important;
+        box-shadow: 0 0 0 4px var(--mc-orange-glow) !important;
+    }
+    .stSlider [data-baseweb="slider"] > div > div > div {
+        background: var(--mc-orange) !important;
+    }
+
+    /* ─── Expanders ───────────────────────────────────────────── */
+    [data-testid="stExpander"] details {
+        background: var(--mc-surface) !important;
+        border: 1px solid var(--mc-border) !important;
+        border-radius: 12px !important;
+        margin-bottom: 0.75rem;
+    }
+    [data-testid="stExpander"] summary {
+        color: var(--mc-text) !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
         padding: 14px 18px !important;
     }
-    .streamlit-expanderContent {
-        background: #120A0C !important;
-        border: 1px solid #1E1018 !important;
-        border-top: none !important;
-        border-radius: 0 0 10px 10px !important;
+    [data-testid="stExpander"] summary:hover {
+        background: var(--mc-surface-2) !important;
+    }
+    .streamlit-expanderContent,
+    [data-testid="stExpander"] > details > div {
+        background: var(--mc-surface) !important;
+        border-top: 1px solid var(--mc-border) !important;
         padding: 20px !important;
     }
 
-    /* Misc */
-    hr { border-color: #271018 !important; margin: 1.5rem 0 !important; }
+    /* ─── File uploader ───────────────────────────────────────── */
     .stFileUploader > div {
-        background: #160C0F !important;
-        border: 1px dashed #321420 !important;
+        background: var(--mc-surface) !important;
+        border: 1.5px dashed var(--mc-border-strong) !important;
         border-radius: 10px !important;
+        transition: border-color 0.18s ease;
     }
+    .stFileUploader > div:hover {
+        border-color: var(--mc-orange) !important;
+    }
+    .stFileUploader [data-testid="stFileUploaderDropzone"] {
+        color: var(--mc-text-2) !important;
+    }
+    .stFileUploader small { color: var(--mc-text-3) !important; }
+
+    /* ─── Alerts (success / error / warning / info) ───────────── */
     div[data-testid="stAlert"] {
         border-radius: 10px !important;
-        border-left-width: 3px !important;
+        border-left-width: 4px !important;
         font-size: 13px !important;
+        padding: 14px 18px !important;
     }
-    .stSlider > div > div { color: #D4561A !important; }
-    ::-webkit-scrollbar       { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #0D0608; }
-    ::-webkit-scrollbar-thumb { background: #321420; border-radius: 3px; }
+    div[data-testid="stAlert"][data-baseweb="notification"] > div:first-child {
+        font-weight: 600 !important;
+    }
+
+    /* ─── Divider ─────────────────────────────────────────────── */
+    hr {
+        border-color: var(--mc-border) !important;
+        margin: 1.75rem 0 !important;
+    }
+
+    /* ─── Dataframe ───────────────────────────────────────────── */
+    .stDataFrame {
+        background: var(--mc-surface) !important;
+        border-radius: 10px !important;
+        border: 1px solid var(--mc-border) !important;
+    }
+
+    /* ─── Tooltips ────────────────────────────────────────────── */
+    div[role="tooltip"] {
+        background: var(--mc-surface-3) !important;
+        color: var(--mc-text) !important;
+        border: 1px solid var(--mc-border-strong) !important;
+        font-size: 12px !important;
+    }
+
+    /* ─── Streamlit padrão: melhorias finais ──────────────────── */
+    [data-testid="stHeader"] { background: transparent !important; }
+    [data-testid="stToolbar"] { display: none !important; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar       { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--mc-bg); }
+    ::-webkit-scrollbar-thumb { background: var(--mc-border-strong); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--mc-orange); }
+
+    /* ─── Hero / logo na página inicial ───────────────────────── */
+    .mc-hero-full {
+        text-align: center;
+        padding: 2rem 0 1rem;
+    }
+    .mc-hero-full img {
+        max-width: 320px;
+        width: 100%;
+        height: auto;
+    }
+    .mc-tagline {
+        color: var(--mc-text-2);
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.03em;
+        margin: 1rem 0 0 0;
+        line-height: 1.6;
+    }
+
+    /* ─── Mobile ──────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+        .block-container { padding: 1rem 1rem 2rem !important; }
+        h1 { font-size: 22px !important; }
+        h2 { font-size: 18px !important; }
+        .stTabs [data-baseweb="tab"] { padding: 8px 14px; font-size: 12px; }
+        .stButton > button { width: 100%; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ── Database layer ─────────────────────────────────────────────────────
 @st.cache_resource
-def _get_conn():
+def _get_conn() -> "psycopg2.extensions.connection":
     s = st.secrets["connections"]["postgresql"]
     return psycopg2.connect(
         host=s["host"], port=int(s["port"]), dbname=s["database"],
@@ -342,7 +620,7 @@ def _get_conn():
         sslmode="require", connect_timeout=10,
     )
 
-def _conn():
+def _conn() -> "psycopg2.extensions.connection":
     """Retorna conexão ativa. Reconecta automaticamente se a conexão
     estiver fechada ou morta (desconexão server-side não detectada por c.closed)."""
     c = _get_conn()
@@ -357,7 +635,7 @@ def _conn():
         c = _get_conn()
     return c
 
-def _run(query, params=()):
+def _run(query: str, params: tuple = ()) -> None:
     c = _conn()
     cur = c.cursor()
     try:
@@ -370,11 +648,11 @@ def _run(query, params=()):
         cur.close()
     _bump()
 
-def _bump():
+def _bump() -> None:
     st.session_state["_v"] = st.session_state.get("_v", 0) + 1
 
 @st.cache_data(ttl=600, show_spinner=False)
-def _fetch(query, params=(), _v=0):
+def _fetch(query: str, params: tuple = (), _v: int = 0) -> list:
     c   = _conn()
     cur = c.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
@@ -384,7 +662,7 @@ def _fetch(query, params=(), _v=0):
         cur.close()
     return rows
 
-def _v():
+def _v() -> int:
     return st.session_state.get("_v", 0)
 
 def _hash_senha(senha: str, salt: str = "") -> str:
@@ -399,34 +677,50 @@ def _verify_senha(senha: str, hash_stored: str) -> bool:
     salt = hash_stored.split("$")[0]
     return _hash_senha(senha, salt) == hash_stored
 
-def _login(email: str, senha: str, remember: bool = False) -> bool:
-    """Valida credenciais e define sessão."""
-    try:
-        result = _fetch("SELECT id, email FROM usuarios WHERE email=%s LIMIT 1", (email,), _v=0)
-        if not result:
-            return False
-        usuario = result[0]
-        result_pwd = _fetch("SELECT senha_hash FROM usuarios WHERE id=%s", (usuario['id'],), _v=0)
-        if not result_pwd or not _verify_senha(senha, result_pwd[0]['senha_hash']):
-            return False
-        st.session_state['user_id'] = usuario['id']
-        st.session_state['user_email'] = usuario['email']
+class LoginResult:
+    OK = "ok"
+    INVALID = "invalid"          # credenciais inválidas (esperado)
+    ERROR = "error"              # falha de infra (banco, rede)
 
-        if remember:
+def _login(email: str, senha: str, remember: bool = False) -> str:
+    """Valida credenciais. Retorna LoginResult.{OK, INVALID, ERROR}.
+
+    Distingue credencial inválida (esperado) de erro de infra
+    para que o usuário não veja 'senha inválida' quando o banco caiu.
+    """
+    try:
+        result = _fetch(
+            "SELECT id, email, senha_hash FROM usuarios WHERE email=%s LIMIT 1",
+            (email,), _v=0,
+        )
+    except Exception:
+        return LoginResult.ERROR
+
+    if not result:
+        return LoginResult.INVALID
+    usuario = result[0]
+    if not _verify_senha(senha, usuario['senha_hash']):
+        return LoginResult.INVALID
+
+    st.session_state['user_id'] = usuario['id']
+    st.session_state['user_email'] = usuario['email']
+
+    if remember:
+        try:
             token = secrets.token_urlsafe(32)
-            from datetime import datetime, timedelta
             expira = datetime.now() + timedelta(days=30)
             _run(
-                "UPDATE usuarios SET remember_token=%s, remember_token_created=%s WHERE id=%s",
+                "UPDATE usuarios SET remember_token=%s, remember_token_expires=%s WHERE id=%s",
                 (token, expira, usuario['id'])
             )
             st.session_state['remember_token'] = token
+        except Exception:
+            # login funcionou, mas remember-me falhou — não bloqueia a sessão
+            pass
 
-        return True
-    except:
-        return False
+    return LoginResult.OK
 
-def _check_remember_token():
+def _check_remember_token() -> bool:
     """Restaura sessão se token válido."""
     # Evita múltiplas verificações na mesma sessão
     if st.session_state.get('_token_checked'):
@@ -438,36 +732,36 @@ def _check_remember_token():
         return False
 
     try:
-        from datetime import datetime
         result = _fetch(
-            "SELECT id, email, remember_token_created FROM usuarios WHERE remember_token=%s",
+            "SELECT id, email, remember_token_expires FROM usuarios WHERE remember_token=%s",
             (token,), _v=0
         )
         if not result:
             st.session_state['_token_checked'] = True
             return False
         usuario = result[0]
-        if usuario['remember_token_created'] and datetime.fromisoformat(usuario['remember_token_created']) < datetime.now():
+        expiry = usuario['remember_token_expires']
+        if expiry and expiry < datetime.now():
             st.session_state['_token_checked'] = True
             return False
         st.session_state['user_id'] = usuario['id']
         st.session_state['user_email'] = usuario['email']
         st.session_state['_token_checked'] = True
         return True
-    except:
+    except Exception:
         st.session_state['_token_checked'] = True
         return False
 
-def _logout():
+def _logout() -> None:
     """Limpa sessão e token."""
     user_id = st.session_state.get('user_id')
     if user_id:
-        _run("UPDATE usuarios SET remember_token=NULL, remember_token_created=NULL WHERE id=%s", (user_id,))
+        _run("UPDATE usuarios SET remember_token=NULL, remember_token_expires=NULL WHERE id=%s", (user_id,))
     st.session_state.pop('user_id', None)
     st.session_state.pop('user_email', None)
     st.session_state.pop('remember_token', None)
 
-def _init_db():
+def _init_db() -> None:
     if st.session_state.get("_db_ready"):
         return
     conn = _conn()
@@ -480,12 +774,12 @@ def _init_db():
                 senha_hash TEXT NOT NULL,
                 criado_em TIMESTAMP DEFAULT NOW(),
                 remember_token TEXT,
-                remember_token_created TIMESTAMP
+                remember_token_expires TIMESTAMP
             );
         """)
-        # Migrations para tabela existente
+        # Migrations para tabela existente (compatível com schemas antigos)
         cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token TEXT;")
-        cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token_created TIMESTAMP;")
+        cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token_expires TIMESTAMP;")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS coffees (
                 id SERIAL PRIMARY KEY, data_cadastro DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -529,11 +823,56 @@ def _init_db():
                 ADD COLUMN IF NOT EXISTS acidez_stars INTEGER DEFAULT 0,
                 ADD COLUMN IF NOT EXISTS amargor_stars INTEGER DEFAULT 0,
                 ADD COLUMN IF NOT EXISTS presenca_boca_stars INTEGER DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS doçura_stars INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS docura_stars INTEGER DEFAULT 0,
                 ADD COLUMN IF NOT EXISTS nota_final_stars INTEGER DEFAULT 0,
                 ADD COLUMN IF NOT EXISTS balanco_ideal TEXT DEFAULT '',
                 ADD COLUMN IF NOT EXISTS data_hora_extracao TIMESTAMP DEFAULT NOW();
         """)
+
+        # ── P3: Multi-tenancy — atribui cafés/extrações ao seu dono ──
+        cur.execute("""
+            ALTER TABLE coffees    ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES usuarios(id);
+            ALTER TABLE extracoes  ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES usuarios(id);
+            CREATE INDEX IF NOT EXISTS idx_coffees_user_id   ON coffees(user_id);
+            CREATE INDEX IF NOT EXISTS idx_extracoes_user_id ON extracoes(user_id);
+        """)
+        # Backfill seguro: só atribui registros órfãos se houver exatamente 1 usuário
+        # (cenário single-user retroativo — sem ambiguidade)
+        cur.execute("SELECT COUNT(*) FROM usuarios")
+        if cur.fetchone()[0] == 1:
+            cur.execute("SELECT id FROM usuarios LIMIT 1")
+            sole_user = cur.fetchone()[0]
+            cur.execute("UPDATE coffees   SET user_id=%s WHERE user_id IS NULL", (sole_user,))
+            cur.execute("UPDATE extracoes SET user_id=%s WHERE user_id IS NULL", (sole_user,))
+
+        # ── P4: rename remember_token_created → remember_token_expires (semântica correta) ──
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns
+                           WHERE table_name='usuarios' AND column_name='remember_token_created')
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name='usuarios' AND column_name='remember_token_expires')
+                THEN
+                    ALTER TABLE usuarios RENAME COLUMN remember_token_created TO remember_token_expires;
+                END IF;
+            END $$;
+        """)
+
+        # ── P5: rename doçura_stars → docura_stars (encoding-safe) ──
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns
+                           WHERE table_name='extracoes' AND column_name='doçura_stars')
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name='extracoes' AND column_name='docura_stars')
+                THEN
+                    ALTER TABLE extracoes RENAME COLUMN "doçura_stars" TO docura_stars;
+                END IF;
+            END $$;
+        """)
+
         conn.commit()
         st.session_state["_db_ready"] = True
     except Exception:
@@ -543,38 +882,41 @@ def _init_db():
         cur.close()
 
 # ── Helpers ────────────────────────────────────────────────────────────
-def _b64(f):
+def _b64(f) -> Optional[str]:  # f: UploadedFile | None
     if not f: return None
     d = f.read(); f.seek(0)
     return base64.b64encode(d).decode()
 
-def _img(b64, w=170):
+def _img(b64: Optional[str], w: int = 170) -> None:
     if b64:
         st.markdown(
             f'<img src="data:image/jpeg;base64,{b64}" width="{w}" '
             f'style="border-radius:10px;margin-top:4px;display:block;">',
             unsafe_allow_html=True)
 
-def _stars(n):
+def _stars(n: int) -> str:
     n = int(n or 0)
     return "★" * n + "☆" * (5 - n)
 
-def _tag(t, accent=False):
+def _tag(t: str, accent: bool = False) -> str:
     return f'<span class="tag{" tag-accent" if accent else ""}">{t}</span>'
 
-def _irow(k, v):
+def _irow(k: str, v: str) -> str:
     return f'<div class="info-row"><span class="info-key">{k}</span><span class="info-val">{v}</span></div>'
 
-def _ph():
-    return ('<div style="width:150px;height:150px;background:#160C0F;border:1px solid #271018;'
+def _ph() -> str:
+    return ('<div style="width:150px;height:150px;background:#141414;border:1px solid #2A2A2A;'
             'border-radius:10px;display:flex;align-items:center;justify-content:center;'
-            'color:#3D1828;font-size:28px;">☕</div>')
+            'color:#3A3A3A;font-size:36px;">☕</div>')
 
 METODOS = ["Espresso","Pour Over","French Press","Aeropress",
            "Chemex","Moka Pot","Cold Brew","Sifão","Drip","Outro"]
 
 # ── Coffee Engine ──────────────────────────────────────────────────────
 class CoffeeEngine:
+    # Perfil sensorial derivado do EY (radar do histórico).
+    # Não confundir com as 5 dimensões do Motor Barista interativo,
+    # que medem a simulação de variáveis (incluindo Adstringência/canalização).
     ATTRS    = ("Doçura","Acidez","Corpo","Amargor","Finalização")
     TARGET   = (8, 7, 7, 4, 8)
     EY_LOW   = 18.0
@@ -651,21 +993,22 @@ def _radar(profile: tuple) -> go.Figure:
     fig   = go.Figure()
     fig.add_trace(go.Scatterpolar(
         r=CoffeeEngine.TARGET, theta=attrs, fill='toself',
-        name='Target', line_color='#8B1A35', fillcolor='rgba(139,26,53,0.15)'))
+        name='Target', line_color='#8A8278', fillcolor='rgba(138,130,120,0.12)'))
     fig.add_trace(go.Scatterpolar(
         r=profile, theta=attrs, fill='toself',
-        name='Atual', line_color='#D4561A', fillcolor='rgba(212,86,26,0.18)'))
+        name='Atual', line_color='#E8722E', fillcolor='rgba(232,114,46,0.22)'))
     fig.update_layout(
         polar=dict(
             bgcolor='rgba(0,0,0,0)',
-            radialaxis=dict(visible=True, range=[0,10], gridcolor='#271018',
-                            linecolor='#271018', tickfont=dict(color='#6B3A4A', size=9)),
-            angularaxis=dict(gridcolor='#271018', linecolor='#271018')),
+            radialaxis=dict(visible=True, range=[0,10], gridcolor='#2A2A2A',
+                            linecolor='#2A2A2A', tickfont=dict(color='#8A8278', size=9)),
+            angularaxis=dict(gridcolor='#2A2A2A', linecolor='#2A2A2A',
+                             tickfont=dict(color='#B8B0A8', size=10))),
         showlegend=True,
-        legend=dict(font=dict(color='#9A6070', size=10), bgcolor='rgba(0,0,0,0)'),
-        height=270, margin=dict(l=20,r=20,t=20,b=20),
+        legend=dict(font=dict(color='#B8B0A8', size=11), bgcolor='rgba(0,0,0,0)'),
+        height=280, margin=dict(l=20,r=20,t=20,b=20),
         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='#9A6070', size=11, family='Inter'),
+        font=dict(color='#B8B0A8', size=11, family='Inter'),
     )
     return fig
 
@@ -678,13 +1021,14 @@ _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
-    --bg:      #0D0608;
-    --card:    #160a0e;
+    --bg:      #0A0A0A;
+    --card:    #141414;
     --text:    #F5EDE8;
-    --muted:   #6B3A4A;
-    --accent:  #D4561A;
-    --vinho:   #8B1A35;
-    --border:  #271018;
+    --muted:   #8A8278;
+    --label:   #B8B0A8;
+    --accent:  #E8722E;
+    --accent2: #F08842;
+    --border:  #2A2A2A;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);padding:16px 4px 4px}
@@ -698,10 +1042,10 @@ _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
   input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4px}
   .ht{font-size:7.5pt;color:var(--muted);margin-top:3px;line-height:1.4}
   .chart-wrap{position:relative;height:260px;width:100%}
-  .results{margin-top:14px;background:#1a0a0f;border-radius:6px;padding:13px;border:1px solid var(--border)}
-  .rt{font-size:9.5pt;font-weight:700;color:var(--accent);margin-bottom:8px}
-  .vb{font-size:10.5pt;font-weight:600;color:#F5EDE8;background:#250d14;padding:9px 11px;border-radius:4px;border-left:4px solid var(--vinho);margin-bottom:8px}
-  .vd{font-size:8.5pt;color:#c4a8b0;line-height:1.5}
+  .results{margin-top:14px;background:#1C1C1C;border-radius:8px;padding:14px;border:1px solid var(--border)}
+  .rt{font-size:9.5pt;font-weight:700;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.08em}
+  .vb{font-size:11pt;font-weight:700;color:#F5EDE8;background:#3A1E10;padding:10px 12px;border-radius:6px;border-left:4px solid var(--accent);margin-bottom:8px}
+  .vd{font-size:9pt;color:var(--label);line-height:1.55}
 </style>
 </head>
 <body>
@@ -758,17 +1102,17 @@ const chart = new Chart(document.getElementById('rc').getContext('2d'), {
     labels: ['Acidez','Amargor','Corpo','Doçura','Adstringência'],
     datasets:[{
       data:[5,5,5,5,1],
-      backgroundColor:'rgba(212,86,26,0.15)',
-      borderColor:'rgba(212,86,26,1)',
+      backgroundColor:'rgba(232,114,46,0.18)',
+      borderColor:'rgba(232,114,46,1)',
       borderWidth:2,
-      pointBackgroundColor:'rgba(139,26,53,1)',
+      pointBackgroundColor:'rgba(232,114,46,1)',
       pointRadius:4
     }]
   },
   options:{
     responsive:true,maintainAspectRatio:false,
     scales:{r:{
-      angleLines:{color:'#271018'},grid:{color:'#271018'},
+      angleLines:{color:'#2A2A2A'},grid:{color:'#2A2A2A'},
       pointLabels:{font:{size:10,weight:'bold'},color:'#F5EDE8'},
       suggestedMin:0,suggestedMax:10,ticks:{display:false}
     }},
@@ -830,7 +1174,6 @@ sim();
 
 # ── Vision · leitura de embalagem ──────────────────────────────────────
 def _analisar_embalagem(b64_img: str) -> dict:
-    import anthropic
     api_key = (st.secrets.get("ANTHROPIC_API_KEY")
                or os.environ.get("ANTHROPIC_API_KEY", ""))
     if not api_key:
@@ -885,27 +1228,6 @@ def main():
 
             st.markdown("---")
 
-            # Verifica se há sessões "Remember Me" ativas no banco (para restauração rápida)
-            from datetime import datetime, timedelta
-            active_sessions = _fetch(
-                "SELECT DISTINCT id, email, remember_token FROM usuarios WHERE remember_token IS NOT NULL "
-                "AND remember_token_created > (NOW() - INTERVAL '30 days') ORDER BY email",
-                _v=0
-            )
-
-            if active_sessions:
-                with st.expander("🔑 Restaurar Sessão Anterior", expanded=True):
-                    for session in active_sessions[:3]:  # Limita a 3 para não ficar muito longo
-                        if st.button(f"📧 Continuar como {session['email']}", use_container_width=True,
-                                    key=f"restore_{session['id']}"):
-                            st.session_state['user_id'] = session['id']
-                            st.session_state['user_email'] = session['email']
-                            st.session_state['remember_token'] = session['remember_token']
-                            st.success(f"✅ Bem-vindo de volta, {session['email']}!")
-                            st.rerun()
-
-                st.markdown("---")
-
             tab_login, tab_cadastro = st.tabs(["Login", "Cadastro"])
 
             with tab_login:
@@ -915,11 +1237,14 @@ def main():
                 remember_me = st.checkbox("✓ Manter-me conectado", value=False, key="login_remember")
 
                 if st.button("🔓 Entrar", use_container_width=True):
-                    if _login(email, senha, remember=remember_me):
+                    outcome = _login(email, senha, remember=remember_me)
+                    if outcome == LoginResult.OK:
                         st.success("✅ Login realizado!")
                         st.rerun()
+                    elif outcome == LoginResult.INVALID:
+                        st.error("❌ E-mail ou senha incorretos.")
                     else:
-                        st.error("❌ Email ou senha inválidos.")
+                        st.error("⚠️ Erro ao acessar o banco de dados. Tente novamente em instantes.")
 
             with tab_cadastro:
                 st.markdown("### Criar Conta")
@@ -941,7 +1266,7 @@ def main():
                                  (new_email, hash_pwd))
                             st.success("Cadastro realizado! Faça login.")
                             st.rerun()
-                        except:
+                        except Exception:
                             st.error("Email já cadastrado.")
         return
 
@@ -949,8 +1274,15 @@ def main():
     _show_logo()
     _show_daily_consumption()
 
-    # Botão Logout no topo
-    col_logo, col_logout = st.columns([0.85, 0.15])
+    # Barra de usuário logado
+    col_logo, col_user, col_logout = st.columns([0.72, 0.18, 0.10])
+    with col_user:
+        user_email_display = st.session_state.get('user_email', '')
+        st.markdown(
+            f'<div style="text-align:right;font-size:12px;color:#B8B0A8;'
+            f'padding-top:10px;font-weight:600;letter-spacing:0.02em">'
+            f'👤 {user_email_display}</div>',
+            unsafe_allow_html=True)
     with col_logout:
         if st.button("🚪 Sair", use_container_width=True, key="btn_logout"):
             _logout()
@@ -958,6 +1290,8 @@ def main():
 
     tab1, tab2, tab3, tab4 = st.tabs([
         "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ", "  Histórico  "])
+
+    user_id = st.session_state['user_id']
 
     # ── Tab 1 · Cadastrar café ─────────────────────────────────────────
     with tab1:
@@ -1001,13 +1335,14 @@ def main():
                                        format_func=_stars, value=3, key="class_cafe")
             foto_emb = st.file_uploader("Foto da Embalagem", type=["jpg","jpeg","png"],
                                         key="foto_emb")
-            if foto_emb:
-                _img(_b64(foto_emb), w=160)
+            foto_emb_b64 = _b64(foto_emb) if foto_emb else None
+            if foto_emb_b64:
+                _img(foto_emb_b64, w=160)
                 if st.button("🔍 Analisar Embalagem com IA",
                              use_container_width=True, key="btn_ai"):
                     with st.spinner("Lendo a embalagem..."):
                         try:
-                            result = _analisar_embalagem(_b64(foto_emb))
+                            result = _analisar_embalagem(foto_emb_b64)
                             st.session_state["ai_result"] = result
                             st.rerun()
                         except Exception as e:
@@ -1035,13 +1370,13 @@ def main():
                 _run("""INSERT INTO coffees
                     (data_cadastro,nome,tipo,torra,notas,classificacao,
                      fazenda,regiao,data_torra,tamanho_pacote,foto_embalagem,
-                     local_compra,valor_compra,data_compra)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                     local_compra,valor_compra,data_compra,user_id)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     (data_cad, nome.strip(), tipo, torra, notas, class_c,
-                     fazenda, regiao, data_tort, tamanho, _b64(foto_emb),
+                     fazenda, regiao, data_tort, tamanho, foto_emb_b64,
                      local_compra.strip() or None,
                      valor_compra if valor_compra > 0 else None,
-                     data_compra))
+                     data_compra, user_id))
                 st.success(f"**{nome}** cadastrado com sucesso.")
                 st.balloons()
 
@@ -1049,7 +1384,9 @@ def main():
     with tab2:
         st.markdown('<p class="section-label">Registrar Extração</p>', unsafe_allow_html=True)
 
-        cafes = _fetch("SELECT id, nome, torra FROM coffees ORDER BY nome", _v=_v())
+        user_id = st.session_state.get('user_id')
+        cafes = _fetch("SELECT id, nome, torra FROM coffees WHERE user_id=%s ORDER BY nome",
+                       (user_id,), _v=_v())
         if not cafes:
             st.info("Cadastre um café primeiro na aba Novo Café.")
         else:
@@ -1098,7 +1435,6 @@ def main():
                     moedor = st.text_input("Moedor", placeholder="Ex: Comandante C40")
                     clicks = st.number_input("Clicks do Moedor", 0, 200, 0, 1)
 
-                from datetime import datetime
                 data_ext = st.date_input("Data", value=date.today(), key="data_ext", format="DD/MM/YYYY")
                 hora_ext = st.time_input("Hora da Extração", value=datetime.now().time(), key="hora_ext")
                 notas_e  = st.text_area("Notas", placeholder="Impressões da extração...",
@@ -1148,7 +1484,7 @@ def main():
             with col_s6:
                 presenca_boca_stars = st.slider("PRESENÇA NA BOCA", 1, 5, 3, key="presenca_boca_stars")
             with col_s7:
-                doçura_stars = st.slider("DOÇURA", 1, 5, 3, key="doçura_stars")
+                docura_stars = st.slider("DOÇURA", 1, 5, 3, key="docura_stars")
             with col_s8:
                 nota_final_stars = st.slider("NOTA FINAL", 1, 5, 3, key="nota_final_stars")
 
@@ -1159,19 +1495,20 @@ def main():
 
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
             if st.button("🔴 REGISTRAR EXTRAÇÃO", type="primary", use_container_width=True):
-                from datetime import datetime
                 data_hora = datetime.combine(data_ext, hora_ext)
                 _run("""INSERT INTO extracoes
                     (coffee_id,data,metodo,gramas,moedor,clicks_moedor,agua_alvo,tds,
                      tempo_extracao,brew_ratio,ey,fluxo,foto_caneca,classificacao,notas,
                      crema_stars,corpo_stars,equilibrio_stars,acidez_stars,amargor_stars,
-                     presenca_boca_stars,doçura_stars,nota_final_stars,balanco_ideal,data_hora_extracao)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                     presenca_boca_stars,docura_stars,nota_final_stars,balanco_ideal,
+                     data_hora_extracao,user_id)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     (cid, data_ext, metodo, gramas, moedor, clicks, agua, tds, tempo,
                      m.get("ratio",0), ey, m.get("fluxo",0),
-                     _b64(foto_can) if foto_can else None, class_e, notas_e,
+                     _b64(foto_can) if foto_can else None, nota_final_stars, notas_e,
                      crema_stars, corpo_stars, equilibrio_stars, acidez_stars, amargor_stars,
-                     presenca_boca_stars, doçura_stars, nota_final_stars, balanco_ideal, data_hora))
+                     presenca_boca_stars, docura_stars, nota_final_stars, balanco_ideal,
+                     data_hora, user_id))
 
                 # Atualiza último moedor usado
                 if user_id and moedor:
@@ -1186,8 +1523,8 @@ def main():
                         unsafe_allow_html=True)
 
             # ── Busca dados do café para pré-definir parâmetros ──────────────
-            cafe_info = _fetch(f"SELECT tipo, torra FROM coffees WHERE id=%s LIMIT 1",
-                              (cid,), _v=_v())
+            cafe_info = _fetch("SELECT tipo, torra FROM coffees WHERE id=%s AND user_id=%s LIMIT 1",
+                              (cid, user_id), _v=_v())
             if cafe_info:
                 cafe_tipo = cafe_info[0]["tipo"]
                 cafe_torra = cafe_info[0]["torra"]
@@ -1217,7 +1554,18 @@ def main():
             SELECT c.*, COUNT(e.id) AS total_ext,
                    AVG(e.ey) AS avg_ey, AVG(e.classificacao) AS avg_nota
             FROM coffees c LEFT JOIN extracoes e ON e.coffee_id=c.id
-            GROUP BY c.id ORDER BY c.data_cadastro DESC""", _v=_v())
+            WHERE c.user_id=%s
+            GROUP BY c.id ORDER BY c.data_cadastro DESC""", (user_id,), _v=_v())
+
+        # P6: busca TODAS as extrações do usuário num único query — evita N+1
+        all_extracts = _fetch("""
+            SELECT * FROM extracoes
+            WHERE user_id=%s
+            ORDER BY data DESC, created_at DESC
+        """, (user_id,), _v=_v())
+        extracts_by_coffee = {}
+        for ex in all_extracts:
+            extracts_by_coffee.setdefault(ex['coffee_id'], []).append(ex)
 
         if not cafes:
             st.info("Nenhum café cadastrado ainda.")
@@ -1243,8 +1591,8 @@ def main():
                             info += _irow("Comprado em", c["local_compra"])
                         if c.get("data_compra"):
                             info += _irow("Data compra", c["data_compra"].strftime('%d/%m/%Y'))
-                        note = (f'<div style="margin-top:10px;font-size:12px;color:#6B3A4A;'
-                                f'font-style:italic;">{c["notas"]}</div>' if c["notas"] else "")
+                        note = (f'<div style="margin-top:10px;font-size:13px;color:#B8B0A8;'
+                                f'font-style:italic;line-height:1.5;">{c["notas"]}</div>' if c["notas"] else "")
                         st.markdown(f'<div>{tags}</div><div style="margin-top:12px">{info}</div>{note}',
                                     unsafe_allow_html=True)
                     with cc:
@@ -1260,11 +1608,8 @@ def main():
                     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
                     st.markdown('<p class="section-label">Detalhes das Extrações</p>', unsafe_allow_html=True)
 
-                    extracts = _fetch("""
-                        SELECT * FROM extracoes
-                        WHERE coffee_id=%s
-                        ORDER BY data DESC, created_at DESC
-                    """, (c["id"],), _v=_v())
+                    # P6: usa cache pré-carregado em vez de query por café
+                    extracts = extracts_by_coffee.get(c["id"], [])
 
                     if not extracts:
                         st.info("Nenhuma extração registrada para este café ainda.")
@@ -1290,8 +1635,8 @@ def main():
                                 )
                                 if nova_foto:
                                     _run(
-                                        "UPDATE extracoes SET foto_caneca=%s WHERE id=%s",
-                                        (_b64(nova_foto), e["id"])
+                                        "UPDATE extracoes SET foto_caneca=%s WHERE id=%s AND user_id=%s",
+                                        (_b64(nova_foto), e["id"], user_id)
                                     )
                                     st.success("Foto adicionada!")
                                     st.rerun()
@@ -1315,7 +1660,9 @@ def main():
 
                             # Métricas
                             with ex_col3:
-                                st.metric("Brew Ratio", f"1:{e['agua_alvo']/e['gramas']:.1f}")
+                                ratio_display = (f"1:{e['brew_ratio']:.1f}" if e['brew_ratio']
+                                                 else f"1:{e['agua_alvo']/e['gramas']:.1f}")
+                                st.metric("Brew Ratio", ratio_display)
                                 if e['ey']:
                                     st.metric("EY", f"{e['ey']:.1f}%")
                                 st.metric("Fluxo", f"{e['fluxo']:.2f}g/s" if e['fluxo'] else "—")
@@ -1328,8 +1675,18 @@ def main():
                                     st.session_state[f"edit_ext_{e['id']}"] = True
                             with col_del:
                                 if st.button("🗑️ Deletar", key=f"tab3_del_e_{e['id']}", use_container_width=True):
-                                    _run("DELETE FROM extracoes WHERE id=%s", (e['id'],))
-                                    st.rerun()
+                                    st.session_state[f"confirm_del_e3_{e['id']}"] = True
+                            if st.session_state.get(f"confirm_del_e3_{e['id']}"):
+                                st.warning("Confirmar remoção desta extração?")
+                                cya, cna = st.columns(2)
+                                with cya:
+                                    if st.button("✓ Remover", key=f"del_e3_ok_{e['id']}", type="primary"):
+                                        _run("DELETE FROM extracoes WHERE id=%s AND user_id=%s", (e['id'], user_id))
+                                        st.rerun()
+                                with cna:
+                                    if st.button("← Cancelar", key=f"del_e3_cancel_{e['id']}"):
+                                        st.session_state.pop(f"confirm_del_e3_{e['id']}", None)
+                                        st.rerun()
 
                             # Formulário de edição (se ativado)
                             if st.session_state.get(f"edit_ext_{e['id']}", False):
@@ -1347,17 +1704,27 @@ def main():
 
                                 if st.button("💾 Salvar Edição", key=f"tab3_save_e_{e['id']}", use_container_width=True):
                                     _run(
-                                        "UPDATE extracoes SET gramas=%s, agua_alvo=%s, tempo_extracao=%s, classificacao=%s, notas=%s WHERE id=%s",
-                                        (ed_gramas, ed_agua, ed_tempo, ed_class, ed_notas, e['id'])
+                                        "UPDATE extracoes SET gramas=%s, agua_alvo=%s, tempo_extracao=%s, classificacao=%s, notas=%s WHERE id=%s AND user_id=%s",
+                                        (ed_gramas, ed_agua, ed_tempo, ed_class, ed_notas, e['id'], user_id)
                                     )
                                     st.success("Extração atualizada!")
                                     st.session_state[f"edit_ext_{e['id']}"] = False
                                     st.rerun()
 
                     st.markdown("")
-                    if st.button("Remover café", key=f"del_c_{c['id']}"):
-                        _run("DELETE FROM coffees WHERE id=%s", (c["id"],))
-                        st.rerun()
+                    if st.button("🗑️ Remover café", key=f"del_c_{c['id']}"):
+                        st.session_state[f"confirm_del_c_{c['id']}"] = True
+                    if st.session_state.get(f"confirm_del_c_{c['id']}"):
+                        st.warning(f"Tem certeza? Isso removerá **{c['nome']}** e todas as suas extrações.")
+                        col_yes, col_no = st.columns(2)
+                        with col_yes:
+                            if st.button("✓ Confirmar remoção", key=f"del_c_ok_{c['id']}", type="primary"):
+                                _run("DELETE FROM coffees WHERE id=%s AND user_id=%s", (c["id"], user_id))
+                                st.rerun()
+                        with col_no:
+                            if st.button("← Cancelar", key=f"del_c_cancel_{c['id']}"):
+                                st.session_state.pop(f"confirm_del_c_{c['id']}", None)
+                                st.rerun()
 
     # ── Tab 4 · Histórico ─────────────────────────────────────────────
     with tab4:
@@ -1366,7 +1733,8 @@ def main():
         rows = _fetch("""
             SELECT e.*, c.nome AS cafe_nome, c.torra FROM extracoes e
             JOIN coffees c ON c.id=e.coffee_id
-            ORDER BY e.data DESC, e.created_at DESC LIMIT 200""", _v=_v())
+            WHERE e.user_id=%s
+            ORDER BY e.data DESC, e.created_at DESC LIMIT 200""", (user_id,), _v=_v())
 
         if not rows:
             st.info("Nenhuma extração registrada ainda.")
@@ -1391,8 +1759,8 @@ def main():
                                 _irow("TDS",   f"{r['tds']}%" if r['tds'] else "—") +
                                 (_irow("Moedor", f"{r['moedor']}  ·  {r['clicks_moedor']} clicks")
                                  if r["moedor"] else ""))
-                        note = (f'<div style="margin-top:10px;font-size:12px;color:#6B3A4A;'
-                                f'font-style:italic;">{r["notas"]}</div>' if r["notas"] else "")
+                        note = (f'<div style="margin-top:10px;font-size:13px;color:#B8B0A8;'
+                                f'font-style:italic;line-height:1.5;">{r["notas"]}</div>' if r["notas"] else "")
                         st.markdown(f'<div>{tags}</div><div style="margin-top:12px">{info}</div>{note}',
                                     unsafe_allow_html=True)
                     with rc:
@@ -1411,7 +1779,7 @@ def main():
                         ("ACIDEZ", r.get('acidez_stars', 0)),
                         ("AMARGOR", r.get('amargor_stars', 0)),
                         ("PRESENÇA NA BOCA", r.get('presenca_boca_stars', 0)),
-                        ("DOÇURA", r.get('doçura_stars', 0)),
+                        ("DOÇURA", r.get('docura_stars', 0)),
                         ("NOTA FINAL", r.get('nota_final_stars', 0)),
                     ]
                     for idx, (label, stars) in enumerate(classificacoes):
@@ -1430,8 +1798,18 @@ def main():
                             st.session_state[f"editing_e_{r['id']}"] = True
                     with col_del:
                         if st.button("🗑️ Remover", key=f"tab4_del_e_{r['id']}"):
-                            _run("DELETE FROM extracoes WHERE id=%s", (r["id"],))
-                            st.rerun()
+                            st.session_state[f"confirm_del_e4_{r['id']}"] = True
+                    if st.session_state.get(f"confirm_del_e4_{r['id']}"):
+                        st.warning("Confirmar remoção desta extração?")
+                        cya, cna = st.columns(2)
+                        with cya:
+                            if st.button("✓ Remover", key=f"del_e4_ok_{r['id']}", type="primary"):
+                                _run("DELETE FROM extracoes WHERE id=%s AND user_id=%s", (r["id"], user_id))
+                                st.rerun()
+                        with cna:
+                            if st.button("← Cancelar", key=f"del_e4_cancel_{r['id']}"):
+                                st.session_state.pop(f"confirm_del_e4_{r['id']}", None)
+                                st.rerun()
 
                     # Form de Edição
                     if st.session_state.get(f"editing_e_{r['id']}"):
@@ -1451,8 +1829,9 @@ def main():
 
                         if st.button("💾 Salvar Alterações", key=f"tab4_save_e_{r['id']}", type="primary"):
                             _run("""UPDATE extracoes SET gramas=%s, agua_alvo=%s, tempo_extracao=%s,
-                                    moedor=%s, clicks_moedor=%s, tds=%s, notas=%s WHERE id=%s""",
-                                 (ed_gramas, ed_agua, ed_tempo, ed_moedor, ed_clicks, ed_tds, ed_notas, r['id']))
+                                    moedor=%s, clicks_moedor=%s, tds=%s, notas=%s
+                                    WHERE id=%s AND user_id=%s""",
+                                 (ed_gramas, ed_agua, ed_tempo, ed_moedor, ed_clicks, ed_tds, ed_notas, r['id'], user_id))
                             st.session_state.pop(f"editing_e_{r['id']}", None)
                             st.success("Alterações salvas!")
                             st.rerun()
