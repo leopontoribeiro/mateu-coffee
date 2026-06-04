@@ -1335,6 +1335,17 @@ def _init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_capsulas_user_id ON capsulas(user_id);
         """)
         cur.execute("""
+            ALTER TABLE capsulas
+                ADD COLUMN IF NOT EXISTS crema_stars         INTEGER DEFAULT 3,
+                ADD COLUMN IF NOT EXISTS corpo_stars         INTEGER DEFAULT 3,
+                ADD COLUMN IF NOT EXISTS equilibrio_stars    INTEGER DEFAULT 3,
+                ADD COLUMN IF NOT EXISTS acidez_stars        INTEGER DEFAULT 3,
+                ADD COLUMN IF NOT EXISTS amargor_stars       INTEGER DEFAULT 3,
+                ADD COLUMN IF NOT EXISTS presenca_boca_stars INTEGER DEFAULT 3,
+                ADD COLUMN IF NOT EXISTS docura_stars        INTEGER DEFAULT 3,
+                ADD COLUMN IF NOT EXISTS nota_final_stars    INTEGER DEFAULT 3;
+        """)
+        cur.execute("""
             ALTER TABLE usuarios
                 ADD COLUMN IF NOT EXISTS last_grinder TEXT,
                 ADD COLUMN IF NOT EXISTS last_clicks INTEGER DEFAULT 0;
@@ -2442,7 +2453,7 @@ def main():
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ",
-        "  Histórico  ", "  📖 Receitas  ", "  💊 Cápsulas  "])
+        "  Histórico  ", "  📖 Receitas  ", "  🫘 Cápsulas  "])
 
     user_id = st.session_state['user_id']
 
@@ -3143,6 +3154,21 @@ def main():
                         ed_notas = st.text_area("Notas", value=r['notas'] or "",
                                                 key=f"edit_notas_{r['id']}", height=80)
 
+                        # Foto da caneca (editável)
+                        st.markdown("**Foto da Caneca**")
+                        _foto_col1, _foto_col2 = st.columns([1, 2], gap="large")
+                        with _foto_col1:
+                            if r.get("foto_caneca"):
+                                _img(r["foto_caneca"], w=120)
+                            else:
+                                st.markdown(_ph(), unsafe_allow_html=True)
+                        with _foto_col2:
+                            ed_foto_f = st.file_uploader(
+                                "Substituir / Adicionar foto",
+                                type=["jpg", "jpeg", "png"],
+                                key=f"edit_foto_{r['id']}")
+                        ed_foto_b64 = _b64(ed_foto_f) if ed_foto_f else r.get("foto_caneca")
+
                         # 2) Classificação detalhada em estrelas (editável)
                         st.markdown('<p class="section-label">⭐ Classificação Detalhada</p>',
                                     unsafe_allow_html=True)
@@ -3196,12 +3222,14 @@ def main():
                             _run("""UPDATE extracoes SET
                                     gramas=%s, agua_alvo=%s, tempo_extracao=%s,
                                     moedor=%s, clicks_moedor=%s, tds=%s, notas=%s,
+                                    foto_caneca=%s,
                                     crema_stars=%s, corpo_stars=%s, equilibrio_stars=%s,
                                     acidez_stars=%s, amargor_stars=%s, presenca_boca_stars=%s,
                                     docura_stars=%s, nota_final_stars=%s, classificacao=%s
                                     WHERE id=%s AND user_id=%s""",
                                  (ed_gramas, ed_agua, ed_tempo,
                                   ed_moedor, ed_clicks, ed_tds, ed_notas,
+                                  ed_foto_b64,
                                   ed_crema, ed_corpo, ed_equil,
                                   ed_acid, ed_amargor, ed_pres,
                                   ed_doc, ed_nota, ed_nota,
@@ -3314,6 +3342,37 @@ def main():
                         except Exception as e:
                             st.error(f"Erro na análise: {e}")
 
+        # ── Classificação sensorial da cápsula ────────────────────────
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        st.markdown('<p class="section-label">⭐ Classificação Sensorial</p>', unsafe_allow_html=True)
+        _SC = [1, 2, 3, 4, 5]
+        csx1, csx2, csx3, csx4 = st.columns(4, gap="large")
+        with csx1:
+            cap_crema   = st.select_slider("Crema", options=_SC, format_func=_stars,
+                                           value=3, key="cap_crema")
+        with csx2:
+            cap_corpo   = st.select_slider("Corpo", options=_SC, format_func=_stars,
+                                           value=3, key="cap_corpo")
+        with csx3:
+            cap_equil   = st.select_slider("Equilíbrio", options=_SC, format_func=_stars,
+                                           value=3, key="cap_equil")
+        with csx4:
+            cap_acid    = st.select_slider("Acidez", options=_SC, format_func=_stars,
+                                           value=3, key="cap_acid")
+        csx5, csx6, csx7, csx8 = st.columns(4, gap="large")
+        with csx5:
+            cap_amar    = st.select_slider("Amargor", options=_SC, format_func=_stars,
+                                           value=3, key="cap_amar")
+        with csx6:
+            cap_pres    = st.select_slider("Presença na Boca", options=_SC, format_func=_stars,
+                                           value=3, key="cap_pres")
+        with csx7:
+            cap_doc     = st.select_slider("Doçura", options=_SC, format_func=_stars,
+                                           value=3, key="cap_doc")
+        with csx8:
+            cap_nota    = st.select_slider("Nota Final", options=_SC, format_func=_stars,
+                                           value=3, key="cap_nota")
+
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         if st.button("Salvar Cápsula", type="primary", use_container_width=True, key="btn_save_cap"):
             if not cap_nome.strip():
@@ -3322,12 +3381,16 @@ def main():
                 try:
                     _run("""INSERT INTO capsulas
                             (user_id, nome, marca, maquina, intensidade, quantidade,
-                             aluminio, volume_ml, foto_embalagem)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                             aluminio, volume_ml, foto_embalagem,
+                             crema_stars, corpo_stars, equilibrio_stars, acidez_stars,
+                             amargor_stars, presenca_boca_stars, docura_stars, nota_final_stars)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                          (user_id, cap_nome.strip(), cap_marca.strip() or None,
                           cap_maquina, cap_intens, int(cap_qtd),
-                          cap_aluminio == "Sim", int(cap_volume), cap_foto_b64))
-                    st.toast(f"💊 {cap_nome} cadastrada com sucesso", icon="✅")
+                          cap_aluminio == "Sim", int(cap_volume), cap_foto_b64,
+                          cap_crema, cap_corpo, cap_equil, cap_acid,
+                          cap_amar, cap_pres, cap_doc, cap_nota))
+                    st.toast(f"🫘 {cap_nome} cadastrada com sucesso", icon="✅")
                     st.balloons()
                 except Exception as e:
                     st.error(f"Erro ao salvar cápsula: {e}")
@@ -3340,7 +3403,7 @@ def main():
                          ORDER BY created_at DESC""", (user_id,), _v=_v())
 
         if not caps:
-            _empty("💊", "Nenhuma cápsula cadastrada ainda",
+            _empty("🫘", "Nenhuma cápsula cadastrada ainda",
                    "Cadastre suas cápsulas acima para acompanhar o estoque e as preferências.",
                    hint="Preencha o formulário acima")
         else:
@@ -3352,7 +3415,7 @@ def main():
             for cap in caps:
                 alum_label = "Alumínio ✓" if cap.get("aluminio") else "Não alumínio"
                 vol_label  = VOLUMES_CAPSULAS.get(cap.get("volume_ml", 40), "—")
-                header_cap = (f"💊 {cap['nome']}"
+                header_cap = (f"🫘 {cap['nome']}"
                               f"{'  ·  ' + cap['marca'] if cap.get('marca') else ''}"
                               f"  ·  {cap['maquina']}  ·  {cap['intensidade']}/12")
                 with st.expander(header_cap):
@@ -3372,10 +3435,31 @@ def main():
                         st.markdown(c_info, unsafe_allow_html=True)
                     with cc3:
                         st.metric("Estoque", f"{cap['quantidade']} un.")
+                        if cap.get("nota_final_stars"):
+                            st.metric("Nota Final", _stars(cap["nota_final_stars"]))
                         st.markdown(
                             f'<p style="font-size:11px;color:#8A8278;margin:4px 0 0">'
                             f'Cadastrado em {cap["created_at"].strftime("%d/%m/%Y")}</p>',
                             unsafe_allow_html=True)
+
+                    # Classificação sensorial (se preenchida)
+                    _cls_cap = [
+                        ("CREMA",           cap.get("crema_stars", 0)),
+                        ("CORPO",           cap.get("corpo_stars", 0)),
+                        ("EQUILÍBRIO",      cap.get("equilibrio_stars", 0)),
+                        ("ACIDEZ",          cap.get("acidez_stars", 0)),
+                        ("AMARGOR",         cap.get("amargor_stars", 0)),
+                        ("PRESENÇA NA BOCA",cap.get("presenca_boca_stars", 0)),
+                        ("DOÇURA",          cap.get("docura_stars", 0)),
+                        ("NOTA FINAL",      cap.get("nota_final_stars", 0)),
+                    ]
+                    if any(v for _, v in _cls_cap):
+                        st.markdown("---")
+                        st.markdown("**⭐ Classificação Sensorial:**")
+                        _cls_cols = st.columns(4, gap="small")
+                        for _idx, (_lbl, _sv) in enumerate(_cls_cap):
+                            with _cls_cols[_idx % 4]:
+                                st.markdown(f"**{_lbl}**\n{'⭐'*(_sv or 0)}{'☆'*(5-(_sv or 0))}")
 
                     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
@@ -3412,6 +3496,43 @@ def main():
                                                   index=_vol_idx, horizontal=True,
                                                   key=f"cedit_vol_{cap['id']}")
 
+                        st.markdown('<p class="section-label">⭐ Classificação Sensorial</p>', unsafe_allow_html=True)
+                        _SC2 = [1, 2, 3, 4, 5]
+                        ces1, ces2, ces3, ces4 = st.columns(4, gap="large")
+                        with ces1:
+                            edc_crema = st.select_slider("Crema", options=_SC2, format_func=_stars,
+                                                         value=int(cap.get("crema_stars") or 3),
+                                                         key=f"cedit_crema_{cap['id']}")
+                        with ces2:
+                            edc_corpo = st.select_slider("Corpo", options=_SC2, format_func=_stars,
+                                                         value=int(cap.get("corpo_stars") or 3),
+                                                         key=f"cedit_corpo_{cap['id']}")
+                        with ces3:
+                            edc_equil = st.select_slider("Equilíbrio", options=_SC2, format_func=_stars,
+                                                         value=int(cap.get("equilibrio_stars") or 3),
+                                                         key=f"cedit_equil_{cap['id']}")
+                        with ces4:
+                            edc_acid  = st.select_slider("Acidez", options=_SC2, format_func=_stars,
+                                                         value=int(cap.get("acidez_stars") or 3),
+                                                         key=f"cedit_acid_{cap['id']}")
+                        ces5, ces6, ces7, ces8 = st.columns(4, gap="large")
+                        with ces5:
+                            edc_amar  = st.select_slider("Amargor", options=_SC2, format_func=_stars,
+                                                         value=int(cap.get("amargor_stars") or 3),
+                                                         key=f"cedit_amar_{cap['id']}")
+                        with ces6:
+                            edc_pres  = st.select_slider("Presença na Boca", options=_SC2, format_func=_stars,
+                                                         value=int(cap.get("presenca_boca_stars") or 3),
+                                                         key=f"cedit_pres_{cap['id']}")
+                        with ces7:
+                            edc_doc   = st.select_slider("Doçura", options=_SC2, format_func=_stars,
+                                                         value=int(cap.get("docura_stars") or 3),
+                                                         key=f"cedit_doc_{cap['id']}")
+                        with ces8:
+                            edc_nota  = st.select_slider("Nota Final", options=_SC2, format_func=_stars,
+                                                         value=int(cap.get("nota_final_stars") or 3),
+                                                         key=f"cedit_nota_{cap['id']}")
+
                         cse1, cse2 = st.columns(2)
                         with cse1:
                             if st.button("💾 Salvar", type="primary",
@@ -3419,11 +3540,18 @@ def main():
                                 try:
                                     _run("""UPDATE capsulas SET
                                             nome=%s, marca=%s, maquina=%s, intensidade=%s,
-                                            quantidade=%s, aluminio=%s, volume_ml=%s
+                                            quantidade=%s, aluminio=%s, volume_ml=%s,
+                                            crema_stars=%s, corpo_stars=%s, equilibrio_stars=%s,
+                                            acidez_stars=%s, amargor_stars=%s,
+                                            presenca_boca_stars=%s, docura_stars=%s,
+                                            nota_final_stars=%s
                                             WHERE id=%s AND user_id=%s""",
                                          (edc_nome.strip(), edc_marca.strip() or None,
                                           edc_maq, edc_intens, int(edc_qtd),
                                           edc_alum == "Sim", int(edc_vol),
+                                          edc_crema, edc_corpo, edc_equil,
+                                          edc_acid, edc_amar, edc_pres,
+                                          edc_doc, edc_nota,
                                           cap['id'], user_id))
                                     st.session_state.pop(f"edit_cap_{cap['id']}", None)
                                     st.toast("Cápsula atualizada", icon="✅")
