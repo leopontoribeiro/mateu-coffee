@@ -46,30 +46,45 @@ def _load_logo(max_width: int = 300) -> bool:
         return False
 
 def _show_daily_consumption() -> None:
-    """Exibe widget com o consumo total de café do dia (apenas do usuário logado)."""
+    """Widget de consumo: hoje + semana + média + total — apenas do usuário logado."""
     hoje = date.today()
-    agora = datetime.now().strftime("%H:%M")
     user_id = st.session_state.get('user_id')
 
-    result = _fetch("""
-        SELECT COALESCE(SUM(gramas), 0) as total
-        FROM extracoes
-        WHERE data = %s AND user_id = %s
-    """, (hoje, user_id), _v=_v())
+    stats = _fetch("""
+        SELECT
+          COALESCE(SUM(CASE WHEN data = %s THEN gramas ELSE 0 END), 0) AS hoje_g,
+          COALESCE(SUM(CASE WHEN data >= %s THEN gramas ELSE 0 END), 0) AS semana_g,
+          COUNT(CASE WHEN data >= %s THEN 1 END)                       AS semana_n,
+          COUNT(*)                                                     AS total_n
+        FROM extracoes WHERE user_id = %s
+    """, (hoje, hoje - timedelta(days=6), hoje - timedelta(days=6), user_id), _v=_v())
 
-    consumo_total = result[0]["total"] if result else 0
+    s = stats[0] if stats else {"hoje_g": 0, "semana_g": 0, "semana_n": 0, "total_n": 0}
+    media_dia = (s["semana_g"] / 7) if s["semana_g"] else 0
 
     st.markdown(
-        f'<div style="background:linear-gradient(135deg,#141414 0%,#1C1C1C 100%);'
-        f'border:1px solid #2A2A2A;border-left:4px solid #E8722E;border-radius:10px;'
-        f'padding:16px 20px;margin:0 0 1.75rem 0">'
-        f'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'
-        f'<div style="font-size:11px;color:#8A8278;font-weight:700;letter-spacing:0.12em;text-transform:uppercase">'
-        f'📅 {hoje.strftime("%d/%m/%Y")} · ⏰ {agora}</div>'
-        f'<div style="font-size:13px;font-weight:600;color:#B8B0A8">'
-        f'Consumo do dia: <span style="color:#E8722E;font-weight:800;font-size:18px">'
-        f'{consumo_total:.1f}g</span></div>'
-        f'</div></div>',
+        f'<div class="mc-consumo">'
+        f'  <div class="mc-consumo-cell">'
+        f'    <p class="mc-consumo-label">Hoje</p>'
+        f'    <p class="mc-consumo-value accent">{s["hoje_g"]:.0f}<span style="font-size:13px;font-weight:600">g</span></p>'
+        f'    <p class="mc-consumo-sub">{hoje.strftime("%d/%m/%Y")}</p>'
+        f'  </div>'
+        f'  <div class="mc-consumo-cell">'
+        f'    <p class="mc-consumo-label">Esta Semana</p>'
+        f'    <p class="mc-consumo-value">{s["semana_g"]:.0f}<span style="font-size:13px;font-weight:600">g</span></p>'
+        f'    <p class="mc-consumo-sub">{s["semana_n"]} extraç{"ões" if s["semana_n"] != 1 else "ão"}</p>'
+        f'  </div>'
+        f'  <div class="mc-consumo-cell">'
+        f'    <p class="mc-consumo-label">Média/dia</p>'
+        f'    <p class="mc-consumo-value">{media_dia:.0f}<span style="font-size:13px;font-weight:600">g</span></p>'
+        f'    <p class="mc-consumo-sub">últimos 7 dias</p>'
+        f'  </div>'
+        f'  <div class="mc-consumo-cell">'
+        f'    <p class="mc-consumo-label">Total Histórico</p>'
+        f'    <p class="mc-consumo-value">{s["total_n"]}</p>'
+        f'    <p class="mc-consumo-sub">extrações registradas</p>'
+        f'  </div>'
+        f'</div>',
         unsafe_allow_html=True)
 
 @st.cache_data(show_spinner=False)
@@ -602,6 +617,217 @@ st.markdown("""
         line-height: 1.6;
     }
 
+    /* ═══════════════════════════════════════════════════════════
+       PADRÕES DE EXPERIÊNCIA — Componentes reutilizáveis
+       ═══════════════════════════════════════════════════════════ */
+
+    /* Stepper de seção (1 ⚪ título) */
+    .mc-step {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        margin: 2.5rem 0 1.25rem;
+        padding-bottom: 0.5rem;
+    }
+    .mc-step-num {
+        flex-shrink: 0;
+        width: 32px; height: 32px;
+        background: var(--mc-orange);
+        color: #0A0A0A;
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 800;
+        font-size: 14px;
+        box-shadow: 0 2px 8px var(--mc-orange-glow);
+    }
+    .mc-step-num.muted {
+        background: var(--mc-surface-3);
+        color: var(--mc-text-3);
+        box-shadow: none;
+    }
+    .mc-step-body { flex: 1; min-width: 0; }
+    .mc-step-title {
+        font-size: 17px;
+        font-weight: 700;
+        color: var(--mc-text);
+        letter-spacing: -0.01em;
+        margin: 0;
+        line-height: 1.2;
+    }
+    .mc-step-sub {
+        font-size: 12px;
+        color: var(--mc-text-3);
+        margin: 4px 0 0;
+        line-height: 1.4;
+    }
+
+    /* Empty-state card (sem dados) */
+    .mc-empty {
+        text-align: center;
+        padding: 3rem 1.5rem;
+        background: linear-gradient(180deg, var(--mc-surface) 0%, var(--mc-bg) 100%);
+        border: 1px dashed var(--mc-border-strong);
+        border-radius: 14px;
+        margin: 1rem 0;
+    }
+    .mc-empty-icon {
+        font-size: 56px;
+        line-height: 1;
+        margin-bottom: 1rem;
+        opacity: 0.85;
+    }
+    .mc-empty-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--mc-text);
+        margin: 0 0 0.5rem 0;
+    }
+    .mc-empty-sub {
+        font-size: 13px;
+        color: var(--mc-text-2);
+        max-width: 420px;
+        margin: 0 auto 1.5rem;
+        line-height: 1.55;
+    }
+    .mc-empty-hint {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        background: var(--mc-orange-soft);
+        border: 1px solid var(--mc-orange);
+        color: var(--mc-orange);
+        border-radius: 24px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+
+    /* Hero de login */
+    .mc-login-hero {
+        text-align: center;
+        padding: 0.5rem 0 1.5rem;
+    }
+    .mc-login-title {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--mc-text);
+        margin: 1.25rem 0 0.25rem 0;
+        letter-spacing: -0.02em;
+    }
+    .mc-login-sub {
+        font-size: 13px;
+        color: var(--mc-text-2);
+        margin: 0;
+        line-height: 1.55;
+    }
+
+    /* Compact header (logo · email · sair) */
+    .mc-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 0.5rem 0 1.25rem;
+        border-bottom: 1px solid var(--mc-border);
+        margin-bottom: 1.5rem;
+    }
+    .mc-topbar-brand {
+        display: flex; align-items: center; gap: 10px;
+    }
+    .mc-topbar-brand-text {
+        font-size: 14px;
+        font-weight: 800;
+        color: var(--mc-text);
+        letter-spacing: -0.01em;
+    }
+    .mc-topbar-brand-tag {
+        font-size: 10px;
+        color: var(--mc-orange);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        font-weight: 700;
+        margin: -2px 0 0;
+    }
+    .mc-topbar-user {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 12px;
+        color: var(--mc-text-2);
+        font-weight: 600;
+    }
+    .mc-topbar-user-avatar {
+        width: 28px; height: 28px; border-radius: 50%;
+        background: var(--mc-orange-soft);
+        border: 1px solid var(--mc-orange);
+        color: var(--mc-orange);
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 800;
+        font-size: 12px;
+    }
+
+    /* Stat trio do widget consumo */
+    .mc-consumo {
+        display: flex;
+        gap: 0;
+        align-items: stretch;
+        background: linear-gradient(135deg, var(--mc-surface) 0%, var(--mc-surface-2) 100%);
+        border: 1px solid var(--mc-border);
+        border-left: 4px solid var(--mc-orange);
+        border-radius: 12px;
+        padding: 14px 18px;
+        margin: 0 0 1.5rem;
+        flex-wrap: wrap;
+    }
+    .mc-consumo-cell {
+        flex: 1 1 0;
+        min-width: 100px;
+        padding: 0 12px;
+        border-right: 1px solid var(--mc-border);
+    }
+    .mc-consumo-cell:last-child { border-right: none; }
+    .mc-consumo-label {
+        font-size: 10px;
+        color: var(--mc-text-3);
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin: 0 0 4px;
+    }
+    .mc-consumo-value {
+        font-size: 18px;
+        color: var(--mc-text);
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        margin: 0;
+    }
+    .mc-consumo-value.accent { color: var(--mc-orange); }
+    .mc-consumo-sub {
+        font-size: 11px;
+        color: var(--mc-text-3);
+        margin: 2px 0 0;
+    }
+    @media (max-width: 640px) {
+        .mc-consumo-cell { border-right: none; border-bottom: 1px solid var(--mc-border); padding: 8px 0; }
+        .mc-consumo-cell:last-child { border-bottom: none; }
+    }
+
+    /* Pill de data relativa */
+    .mc-when {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px;
+        background: var(--mc-surface-2);
+        border: 1px solid var(--mc-border);
+        border-radius: 100px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--mc-text-2);
+        letter-spacing: 0.02em;
+    }
+    .mc-when.today { background: var(--mc-orange-soft); border-color: var(--mc-orange); color: var(--mc-orange); }
+
     /* ─── Mobile ──────────────────────────────────────────────── */
     @media (max-width: 640px) {
         .block-container { padding: 1rem 1rem 2rem !important; }
@@ -1007,6 +1233,62 @@ def _ph() -> str:
 METODOS = ["Espresso","Pour Over","French Press","Aeropress",
            "Chemex","Moka Pot","Cold Brew","Sifão","Drip","Outro"]
 
+# ── Componentes de UX reutilizáveis ────────────────────────────────────
+
+def _step(num: int, title: str, sub: str = "", muted: bool = False) -> None:
+    """Cabeçalho de etapa numerada — usado em Nova Extração e em forms longos."""
+    cls = "mc-step-num muted" if muted else "mc-step-num"
+    st.markdown(
+        f'<div class="mc-step">'
+        f'<div class="{cls}">{num}</div>'
+        f'<div class="mc-step-body">'
+        f'<p class="mc-step-title">{title}</p>'
+        + (f'<p class="mc-step-sub">{sub}</p>' if sub else '')
+        + '</div></div>',
+        unsafe_allow_html=True)
+
+def _empty(icon: str, title: str, sub: str, hint: str = "") -> None:
+    """Estado vazio com ícone + headline + sub + dica visual."""
+    hint_html = f'<div class="mc-empty-hint">→ {hint}</div>' if hint else ""
+    st.markdown(
+        f'<div class="mc-empty">'
+        f'<div class="mc-empty-icon">{icon}</div>'
+        f'<p class="mc-empty-title">{title}</p>'
+        f'<p class="mc-empty-sub">{sub}</p>'
+        f'{hint_html}'
+        f'</div>',
+        unsafe_allow_html=True)
+
+def _relative_date(d) -> str:
+    """Devolve 'Hoje', 'Ontem', 'Há N dias' ou data formatada."""
+    if d is None:
+        return "—"
+    if hasattr(d, "date"):
+        d = d.date()
+    today = date.today()
+    delta = (today - d).days
+    if delta < 0:
+        return d.strftime("%d/%m/%Y")
+    if delta == 0:
+        return "Hoje"
+    if delta == 1:
+        return "Ontem"
+    if delta < 7:
+        return f"Há {delta} dias"
+    if delta < 30:
+        w = delta // 7
+        return f"Há {w} semana" + ("s" if w > 1 else "")
+    if delta < 365:
+        m = delta // 30
+        return f"Há {m} mês" + ("es" if m > 1 else "")
+    return d.strftime("%d/%m/%Y")
+
+def _pill_when(d) -> str:
+    """Pill HTML de data relativa para usar em headers."""
+    text = _relative_date(d)
+    cls = "mc-when today" if text == "Hoje" else "mc-when"
+    return f'<span class="{cls}">📅 {text}</span>'
+
 # Classificação oficial do café (substitui o campo Fazenda na UI)
 CLASSIFICACOES_CAFE = [
     "Especial (>80 pts)",
@@ -1327,75 +1609,111 @@ def main():
 
     # ── Autenticação ────────────────────────────────────────────────────
     if 'user_id' not in st.session_state:
-        # Tenta restaurar com token
         if not _check_remember_token():
-            # ── Página de Login ────────────────────────────────────
-            # Exibe logo centralizada
-            col_logo_center = st.columns([0.15, 0.7, 0.15])[1]
-            with col_logo_center:
+            # Container centralizado para a página de login
+            _, col_main, _ = st.columns([0.18, 0.64, 0.18])
+            with col_main:
+                # Logo + tagline da marca (apenas no login)
+                st.markdown('<div class="mc-login-hero">', unsafe_allow_html=True)
                 _load_logo()
+                st.markdown(
+                    '<p class="mc-login-title">Seu diário de extrações</p>'
+                    '<p class="mc-login-sub">Acompanhe cada café, cada extração '
+                    'e a evolução do seu paladar — para baristas e entusiastas.</p>'
+                    '</div>',
+                    unsafe_allow_html=True)
 
-            st.markdown("---")
+                tab_login, tab_cadastro = st.tabs(["  Entrar  ", "  Criar Conta  "])
 
-            tab_login, tab_cadastro = st.tabs(["Login", "Cadastro"])
+                with tab_login:
+                    st.markdown(
+                        '<p class="mc-step-title" style="margin:0.5rem 0 1.25rem">'
+                        'Bem-vindo de volta</p>',
+                        unsafe_allow_html=True)
+                    email = st.text_input("E-mail", key="login_email",
+                                          placeholder="seu@email.com")
+                    senha = st.text_input("Senha", type="password", key="login_senha",
+                                          placeholder="••••••••")
+                    remember_me = st.checkbox("Manter-me conectado por 30 dias",
+                                              value=True, key="login_remember")
 
-            with tab_login:
-                st.markdown("### 🔐 Entrar na Conta")
-                email = st.text_input("Email", key="login_email", placeholder="seu@email.com")
-                senha = st.text_input("Senha", type="password", key="login_senha")
-                remember_me = st.checkbox("✓ Manter-me conectado", value=False, key="login_remember")
-
-                if st.button("🔓 Entrar", use_container_width=True):
-                    outcome = _login(email, senha, remember=remember_me)
-                    if outcome == LoginResult.OK:
-                        st.success("✅ Login realizado!")
-                        st.rerun()
-                    elif outcome == LoginResult.INVALID:
-                        st.error("❌ E-mail ou senha incorretos.")
-                    else:
-                        st.error("⚠️ Erro ao acessar o banco de dados. Tente novamente em instantes.")
-
-            with tab_cadastro:
-                st.markdown("### Criar Conta")
-                new_email = st.text_input("Email", key="cadastro_email")
-                new_senha = st.text_input("Senha", type="password", key="cadastro_senha")
-                new_senha_conf = st.text_input("Confirmar Senha", type="password", key="cadastro_senha_conf")
-
-                if st.button("✅ Cadastrar", use_container_width=True):
-                    if not new_email or not new_senha:
-                        st.error("Preencha todos os campos.")
-                    elif new_senha != new_senha_conf:
-                        st.error("Senhas não conferem.")
-                    elif len(new_senha) < 6:
-                        st.error("Senha deve ter pelo menos 6 caracteres.")
-                    else:
-                        try:
-                            hash_pwd = _hash_senha(new_senha)
-                            _run("INSERT INTO usuarios (email, senha_hash) VALUES (%s, %s)",
-                                 (new_email, hash_pwd))
-                            st.success("Cadastro realizado! Faça login.")
+                    if st.button("Entrar", type="primary",
+                                 use_container_width=True, key="btn_login"):
+                        outcome = _login(email, senha, remember=remember_me)
+                        if outcome == LoginResult.OK:
+                            st.toast("Login realizado", icon="✓")
                             st.rerun()
-                        except Exception:
-                            st.error("Email já cadastrado.")
+                        elif outcome == LoginResult.INVALID:
+                            st.error("E-mail ou senha incorretos. Verifique e tente de novo.")
+                        else:
+                            st.error("Erro ao acessar o banco de dados. Tente novamente em instantes.")
+
+                with tab_cadastro:
+                    st.markdown(
+                        '<p class="mc-step-title" style="margin:0.5rem 0 0.25rem">'
+                        'Crie sua conta</p>'
+                        '<p class="mc-step-sub" style="margin:0 0 1.25rem">'
+                        'É grátis e leva 30 segundos. Seus cafés ficam guardados '
+                        'só para você.</p>',
+                        unsafe_allow_html=True)
+                    new_email = st.text_input("E-mail", key="cadastro_email",
+                                              placeholder="seu@email.com")
+                    new_senha = st.text_input("Senha (mínimo 6 caracteres)",
+                                              type="password", key="cadastro_senha",
+                                              placeholder="••••••••")
+                    new_senha_conf = st.text_input("Confirmar senha", type="password",
+                                                   key="cadastro_senha_conf",
+                                                   placeholder="••••••••")
+
+                    if st.button("Criar conta", type="primary",
+                                 use_container_width=True, key="btn_cadastrar"):
+                        if not new_email or not new_senha:
+                            st.error("Preencha todos os campos.")
+                        elif new_senha != new_senha_conf:
+                            st.error("As senhas não conferem.")
+                        elif len(new_senha) < 6:
+                            st.error("A senha precisa ter pelo menos 6 caracteres.")
+                        else:
+                            try:
+                                hash_pwd = _hash_senha(new_senha)
+                                _run("INSERT INTO usuarios (email, senha_hash) VALUES (%s, %s)",
+                                     (new_email, hash_pwd))
+                                st.toast("Conta criada com sucesso", icon="✓")
+                                st.success("Pronto! Vá na aba **Entrar** para começar.")
+                            except Exception:
+                                st.error("Esse e-mail já está cadastrado.")
         return
 
     # ── App Logado ──────────────────────────────────────────────────────
-    _show_logo()
-    _show_daily_consumption()
+    # Topbar compacta: logo · email · sair (uma linha só)
+    user_email_display = st.session_state.get('user_email', '')
+    initial = (user_email_display[:1] or "?").upper()
 
-    # Barra de usuário logado
-    col_logo, col_user, col_logout = st.columns([0.72, 0.18, 0.10])
-    with col_user:
-        user_email_display = st.session_state.get('user_email', '')
+    col_brand, col_user, col_logout = st.columns([0.65, 0.25, 0.10], gap="small")
+    with col_brand:
         st.markdown(
-            f'<div style="text-align:right;font-size:12px;color:#B8B0A8;'
-            f'padding-top:10px;font-weight:600;letter-spacing:0.02em">'
-            f'👤 {user_email_display}</div>',
+            '<div class="mc-topbar-brand">'
+            '<div style="font-size:24px;line-height:1">☕</div>'
+            '<div>'
+            '<div class="mc-topbar-brand-text">MATEU COFFEE</div>'
+            '<div class="mc-topbar-brand-tag">Diário de extrações</div>'
+            '</div></div>',
+            unsafe_allow_html=True)
+    with col_user:
+        st.markdown(
+            f'<div class="mc-topbar-user" style="justify-content:flex-end;padding-top:6px">'
+            f'<div class="mc-topbar-user-avatar">{initial}</div>'
+            f'<span>{user_email_display}</span>'
+            f'</div>',
             unsafe_allow_html=True)
     with col_logout:
-        if st.button("🚪 Sair", use_container_width=True, key="btn_logout"):
+        if st.button("Sair", use_container_width=True, key="btn_logout",
+                     help="Sair da conta"):
             _logout()
             st.rerun()
+
+    # Widget de consumo (hoje · semana · média · total)
+    _show_daily_consumption()
 
     tab1, tab2, tab3, tab4 = st.tabs([
         "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ", "  Histórico  "])
@@ -1489,7 +1807,7 @@ def main():
                      local_compra.strip() or None,
                      valor_compra if valor_compra > 0 else None,
                      data_compra, user_id))
-                st.success(f"**{nome}** cadastrado com sucesso.")
+                st.toast(f"☕ {nome} cadastrado com sucesso", icon="✓")
                 st.balloons()
 
     # ── Tab 2 · Nova extração ──────────────────────────────────────────
@@ -1500,7 +1818,10 @@ def main():
         cafes = _fetch("SELECT id, nome, torra FROM coffees WHERE user_id=%s ORDER BY nome",
                        (user_id,), _v=_v())
         if not cafes:
-            st.info("Cadastre um café primeiro na aba Novo Café.")
+            _empty("☕", "Cadastre seu primeiro café",
+                   "Para registrar uma extração você precisa ter pelo menos "
+                   "um café cadastrado na sua biblioteca.",
+                   hint="Vá em 'Novo Café' acima")
         else:
             cafe_map = {f"{c['nome']}  ·  {c['torra']}": c['id'] for c in cafes}
             sel    = st.selectbox("Café", list(cafe_map.keys()))
@@ -1515,9 +1836,9 @@ def main():
             # ═══════════════════════════════════════════════════════════════
             # 1) MOTOR BARISTA — agora no TOPO da aba (acima de tudo)
             # ═══════════════════════════════════════════════════════════════
-            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            st.markdown('<p class="section-label">🧪 Motor Barista — Simulador de Extração</p>',
-                        unsafe_allow_html=True)
+            _step(1, "Motor Barista",
+                  "Simule a extração ideal antes de extrair de verdade. "
+                  "Os parâmetros se ajustam à torra e ao tipo do café selecionado.")
 
             cafe_info = _fetch("SELECT tipo, torra FROM coffees WHERE id=%s AND user_id=%s LIMIT 1",
                               (cid, user_id), _v=_v())
@@ -1537,8 +1858,8 @@ def main():
             # ═══════════════════════════════════════════════════════════════
             # 2) PARÂMETROS DA EXTRAÇÃO
             # ═══════════════════════════════════════════════════════════════
-            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            st.markdown('<p class="section-label">⚙️ Parâmetros</p>', unsafe_allow_html=True)
+            _step(2, "Parâmetros da extração",
+                  "Registre o que você usou na vida real: dose, água, tempo, moedor.")
 
             # Carrega último moedor do usuário (sempre pré-preenchido, editável)
             last_grinder = ""
@@ -1584,10 +1905,11 @@ def main():
             ey = m.get("ey", 0.0)
 
             # ═══════════════════════════════════════════════════════════════
-            # 4) ANÁLISE EM TEMPO REAL
+            # 3) ANÁLISE EM TEMPO REAL
             # ═══════════════════════════════════════════════════════════════
-            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            with st.expander("📊 ANÁLISE EM TEMPO REAL", expanded=True):
+            _step(3, "Análise em tempo real",
+                  "Brew ratio, EY e fluxo calculados automaticamente conforme você muda os parâmetros.")
+            with st.expander("Ver detalhes da análise", expanded=True):
                 mc1, mc2, mc3, mc4 = st.columns(4)
                 mc1.metric("Brew Ratio",       m.get("ratio_text", "—"))
                 mc2.metric("Extraction Yield", f"{ey:.2f}%" if ey > 0 else "—",
@@ -1608,11 +1930,10 @@ def main():
                         _img(_b64(foto_can), w=210)
 
             # ═══════════════════════════════════════════════════════════════
-            # 5) CLASSIFICAÇÃO DA EXTRAÇÃO (estrelas)
+            # 4) CLASSIFICAÇÃO SENSORIAL
             # ═══════════════════════════════════════════════════════════════
-            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            st.markdown('<p class="section-label">⭐ Classificação da Extração</p>',
-                        unsafe_allow_html=True)
+            _step(4, "Classificação sensorial",
+                  "Avalie cada dimensão de 1 a 5 estrelas. A Nota Final é o destaque do registro.")
 
             STAR_OPTS = [1, 2, 3, 4, 5]
             col_s1, col_s2, col_s3, col_s4 = st.columns(4, gap="large")
@@ -1648,9 +1969,10 @@ def main():
                                          key="balanco_ideal")
 
             # ═══════════════════════════════════════════════════════════════
-            # 6) REGISTRAR
+            # 5) REGISTRAR
             # ═══════════════════════════════════════════════════════════════
-            st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+            _step(5, "Registrar extração",
+                  "Salve esta extração no seu histórico para acompanhar a evolução.")
             if st.button("✓ REGISTRAR EXTRAÇÃO", type="primary", use_container_width=True):
                 data_hora = datetime.combine(data_ext, hora_ext)
                 _run("""INSERT INTO extracoes
@@ -1669,7 +1991,8 @@ def main():
                 if user_id and moedor:
                     _run("UPDATE usuarios SET last_grinder=%s, last_clicks=%s WHERE id=%s",
                          (moedor, clicks, user_id))
-                st.success("Extração registrada!")
+                st.toast("✓ Extração registrada com sucesso", icon="☕")
+                st.balloons()
                 st.rerun()
 
     # ── Tab 3 · Meus cafés ────────────────────────────────────────────
@@ -1694,7 +2017,10 @@ def main():
             extracts_by_coffee.setdefault(ex['coffee_id'], []).append(ex)
 
         if not cafes:
-            st.info("Nenhum café cadastrado ainda.")
+            _empty("📦", "Sua biblioteca está vazia",
+                   "Adicione cafés à sua biblioteca para começar a registrar "
+                   "extrações e acompanhar a evolução do seu paladar.",
+                   hint="Comece em 'Novo Café'")
         else:
             for c in cafes:
                 with st.expander(f"{c['nome']}  ·  {c['torra']}  ·  {_stars(c['classificacao'] or 0)}"):
@@ -1810,7 +2136,7 @@ def main():
                                       ed_dt_compra,
                                       c['id'], user_id))
                                 st.session_state.pop(f"edit_c_{c['id']}", None)
-                                st.success("Café atualizado!")
+                                st.toast("Café atualizado", icon="✓")
                                 st.rerun()
                         with col_cancel:
                             if st.button("← Cancelar", key=f"ec_cancel_{c['id']}",
@@ -1826,7 +2152,15 @@ def main():
                     extracts = extracts_by_coffee.get(c["id"], [])
 
                     if not extracts:
-                        st.info("Nenhuma extração registrada para este café ainda.")
+                        st.markdown(
+                            '<div style="text-align:center;padding:1.5rem;'
+                            'background:#141414;border:1px dashed #3A3A3A;'
+                            'border-radius:10px;color:#8A8278;font-size:13px;'
+                            'font-weight:500">'
+                            '☕ Ainda sem extrações deste café — vá em '
+                            '<strong style="color:#E8722E">Nova Extração</strong> '
+                            'para começar.</div>',
+                            unsafe_allow_html=True)
                     else:
                         for e in extracts:
                             ex_header = (f"📅 {e['data'].strftime('%d/%m/%Y')}  ·  "
@@ -1852,7 +2186,7 @@ def main():
                                         "UPDATE extracoes SET foto_caneca=%s WHERE id=%s AND user_id=%s",
                                         (_b64(nova_foto), e["id"], user_id)
                                     )
-                                    st.success("Foto adicionada!")
+                                    st.toast("Foto adicionada", icon="📸")
                                     st.rerun()
 
                             # Detalhes da extração
@@ -1921,7 +2255,7 @@ def main():
                                         "UPDATE extracoes SET gramas=%s, agua_alvo=%s, tempo_extracao=%s, classificacao=%s, notas=%s WHERE id=%s AND user_id=%s",
                                         (ed_gramas, ed_agua, ed_tempo, ed_class, ed_notas, e['id'], user_id)
                                     )
-                                    st.success("Extração atualizada!")
+                                    st.toast("Extração atualizada", icon="✓")
                                     st.session_state[f"edit_ext_{e['id']}"] = False
                                     st.rerun()
 
@@ -1951,13 +2285,25 @@ def main():
             ORDER BY e.data DESC, e.created_at DESC LIMIT 200""", (user_id,), _v=_v())
 
         if not rows:
-            st.info("Nenhuma extração registrada ainda.")
+            _empty("📈", "Seu histórico vai aparecer aqui",
+                   "Cada extração registrada aparece aqui em ordem cronológica, "
+                   "com todos os parâmetros e classificações para você revisar "
+                   "e editar quando quiser.",
+                   hint="Comece em 'Nova Extração'")
         else:
+            # Mostra contagem como subheader
+            st.markdown(
+                f'<p style="color:#8A8278;font-size:12px;margin:-0.5rem 0 1rem;'
+                f'font-weight:600">{len(rows)} extrações registradas — exibindo '
+                f'as 200 mais recentes</p>',
+                unsafe_allow_html=True)
+
             for r in rows:
-                # Monta header com classificações
-                stars_display = f"⭐{r.get('nota_final_stars', r['classificacao'] or 0)}" if (r.get('nota_final_stars') or r['classificacao']) else ""
-                header = (f"{r['cafe_nome']}  ·  {r['metodo']}  ·  "
-                          f"{r['data'].strftime('%d/%m/%Y')}  {stars_display}")
+                # Monta header com data relativa + classificações
+                nota = r.get('nota_final_stars') or r['classificacao'] or 0
+                stars_str = ("  ·  " + _stars(int(nota))) if nota else ""
+                when = _relative_date(r['data'])
+                header = (f"{when}  ·  {r['cafe_nome']}  ·  {r['metodo']}{stars_str}")
                 with st.expander(header):
                     ra, rb, rc = st.columns([1, 2.2, 1.4], gap="large")
                     with ra:
@@ -2115,7 +2461,7 @@ def main():
                                   ed_doc, ed_nota, ed_nota,
                                   r['id'], user_id))
                             st.session_state.pop(f"editing_e_{r['id']}", None)
-                            st.success("Alterações salvas!")
+                            st.toast("Alterações salvas", icon="✓")
                             st.rerun()
 
 if __name__ == "__main__":
