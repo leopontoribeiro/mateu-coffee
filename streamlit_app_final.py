@@ -7,10 +7,12 @@ import base64
 import os
 import json
 from datetime import date, datetime, timedelta
+from io import BytesIO
 import hashlib
 import secrets
 from typing import Optional
 import anthropic
+from PIL import Image
 
 # ── Page config ────────────────────────────────────────────────────────
 st.set_page_config(
@@ -882,17 +884,67 @@ def _init_db() -> None:
         cur.close()
 
 # ── Helpers ────────────────────────────────────────────────────────────
+def _compress_image_bytes(raw_bytes: bytes, max_width: int = 1200,
+                          quality: int = 80) -> str:
+    """Resize + re-encode JPEG e retorna base64.
+    Mantém o original em caso de falha (fallback)."""
+    try:
+        img = Image.open(BytesIO(raw_bytes))
+        # JPEG não aceita RGBA/P/LA
+        if img.mode in ("RGBA", "P", "LA"):
+            img = img.convert("RGB")
+        # Aplica orientação EXIF (foto de celular costuma vir rotacionada)
+        try:
+            from PIL import ImageOps
+            img = ImageOps.exif_transpose(img)
+        except Exception:
+            pass
+        if img.width > max_width:
+            new_h = int(img.height * max_width / img.width)
+            img = img.resize((max_width, new_h), Image.LANCZOS)
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return base64.b64encode(raw_bytes).decode()
+
 def _b64(f) -> Optional[str]:  # f: UploadedFile | None
-    if not f: return None
-    d = f.read(); f.seek(0)
-    return base64.b64encode(d).decode()
+    """Lê o arquivo enviado, comprime e devolve base64.
+
+    Foto de celular típica: 3-5 MB → resultado ~120-200 KB.
+    Sem isso, base64 gigante estoura o WebSocket do Streamlit
+    (RangeError: index out of range)."""
+    if not f:
+        return None
+    raw = f.read()
+    f.seek(0)
+    return _compress_image_bytes(raw, max_width=1200, quality=80)
+
+@st.cache_data(show_spinner=False, max_entries=300)
+def _thumbnail(b64_in: Optional[str], max_width: int = 400) -> Optional[str]:
+    """Gera thumbnail a partir de base64 existente (cacheado por hash).
+
+    Indispensável para fotos antigas salvas no banco SEM compressão,
+    que podem ter vários MB cada. Cacheamos para não reprocessar."""
+    if not b64_in:
+        return None
+    try:
+        raw = base64.b64decode(b64_in)
+        return _compress_image_bytes(raw, max_width=max_width, quality=70)
+    except Exception:
+        return b64_in
 
 def _img(b64: Optional[str], w: int = 170) -> None:
-    if b64:
-        st.markdown(
-            f'<img src="data:image/jpeg;base64,{b64}" width="{w}" '
-            f'style="border-radius:10px;margin-top:4px;display:block;">',
-            unsafe_allow_html=True)
+    """Renderiza imagem como <img> embutido. Usa thumbnail para
+    manter a mensagem WebSocket pequena (~30-80 KB por imagem)."""
+    if not b64:
+        return
+    # 2x para telas Retina, com limite máximo
+    thumb = _thumbnail(b64, max_width=min(max(w * 2, 320), 800))
+    st.markdown(
+        f'<img src="data:image/jpeg;base64,{thumb}" width="{w}" '
+        f'style="border-radius:10px;margin-top:4px;display:block;">',
+        unsafe_allow_html=True)
 
 def _stars(n: int) -> str:
     n = int(n or 0)

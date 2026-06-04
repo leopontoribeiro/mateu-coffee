@@ -12,6 +12,10 @@ toolbarMode = "viewer"
 
 [server]
 headless = true
+# Limites de WebSocket e upload (RangeError fix)
+maxMessageSize = 200
+maxUploadSize = 50
+enableXsrfProtection = true
 
 [browser]
 gatherUsageStats = false
