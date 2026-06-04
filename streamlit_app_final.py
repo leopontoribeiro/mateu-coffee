@@ -2851,6 +2851,22 @@ def main():
                             ed_notas = st.text_area("Notas de Sabor / Torra",
                                                     value=c['notas'] or "", height=108,
                                                     key=f"ec_notas_{c['id']}")
+                        # Seção de foto de embalagem
+                        st.markdown("**Foto da Embalagem**")
+                        ef_col1, ef_col2 = st.columns([1, 2], gap="large")
+                        with ef_col1:
+                            if c.get("foto_embalagem"):
+                                _img(c["foto_embalagem"], w=130)
+                            else:
+                                st.markdown(_ph(), unsafe_allow_html=True)
+                        with ef_col2:
+                            ed_foto_emb_f = st.file_uploader(
+                                "Substituir / Adicionar foto da embalagem",
+                                type=["jpg","jpeg","png"],
+                                key=f"ec_foto_{c['id']}")
+                        # Mantém a foto atual se não fizer upload de nova
+                        ed_foto_emb_b64 = _b64(ed_foto_emb_f) if ed_foto_emb_f else c.get("foto_embalagem")
+
                         # Seção de compra
                         st.markdown("**Compra**")
                         cp_a, cp_b, cp_c = st.columns(3)
@@ -2879,7 +2895,8 @@ def main():
                                             tipo=%s, torra=%s, tamanho_pacote=%s,
                                             data_torra=%s, classificacao=%s, notas=%s,
                                             local_compra=%s, valor_compra=%s,
-                                            data_compra=%s, intensidade=%s
+                                            data_compra=%s, intensidade=%s,
+                                            foto_embalagem=%s
                                             WHERE id=%s AND user_id=%s""",
                                          (ed_nome.strip(), ed_classif, ed_regiao,
                                           ed_tipo, ed_torra, ed_tamanho,
@@ -2889,6 +2906,7 @@ def main():
                                           ed_valor if ed_valor > 0 else None,
                                           ed_dt_compra,
                                           ed_intensidade,
+                                          ed_foto_emb_b64,
                                           c['id'], user_id))
                                     st.session_state.pop(f"edit_c_{c['id']}", None)
                                     st.toast("Café atualizado", icon="✅")
@@ -2933,18 +2951,25 @@ def main():
                                 else:
                                     st.markdown(_ph(), unsafe_allow_html=True)
                                 # Upload adicional de fotos
+                                # Usamos flag no session_state para evitar loop:
+                                # file_uploader mantém o arquivo após rerun,
+                                # então sem o flag salvaria N vezes.
                                 nova_foto = st.file_uploader(
                                     "Adicionar foto",
                                     type=["jpg","jpeg","png"],
                                     key=f"add_foto_{e['id']}"
                                 )
+                                _fkey = f"_foto_done_{e['id']}"
                                 if nova_foto:
-                                    _run(
-                                        "UPDATE extracoes SET foto_caneca=%s WHERE id=%s AND user_id=%s",
-                                        (_b64(nova_foto), e["id"], user_id)
-                                    )
-                                    st.toast("Foto adicionada", icon="📸")
-                                    st.rerun()
+                                    if not st.session_state.get(_fkey):
+                                        _run(
+                                            "UPDATE extracoes SET foto_caneca=%s WHERE id=%s AND user_id=%s",
+                                            (_b64(nova_foto), e["id"], user_id)
+                                        )
+                                        st.session_state[_fkey] = True
+                                        st.toast("Foto adicionada", icon="📸")
+                                else:
+                                    st.session_state.pop(_fkey, None)
 
                             # Detalhes da extração
                             with ex_col2:
