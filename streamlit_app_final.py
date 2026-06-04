@@ -1194,6 +1194,11 @@ def _check_remember_token() -> bool:
     1. Tenta ler cookie do browser (persistente, sobrevive a fechar a aba)
     2. Fallback para st.session_state (caso de SSR/preview rápido)
     3. Valida token no DB e respeita data de expiração
+
+    Nota: stx.CookieManager é assíncrono — na PRIMEIRA renderização o
+    cookie ainda não chegou do browser via JS. O manager auto-dispara um
+    rerun quando os cookies estão prontos, então permitimos UMA tentativa
+    extra antes de marcar como "sem token".
     """
     if st.session_state.get('_token_checked'):
         return False
@@ -1209,6 +1214,14 @@ def _check_remember_token() -> bool:
         token = st.session_state.get('remember_token')
 
     if not token:
+        # Primeira tentativa: o cookie manager pode não ter carregado ainda.
+        # Ele dispara um rerun automático via JS quando os cookies chegam.
+        # Incrementamos o contador e só desistimos após 2 tentativas sem token.
+        attempts = st.session_state.get('_cookie_attempts', 0)
+        st.session_state['_cookie_attempts'] = attempts + 1
+        if attempts == 0:
+            # Deixa o auto-rerun do cookie manager acontecer
+            return False
         st.session_state['_token_checked'] = True
         return False
 
@@ -1251,6 +1264,7 @@ def _logout() -> None:
     st.session_state.pop('user_email', None)
     st.session_state.pop('remember_token', None)
     st.session_state.pop('_token_checked', None)
+    st.session_state.pop('_cookie_attempts', None)
 
 def _init_db() -> None:
     if st.session_state.get("_db_ready"):
@@ -1300,7 +1314,25 @@ def _init_db() -> None:
                 ADD COLUMN IF NOT EXISTS local_compra      TEXT  DEFAULT '',
                 ADD COLUMN IF NOT EXISTS valor_compra      FLOAT DEFAULT 0,
                 ADD COLUMN IF NOT EXISTS data_compra       DATE,
-                ADD COLUMN IF NOT EXISTS classificacao_cafe TEXT DEFAULT '';
+                ADD COLUMN IF NOT EXISTS classificacao_cafe TEXT DEFAULT '',
+                ADD COLUMN IF NOT EXISTS intensidade       INTEGER DEFAULT 5;
+        """)
+        # Tabela de cápsulas
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS capsulas (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES usuarios(id),
+                nome TEXT NOT NULL,
+                marca TEXT DEFAULT '',
+                maquina TEXT NOT NULL DEFAULT 'Nespresso',
+                intensidade INTEGER DEFAULT 5,
+                quantidade INTEGER DEFAULT 10,
+                aluminio BOOLEAN DEFAULT FALSE,
+                volume_ml INTEGER DEFAULT 40,
+                foto_embalagem TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_capsulas_user_id ON capsulas(user_id);
         """)
         cur.execute("""
             ALTER TABLE usuarios
@@ -2326,7 +2358,7 @@ def main():
                                  use_container_width=True, key="btn_login"):
                         outcome = _login(email, senha, remember=remember_me)
                         if outcome == LoginResult.OK:
-                            st.toast("Login realizado", icon="✓")
+                            st.toast("Login realizado", icon="✅")
                             st.rerun()
                         elif outcome == LoginResult.INVALID:
                             st.error("E-mail ou senha incorretos. Verifique e tente de novo.")
@@ -2363,7 +2395,7 @@ def main():
                                 hash_pwd = _hash_senha(new_senha)
                                 _run("INSERT INTO usuarios (email, senha_hash) VALUES (%s, %s)",
                                      (new_email, hash_pwd))
-                                st.toast("Conta criada com sucesso", icon="✓")
+                                st.toast("Conta criada com sucesso", icon="✅")
                                 st.success("Pronto! Vá na aba **Entrar** para começar.")
                             except Exception:
                                 st.error("Esse e-mail já está cadastrado.")
@@ -2408,9 +2440,9 @@ def main():
     # Widget de consumo (hoje · semana · média · total)
     _show_daily_consumption()
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ",
-        "  Histórico  ", "  📖 Receitas  "])
+        "  Histórico  ", "  📖 Receitas  ", "  💊 Cápsulas  "])
 
     user_id = st.session_state['user_id']
 
@@ -2436,7 +2468,10 @@ def main():
         c1, c2 = st.columns(2, gap="large")
 
         with c1:
-            data_cad = st.date_input("Data de Cadastro", value=date.today(), format="DD/MM/YYYY")
+            intensidade = st.select_slider(
+                "Intensidade", options=list(range(1, 13)), value=5,
+                format_func=lambda x: f"{x}/12", key="inp_intensidade",
+                help="Nível de intensidade do café (escala 1–12)")
             nome     = st.text_input("Nome do Café *", key="inp_nome",
                                      placeholder="Ex: Ethiopian Yirgacheffe")
             classificacao_cafe = st.selectbox(
@@ -2494,14 +2529,15 @@ def main():
                 _run("""INSERT INTO coffees
                     (data_cadastro,nome,tipo,torra,notas,classificacao,
                      classificacao_cafe,regiao,data_torra,tamanho_pacote,
-                     foto_embalagem,local_compra,valor_compra,data_compra,user_id)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                    (data_cad, nome.strip(), tipo, torra, notas, class_c,
+                     foto_embalagem,local_compra,valor_compra,data_compra,
+                     intensidade,user_id)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (date.today(), nome.strip(), tipo, torra, notas, class_c,
                      classificacao_cafe, regiao, data_tort, tamanho, foto_emb_b64,
                      local_compra.strip() or None,
                      valor_compra if valor_compra > 0 else None,
-                     data_compra, user_id))
-                st.toast(f"☕ {nome} cadastrado com sucesso", icon="✓")
+                     data_compra, intensidade, user_id))
+                st.toast(f"☕ {nome} cadastrado com sucesso", icon="✅")
                 st.balloons()
 
     # ── Tab 2 · Nova extração ──────────────────────────────────────────
@@ -2729,9 +2765,10 @@ def main():
                                 _tag(f"{c['tamanho_pacote']}g") +
                                 (_tag("Torra " + c['data_torra'].strftime('%d/%m/%Y'), True)
                                  if c['data_torra'] else ""))
+                        intens = c.get('intensidade') or 0
                         info = (_irow("Classificação", c.get('classificacao_cafe') or "—") +
                                 _irow("Região",        c['regiao']  or "—") +
-                                _irow("Cadastro",      c['data_cadastro'].strftime('%d/%m/%Y')))
+                                _irow("Intensidade",   f"{intens}/12" if intens else "—"))
                         # Info de compra (se preenchida)
                         if c.get("local_compra"):
                             info += _irow("Comprado em", c["local_compra"])
@@ -2761,7 +2798,6 @@ def main():
                         with ec1:
                             ed_nome = st.text_input("Nome do Café", value=c['nome'] or "",
                                                     key=f"ec_nome_{c['id']}")
-                            # Pré-seleciona classificação se já existir
                             try:
                                 _ci = CLASSIFICACOES_CAFE.index(c.get('classificacao_cafe') or CLASSIFICACOES_CAFE[2])
                             except ValueError:
@@ -2778,18 +2814,28 @@ def main():
                                                   index=["Clara","Média","Escura"].index(c['torra']) if c['torra'] in ["Clara","Média","Escura"] else 1,
                                                   horizontal=True, key=f"ec_torra_{c['id']}")
                         with ec2:
+                            _intens_val = int(c.get('intensidade') or 5)
+                            _intens_val = max(1, min(12, _intens_val))
+                            ed_intensidade = st.select_slider(
+                                "Intensidade", options=list(range(1, 13)),
+                                value=_intens_val,
+                                format_func=lambda x: f"{x}/12",
+                                key=f"ec_intens_{c['id']}")
                             ed_tamanho = st.radio("Pacote", [250, 500, 1000],
                                                   index=[250,500,1000].index(c['tamanho_pacote']) if c['tamanho_pacote'] in [250,500,1000] else 0,
                                                   horizontal=True, format_func=lambda x: f"{x}g",
                                                   key=f"ec_tam_{c['id']}")
+                            _torra_dt_val = c['data_torra'] if c['data_torra'] else None
                             ed_data_torra = st.date_input("Data da Torra",
-                                                          value=c['data_torra'],
+                                                          value=_torra_dt_val,
                                                           format="DD/MM/YYYY",
                                                           key=f"ec_torra_dt_{c['id']}")
+                            _class_val = int(c['classificacao'] or 3)
+                            _class_val = max(1, min(5, _class_val)) if _class_val else 3
                             ed_class_estr = st.select_slider("Classificação geral",
                                                              options=[1,2,3,4,5],
                                                              format_func=_stars,
-                                                             value=c['classificacao'] or 3,
+                                                             value=_class_val,
                                                              key=f"ec_class_{c['id']}")
                             ed_notas = st.text_area("Notas de Sabor / Torra",
                                                     value=c['notas'] or "", height=108,
@@ -2816,22 +2862,28 @@ def main():
                         with col_save:
                             if st.button("💾 Salvar alterações", type="primary",
                                          key=f"ec_save_{c['id']}", use_container_width=True):
-                                _run("""UPDATE coffees SET
-                                        nome=%s, classificacao_cafe=%s, regiao=%s,
-                                        tipo=%s, torra=%s, tamanho_pacote=%s,
-                                        data_torra=%s, classificacao=%s, notas=%s,
-                                        local_compra=%s, valor_compra=%s, data_compra=%s
-                                        WHERE id=%s AND user_id=%s""",
-                                     (ed_nome.strip(), ed_classif, ed_regiao,
-                                      ed_tipo, ed_torra, ed_tamanho,
-                                      ed_data_torra, ed_class_estr, ed_notas,
-                                      ed_local.strip() or None,
-                                      ed_valor if ed_valor > 0 else None,
-                                      ed_dt_compra,
-                                      c['id'], user_id))
-                                st.session_state.pop(f"edit_c_{c['id']}", None)
-                                st.toast("Café atualizado", icon="✓")
-                                st.rerun()
+                                try:
+                                    _run("""UPDATE coffees SET
+                                            nome=%s, classificacao_cafe=%s, regiao=%s,
+                                            tipo=%s, torra=%s, tamanho_pacote=%s,
+                                            data_torra=%s, classificacao=%s, notas=%s,
+                                            local_compra=%s, valor_compra=%s,
+                                            data_compra=%s, intensidade=%s
+                                            WHERE id=%s AND user_id=%s""",
+                                         (ed_nome.strip(), ed_classif, ed_regiao,
+                                          ed_tipo, ed_torra, ed_tamanho,
+                                          ed_data_torra if ed_data_torra else None,
+                                          ed_class_estr, ed_notas,
+                                          ed_local.strip() or None,
+                                          ed_valor if ed_valor > 0 else None,
+                                          ed_dt_compra,
+                                          ed_intensidade,
+                                          c['id'], user_id))
+                                    st.session_state.pop(f"edit_c_{c['id']}", None)
+                                    st.toast("Café atualizado", icon="✅")
+                                    st.rerun()
+                                except Exception as _save_err:
+                                    st.error(f"Erro ao salvar: {_save_err}")
                         with col_cancel:
                             if st.button("← Cancelar", key=f"ec_cancel_{c['id']}",
                                          use_container_width=True):
@@ -2949,7 +3001,7 @@ def main():
                                         "UPDATE extracoes SET gramas=%s, agua_alvo=%s, tempo_extracao=%s, classificacao=%s, notas=%s WHERE id=%s AND user_id=%s",
                                         (ed_gramas, ed_agua, ed_tempo, ed_class, ed_notas, e['id'], user_id)
                                     )
-                                    st.toast("Extração atualizada", icon="✓")
+                                    st.toast("Extração atualizada", icon="✅")
                                     st.session_state[f"edit_ext_{e['id']}"] = False
                                     st.rerun()
 
@@ -3155,7 +3207,7 @@ def main():
                                   ed_doc, ed_nota, ed_nota,
                                   r['id'], user_id))
                             st.session_state.pop(f"editing_e_{r['id']}", None)
-                            st.toast("Alterações salvas", icon="✓")
+                            st.toast("Alterações salvas", icon="✅")
                             st.rerun()
 
     # ── Tab 5 · Biblioteca de Receitas ────────────────────────────────
@@ -3214,6 +3266,193 @@ def main():
                 'ser ajustados ao seu paladar. Use-as como ponto de partida — '
                 'depois registre suas próprias variações em <strong>Nova Extração</strong>.</p>',
                 unsafe_allow_html=True)
+
+    # ── Tab 6 · Cápsulas ─────────────────────────────────────────────
+    with tab6:
+        MAQUINAS_CAPSULAS = ["Nespresso", "Dolce Gusto", "Três Corações", "DeltaQ", "Outra"]
+        VOLUMES_CAPSULAS  = {25: "Ristretto · 25ml", 40: "Espresso · 40ml", 110: "Lungo · 110ml"}
+
+        st.markdown('<p class="section-label">Cadastrar Cápsula</p>', unsafe_allow_html=True)
+
+        # Aplica resultado da análise de IA nas cápsulas
+        if "ai_cap_result" in st.session_state:
+            rc = st.session_state.pop("ai_cap_result")
+            if rc.get("nome"):   st.session_state["cap_nome"]  = rc["nome"]
+            if rc.get("marca"):  st.session_state["cap_marca"] = rc["marca"]
+
+        ca1, ca2 = st.columns(2, gap="large")
+        with ca1:
+            cap_nome     = st.text_input("Nome da Cápsula *", key="cap_nome",
+                                         placeholder="Ex: Dharkan, Volluto, Lungo Intenso")
+            cap_marca    = st.text_input("Marca", key="cap_marca",
+                                         placeholder="Ex: Nespresso, Dolce Gusto, 3 Corações")
+            cap_maquina  = st.selectbox("Tipo de Máquina", MAQUINAS_CAPSULAS, key="cap_maquina")
+            cap_intens   = st.select_slider("Intensidade", options=list(range(1, 13)),
+                                            value=8, format_func=lambda x: f"{x}/12",
+                                            key="cap_intensidade")
+        with ca2:
+            cap_qtd      = st.number_input("Quantidade de Cápsulas", min_value=1,
+                                           max_value=200, value=10, step=1, key="cap_qtd")
+            cap_aluminio = st.radio("Cápsula de Alumínio?", ["Sim", "Não"],
+                                    horizontal=True, key="cap_aluminio")
+            cap_volume   = st.radio("Volume",
+                                    list(VOLUMES_CAPSULAS.keys()),
+                                    format_func=lambda x: VOLUMES_CAPSULAS[x],
+                                    horizontal=True, key="cap_volume")
+            cap_foto_f   = st.file_uploader("Foto da Embalagem",
+                                            type=["jpg","jpeg","png"], key="cap_foto")
+            cap_foto_b64 = _b64(cap_foto_f) if cap_foto_f else None
+            if cap_foto_b64:
+                _img(cap_foto_b64, w=160)
+                if st.button("🔍 Analisar Embalagem com IA", key="btn_ai_cap",
+                             use_container_width=True):
+                    with st.spinner("Lendo a embalagem..."):
+                        try:
+                            rc = _analisar_embalagem(cap_foto_b64)
+                            st.session_state["ai_cap_result"] = rc
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro na análise: {e}")
+
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        if st.button("Salvar Cápsula", type="primary", use_container_width=True, key="btn_save_cap"):
+            if not cap_nome.strip():
+                st.error("Nome da cápsula é obrigatório.")
+            else:
+                try:
+                    _run("""INSERT INTO capsulas
+                            (user_id, nome, marca, maquina, intensidade, quantidade,
+                             aluminio, volume_ml, foto_embalagem)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                         (user_id, cap_nome.strip(), cap_marca.strip() or None,
+                          cap_maquina, cap_intens, int(cap_qtd),
+                          cap_aluminio == "Sim", int(cap_volume), cap_foto_b64))
+                    st.toast(f"💊 {cap_nome} cadastrada com sucesso", icon="✅")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"Erro ao salvar cápsula: {e}")
+
+        # ── Lista de cápsulas cadastradas ─────────────────────────────
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+        st.markdown('<p class="section-label">Minhas Cápsulas</p>', unsafe_allow_html=True)
+
+        caps = _fetch("""SELECT * FROM capsulas WHERE user_id=%s
+                         ORDER BY created_at DESC""", (user_id,), _v=_v())
+
+        if not caps:
+            _empty("💊", "Nenhuma cápsula cadastrada ainda",
+                   "Cadastre suas cápsulas acima para acompanhar o estoque e as preferências.",
+                   hint="Preencha o formulário acima")
+        else:
+            st.markdown(
+                f'<p style="color:#8A8278;font-size:12px;margin:-0.5rem 0 1rem;'
+                f'font-weight:600">{len(caps)} cápsula{"s" if len(caps) != 1 else ""} cadastrada{"s" if len(caps) != 1 else ""}</p>',
+                unsafe_allow_html=True)
+
+            for cap in caps:
+                alum_label = "Alumínio ✓" if cap.get("aluminio") else "Não alumínio"
+                vol_label  = VOLUMES_CAPSULAS.get(cap.get("volume_ml", 40), "—")
+                header_cap = (f"💊 {cap['nome']}"
+                              f"{'  ·  ' + cap['marca'] if cap.get('marca') else ''}"
+                              f"  ·  {cap['maquina']}  ·  {cap['intensidade']}/12")
+                with st.expander(header_cap):
+                    cc1, cc2, cc3 = st.columns([1, 2.2, 1.4], gap="large")
+                    with cc1:
+                        if cap.get("foto_embalagem"):
+                            _img(cap["foto_embalagem"], w=150)
+                        else:
+                            st.markdown(_ph(), unsafe_allow_html=True)
+                    with cc2:
+                        c_info = (_irow("Máquina",    cap['maquina']) +
+                                  _irow("Intensidade", f"{cap['intensidade']}/12") +
+                                  _irow("Volume",      vol_label) +
+                                  _irow("Alumínio",    alum_label))
+                        if cap.get("marca"):
+                            c_info = _irow("Marca", cap['marca']) + c_info
+                        st.markdown(c_info, unsafe_allow_html=True)
+                    with cc3:
+                        st.metric("Estoque", f"{cap['quantidade']} un.")
+                        st.markdown(
+                            f'<p style="font-size:11px;color:#8A8278;margin:4px 0 0">'
+                            f'Cadastrado em {cap["created_at"].strftime("%d/%m/%Y")}</p>',
+                            unsafe_allow_html=True)
+
+                    st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
+                    # Form de edição
+                    if st.button("✏️ Editar cápsula", key=f"cap_edit_btn_{cap['id']}"):
+                        st.session_state[f"edit_cap_{cap['id']}"] = True
+
+                    if st.session_state.get(f"edit_cap_{cap['id']}"):
+                        st.markdown('<p class="section-label">Editar Cápsula</p>', unsafe_allow_html=True)
+                        ce1, ce2 = st.columns(2, gap="large")
+                        with ce1:
+                            edc_nome   = st.text_input("Nome", value=cap['nome'] or "",
+                                                       key=f"cedit_nome_{cap['id']}")
+                            edc_marca  = st.text_input("Marca", value=cap.get('marca') or "",
+                                                       key=f"cedit_marca_{cap['id']}")
+                            _mi = MAQUINAS_CAPSULAS.index(cap['maquina']) if cap['maquina'] in MAQUINAS_CAPSULAS else 0
+                            edc_maq    = st.selectbox("Máquina", MAQUINAS_CAPSULAS, index=_mi,
+                                                      key=f"cedit_maq_{cap['id']}")
+                        with ce2:
+                            _ci2 = max(1, min(12, int(cap.get('intensidade') or 8)))
+                            edc_intens = st.select_slider("Intensidade", options=list(range(1,13)),
+                                                          value=_ci2, format_func=lambda x: f"{x}/12",
+                                                          key=f"cedit_intens_{cap['id']}")
+                            edc_qtd    = st.number_input("Quantidade", min_value=0,
+                                                         value=int(cap.get('quantidade') or 10),
+                                                         step=1, key=f"cedit_qtd_{cap['id']}")
+                            edc_alum   = st.radio("Alumínio?", ["Sim","Não"],
+                                                  index=0 if cap.get("aluminio") else 1,
+                                                  horizontal=True, key=f"cedit_alum_{cap['id']}")
+                            _vol_keys = list(VOLUMES_CAPSULAS.keys())
+                            _vol_idx  = _vol_keys.index(cap.get("volume_ml", 40)) if cap.get("volume_ml", 40) in _vol_keys else 1
+                            edc_vol    = st.radio("Volume", _vol_keys,
+                                                  format_func=lambda x: VOLUMES_CAPSULAS[x],
+                                                  index=_vol_idx, horizontal=True,
+                                                  key=f"cedit_vol_{cap['id']}")
+
+                        cse1, cse2 = st.columns(2)
+                        with cse1:
+                            if st.button("💾 Salvar", type="primary",
+                                         key=f"cap_save_{cap['id']}", use_container_width=True):
+                                try:
+                                    _run("""UPDATE capsulas SET
+                                            nome=%s, marca=%s, maquina=%s, intensidade=%s,
+                                            quantidade=%s, aluminio=%s, volume_ml=%s
+                                            WHERE id=%s AND user_id=%s""",
+                                         (edc_nome.strip(), edc_marca.strip() or None,
+                                          edc_maq, edc_intens, int(edc_qtd),
+                                          edc_alum == "Sim", int(edc_vol),
+                                          cap['id'], user_id))
+                                    st.session_state.pop(f"edit_cap_{cap['id']}", None)
+                                    st.toast("Cápsula atualizada", icon="✅")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Erro ao salvar: {e}")
+                        with cse2:
+                            if st.button("← Cancelar", key=f"cap_cancel_{cap['id']}",
+                                         use_container_width=True):
+                                st.session_state.pop(f"edit_cap_{cap['id']}", None)
+                                st.rerun()
+
+                    # Deletar
+                    if st.button("🗑️ Remover cápsula", key=f"cap_del_{cap['id']}"):
+                        st.session_state[f"confirm_del_cap_{cap['id']}"] = True
+                    if st.session_state.get(f"confirm_del_cap_{cap['id']}"):
+                        st.warning(f"Remover **{cap['nome']}** definitivamente?")
+                        cyd, cnd = st.columns(2)
+                        with cyd:
+                            if st.button("✓ Confirmar", type="primary",
+                                         key=f"cap_del_ok_{cap['id']}"):
+                                _run("DELETE FROM capsulas WHERE id=%s AND user_id=%s",
+                                     (cap['id'], user_id))
+                                st.rerun()
+                        with cnd:
+                            if st.button("← Cancelar", key=f"cap_del_cancel_{cap['id']}"):
+                                st.session_state.pop(f"confirm_del_cap_{cap['id']}", None)
+                                st.rerun()
+
 
 if __name__ == "__main__":
     main()
