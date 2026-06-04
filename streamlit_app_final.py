@@ -31,18 +31,27 @@ def _load_mobile_css() -> None:
         with open(css_path) as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-def _load_logo(max_width: int = 300) -> bool:
-    """Carrega logo com fallback para emoji."""
+def _load_logo(max_width: int = 380) -> bool:
+    """Renderiza o logo na tela de login usando o PNG oficial da marca.
+
+    Preferência absoluta: assets/mateu_coffee_logo.png (a marca real).
+    Fallback (apenas se o arquivo sumir): wordmark serifado.
+    """
     try:
-        logo_path = os.path.join(_DIR, "assets", "mateu_coffee_logo.png")
-        if os.path.exists(logo_path):
-            img = st.image(logo_path, use_container_width=True)
+        b64 = _logo_b64()
+        if b64:
+            st.markdown(
+                f'<div style="text-align:center;padding:1rem 0">'
+                f'<img src="data:image/png;base64,{b64}" alt="Mateu Coffee" '
+                f'style="max-width:{max_width}px;width:100%;height:auto;'
+                f'margin:0 auto;display:block">'
+                f'</div>',
+                unsafe_allow_html=True)
             return True
-        else:
-            st.markdown("<h2 style='text-align:center'>☕ MATEU COFFEE</h2>", unsafe_allow_html=True)
-            return False
-    except Exception as e:
-        st.markdown("<h2 style='text-align:center'>☕ MATEU COFFEE</h2>", unsafe_allow_html=True)
+        st.markdown(_wordmark_html("hero", with_tag=True), unsafe_allow_html=True)
+        return False
+    except Exception:
+        st.markdown(_wordmark_html("hero", with_tag=True), unsafe_allow_html=True)
         return False
 
 def _show_daily_consumption() -> None:
@@ -118,7 +127,7 @@ def _show_logo() -> None:
 _load_mobile_css()
 
 st.markdown("""
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
     /* ═══════════════════════════════════════════════════════════════
        MATEU COFFEE — DESIGN TOKENS
@@ -704,6 +713,74 @@ st.markdown("""
         text-transform: uppercase;
     }
 
+    /* ═══════════════════════════════════════════════════════════
+       BRAND WORDMARK — Replica fiel do logo "MATEU COFFEE"
+       Fonte: Cormorant Garamond (serif transicional)
+       MATEU em laranja vibrante · COFFEE em cinza quente
+       ═══════════════════════════════════════════════════════════ */
+    .mc-mark {
+        font-family: 'Cormorant Garamond', 'Playfair Display', Georgia, serif !important;
+        text-align: center;
+        line-height: 0.95;
+        letter-spacing: 0.04em;
+    }
+    .mc-mark-row {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5em;
+        line-height: 0.95;
+    }
+    .mc-mark-mateu {
+        font-family: 'Cormorant Garamond', Georgia, serif !important;
+        font-weight: 600;
+        color: var(--mc-orange);
+        letter-spacing: 0.08em;
+    }
+    .mc-mark-coffee {
+        font-family: 'Cormorant Garamond', Georgia, serif !important;
+        font-weight: 600;
+        color: var(--mc-text-2);
+        letter-spacing: 0.08em;
+    }
+    .mc-mark-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--mc-orange);
+        line-height: 1;
+    }
+    .mc-mark-tag {
+        font-family: 'Cormorant Garamond', Georgia, serif !important;
+        font-weight: 500;
+        font-style: italic;
+        color: var(--mc-text-3);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        margin-top: 0.4em;
+    }
+
+    /* Tamanho HERO (login) */
+    .mc-mark-hero .mc-mark-mateu,
+    .mc-mark-hero .mc-mark-coffee { font-size: 56px; }
+    .mc-mark-hero .mc-mark-icon  { font-size: 64px; margin-right: 8px; }
+    .mc-mark-hero .mc-mark-tag   { font-size: 11px; }
+    @media (max-width: 640px) {
+        .mc-mark-hero .mc-mark-mateu,
+        .mc-mark-hero .mc-mark-coffee { font-size: 40px; }
+        .mc-mark-hero .mc-mark-icon  { font-size: 46px; }
+    }
+
+    /* Tamanho COMPACT (topbar) */
+    .mc-mark-compact .mc-mark-mateu,
+    .mc-mark-compact .mc-mark-coffee { font-size: 22px; }
+    .mc-mark-compact .mc-mark-icon  { font-size: 24px; margin-right: 4px; }
+    .mc-mark-compact .mc-mark-tag   { font-size: 9px; }
+
+    /* Tamanho TINY (footer/atalhos) */
+    .mc-mark-tiny .mc-mark-mateu,
+    .mc-mark-tiny .mc-mark-coffee { font-size: 15px; }
+    .mc-mark-tiny .mc-mark-icon  { font-size: 16px; }
+
     /* Hero de login */
     .mc-login-hero {
         text-align: center;
@@ -1233,6 +1310,31 @@ def _ph() -> str:
 METODOS = ["Espresso","Pour Over","French Press","Aeropress",
            "Chemex","Moka Pot","Cold Brew","Sifão","Drip","Outro"]
 
+# ── Brand wordmark ─────────────────────────────────────────────────────
+
+def _wordmark_html(size: str = "hero", with_tag: bool = True) -> str:
+    """Renderiza a marca 'MATEU COFFEE' como wordmark CSS fiel ao logo.
+
+    `size`: 'hero' (login) | 'compact' (topbar) | 'tiny' (footer)
+    Usa Cormorant Garamond (serif transicional) — combina com a marca.
+    """
+    tag = ('<div class="mc-mark-tag">Aplicativo de Café</div>'
+           if with_tag else '')
+    return (
+        f'<div class="mc-mark mc-mark-{size}">'
+        f'  <div class="mc-mark-row">'
+        f'    <span class="mc-mark-icon">☕</span>'
+        f'    <span class="mc-mark-mateu">MATEU</span>'
+        f'    <span class="mc-mark-coffee">COFFEE</span>'
+        f'  </div>'
+        f'  {tag}'
+        f'</div>'
+    )
+
+def _wordmark(size: str = "hero", with_tag: bool = True) -> None:
+    """Atalho que renderiza o wordmark direto via st.markdown."""
+    st.markdown(_wordmark_html(size, with_tag), unsafe_allow_html=True)
+
 # ── Componentes de UX reutilizáveis ────────────────────────────────────
 
 def _step(num: int, title: str, sub: str = "", muted: bool = False) -> None:
@@ -1691,14 +1793,22 @@ def main():
 
     col_brand, col_user, col_logout = st.columns([0.65, 0.25, 0.10], gap="small")
     with col_brand:
-        st.markdown(
-            '<div class="mc-topbar-brand">'
-            '<div style="font-size:24px;line-height:1">☕</div>'
-            '<div>'
-            '<div class="mc-topbar-brand-text">MATEU COFFEE</div>'
-            '<div class="mc-topbar-brand-tag">Diário de extrações</div>'
-            '</div></div>',
-            unsafe_allow_html=True)
+        # Marca oficial — usa o PNG real do logo (cacheado em base64)
+        logo_b64 = _logo_b64()
+        if logo_b64:
+            st.markdown(
+                f'<div style="padding-top:4px">'
+                f'<img src="data:image/png;base64,{logo_b64}" alt="Mateu Coffee" '
+                f'style="height:48px;width:auto;display:block">'
+                f'</div>',
+                unsafe_allow_html=True)
+        else:
+            # Fallback elegante caso o PNG não esteja disponível
+            st.markdown(
+                '<div style="padding-top:4px">'
+                + _wordmark_html("compact", with_tag=False) +
+                '</div>',
+                unsafe_allow_html=True)
     with col_user:
         st.markdown(
             f'<div class="mc-topbar-user" style="justify-content:flex-end;padding-top:6px">'
