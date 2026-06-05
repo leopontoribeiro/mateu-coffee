@@ -126,6 +126,24 @@ def _show_logo() -> None:
 
 _load_mobile_css()
 
+# ── PWA Manifest (instalar como app no Android/iOS) ───────────────────
+st.markdown("""
+<link rel="manifest" href="data:application/json;charset=utf-8,%7B%22name%22%3A%22Mateu%20Coffee%22%2C%22short_name%22%3A%22Mateu%22%2C%22start_url%22%3A%22%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230A0A0A%22%2C%22theme_color%22%3A%22%23E8722E%22%2C%22orientation%22%3A%22portrait%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fi.imgur.com%2FyQkZ1.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mateu Coffee">
+<meta name="theme-color" content="#E8722E">
+<style>
+  /* Remove margens extras no mobile para parecer app nativo */
+  @media (display-mode: standalone) {
+    header[data-testid="stHeader"] { display: none !important; }
+    #MainMenu { display: none !important; }
+    footer { display: none !important; }
+  }
+</style>
+""", unsafe_allow_html=True)
+
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -1063,11 +1081,29 @@ st.markdown("""
 # ── Database layer ─────────────────────────────────────────────────────
 @st.cache_resource
 def _get_conn() -> "psycopg2.extensions.connection":
-    s = st.secrets["connections"]["postgresql"]
+    # Prioridade 1: variável de ambiente DATABASE_URL (Railway, Render, Heroku)
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url:
+        return psycopg2.connect(db_url, sslmode="require", connect_timeout=10)
+    # Prioridade 2: st.secrets (Streamlit Cloud)
+    try:
+        s = st.secrets["connections"]["postgresql"]
+        return psycopg2.connect(
+            host=s["host"], port=int(s["port"]), dbname=s["database"],
+            user=s["username"], password=s["password"],
+            sslmode="require", connect_timeout=10,
+        )
+    except Exception:
+        pass
+    # Prioridade 3: variáveis de ambiente individuais
     return psycopg2.connect(
-        host=s["host"], port=int(s["port"]), dbname=s["database"],
-        user=s["username"], password=s["password"],
-        sslmode="require", connect_timeout=10,
+        host=os.environ["DB_HOST"],
+        port=int(os.environ.get("DB_PORT", "5432")),
+        dbname=os.environ["DB_NAME"],
+        user=os.environ["DB_USER"],
+        password=os.environ["DB_PASSWORD"],
+        sslmode="require",
+        connect_timeout=10,
     )
 
 def _conn() -> "psycopg2.extensions.connection":
