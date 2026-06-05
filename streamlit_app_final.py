@@ -828,6 +828,24 @@ st.markdown("""
         margin: 0 auto;
     }
 
+    /* ─── Oculta o iframe do CookieManager (extra-streamlit-components)
+       que renderiza no canto da tela durante o carregamento ─────── */
+    iframe[title*="cookie"],
+    iframe[title*="Cookie"],
+    .stCustomComponentV1:has(iframe[title*="cookie"]) {
+        position: fixed !important;
+        top: -9999px !important;
+        left: -9999px !important;
+        width: 0 !important;
+        height: 0 !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }
+    /* Previne flash de layout parcial durante hidratação */
+    .stApp [data-testid="stAppViewContainer"] > section:first-child {
+        min-height: 100vh;
+    }
+
     /* Compact header (logo · email · sair) */
     .mc-topbar {
         display: flex;
@@ -1238,45 +1256,47 @@ def _check_remember_token() -> bool:
     """Restaura sessão se houver token válido em cookie OU session_state.
 
     Fluxo:
-    1. Tenta ler cookie do browser (persistente, sobrevive a fechar a aba)
-    2. Fallback para st.session_state (caso de SSR/preview rápido)
-    3. Valida token no DB e respeita data de expiração
-
-    Nota: stx.CookieManager é assíncrono — na PRIMEIRA renderização o
-    cookie ainda não chegou do browser via JS. O manager auto-dispara um
-    rerun quando os cookies estão prontos, então permitimos UMA tentativa
-    extra antes de marcar como "sem token".
+    1. Se user_id já está na sessão → logado, retorna True imediatamente
+    2. Tenta ler cookie do browser (persistente entre visitas)
+    3. Fallback para remember_token em session_state
+    4. Valida token no DB
+    5. Permite até 3 tentativas sem token antes de desistir (cookie é async)
     """
+    # Já logado nesta sessão — não precisa checar nada
+    if st.session_state.get('user_id'):
+        return True
+
+    # Já confirmamos que não há token válido nesta sessão
     if st.session_state.get('_token_checked'):
         return False
 
-    # 1) Cookie persistente
+    # 1) Cookie persistente do browser
     token = None
     try:
         token = _cm().get(_COOKIE_NAME)
     except Exception:
         token = None
-    # 2) Fallback session_state
+
+    # 2) Fallback: token salvo na session_state (mesmo tab, reload rápido)
     if not token:
         token = st.session_state.get('remember_token')
 
     if not token:
-        # Primeira tentativa: o cookie manager pode não ter carregado ainda.
-        # Ele dispara um rerun automático via JS quando os cookies chegam.
-        # Incrementamos o contador e só desistimos após 2 tentativas sem token.
+        # Cookie manager é assíncrono — precisa de até 3 reruns para carregar.
+        # Não marcamos _token_checked ainda para permitir a tentativa seguinte.
         attempts = st.session_state.get('_cookie_attempts', 0)
         st.session_state['_cookie_attempts'] = attempts + 1
-        if attempts == 0:
-            # Deixa o auto-rerun do cookie manager acontecer
+        if attempts < 3:
             return False
+        # Após 3 tentativas sem token, desiste
         st.session_state['_token_checked'] = True
         return False
 
+    # Temos um token — valida no banco
     try:
         result = _fetch(
             "SELECT id, email, remember_token_expires FROM usuarios WHERE remember_token=%s",
-            (token,), _v=0
-        )
+            (token,), _v=0)
         if not result:
             st.session_state['_token_checked'] = True
             return False
@@ -1285,8 +1305,9 @@ def _check_remember_token() -> bool:
         if expiry and expiry < datetime.now():
             st.session_state['_token_checked'] = True
             return False
-        st.session_state['user_id'] = usuario['id']
-        st.session_state['user_email'] = usuario['email']
+        # Login restaurado com sucesso
+        st.session_state['user_id']       = usuario['id']
+        st.session_state['user_email']    = usuario['email']
         st.session_state['remember_token'] = token
         st.session_state['_token_checked'] = True
         return True
@@ -1550,6 +1571,96 @@ def _ph() -> str:
 
 METODOS = ["Espresso","Pour Over","French Press","Aeropress",
            "Chemex","Moka Pot","Cold Brew","Sifão","Drip","Outro"]
+
+_LOCAIS_COMPRA = ["Amazon", "Mercado Livre", "Shopee", "Guanabara",
+                  "Mundial", "Megabox", "Outros"]
+
+_MOEDORES = ["Starseeker e55Pro", "Acoplado Oster", "Comandante",
+             "Hamilton Beach", "Outros"]
+
+# ── IA helpers ─────────────────────────────────────────────────────────
+
+def _get_api_key() -> str:
+    """Lê ANTHROPIC_API_KEY de env (Render) ou secrets (Streamlit Cloud)."""
+    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not key:
+        try:
+            key = st.secrets.get("ANTHROPIC_API_KEY", "") or ""
+        except Exception:
+            key = ""
+    return key
+
+def _comentario_motor_barista(coffee_info: dict, params: dict) -> str:
+    """Gera comentário curto sobre o que esperar deste café com estes parâmetros."""
+    api_key = _get_api_key()
+    if not api_key:
+        return ""
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        prompt = (
+            "Você é um barista sênior. Em 2–3 frases curtas e diretas, "
+            "descreva o que esperar na xícara com este café e estes parâmetros. "
+            "Seja específico para ESTE café.\n\n"
+            f"Café: {coffee_info.get('nome','?')} — Torra {coffee_info.get('torra','Média')} "
+            f"— {coffee_info.get('tipo','Grãos')}\n"
+            f"Região: {coffee_info.get('regiao','não informada') or 'não informada'}\n"
+            f"Notas: {coffee_info.get('notas','não informadas') or 'não informadas'}\n"
+            f"Intensidade: {coffee_info.get('intensidade',5)}/12\n\n"
+            f"Parâmetros Motor Barista: Dose {params['dose']}g | Yield {params['yield']}g | "
+            f"{params['time']}s | {params['temp']}°C | {params['pressure']} bar\n\n"
+            "Responda em português. Máximo 70 palavras."
+        )
+        resp = client.messages.create(
+            model="claude-haiku-4-5", max_tokens=180,
+            messages=[{"role": "user", "content": prompt}])
+        return resp.content[0].text.strip()
+    except Exception:
+        return ""
+
+def _diagnostico_barista_ia(coffee_info: dict, params: dict,
+                             real: dict, m_real: dict) -> str:
+    """Análise minuciosa como barista sênior — variáveis, resultados e dicas."""
+    api_key = _get_api_key()
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY não configurada no Render.")
+    client = anthropic.Anthropic(api_key=api_key)
+    prompt = f"""Você é um barista sênior com 15 anos de experiência em cafés especiais.
+
+Analise esta extração de forma minuciosa como se estivesse treinando um barista.
+
+## CAFÉ UTILIZADO
+- Nome: {coffee_info.get('nome','?')}
+- Torra: {coffee_info.get('torra','?')} | Tipo: {coffee_info.get('tipo','?')}
+- Região/Origem: {coffee_info.get('regiao','não informada') or 'não informada'}
+- Notas de sabor: {coffee_info.get('notas','não informadas') or 'não informadas'}
+- Intensidade: {coffee_info.get('intensidade','?')}/12
+
+## PARÂMETROS PLANEJADOS (Motor Barista)
+Dose {params['dose']}g | Yield {params['yield']}g | Tempo {params['time']}s | Temp {params['temp']}°C | Pressão {params['pressure']} bar
+
+## O QUE ACONTECEU DE VERDADE
+Dose {real['gramas']}g | Yield {real['agua']}g | Tempo {real['tempo']}s | Temp {real['temp_real']}°C | Pressão {real['pressao_real']} bar
+TDS: {f"{real['tds']}% (medido)" if real['tds'] > 0 else 'não medido'}
+
+## RESULTADOS CALCULADOS
+- Brew Ratio: 1:{real['agua']/max(real['gramas'],0.1):.1f}
+- Extraction Yield: {m_real.get('ey',0):.2f}%
+- Fluxo médio: {m_real.get('fluxo',0):.2f} g/s
+- Status: {m_real.get('status','?')}
+
+Faça uma análise cobrindo:
+1. Como as características deste café (torra, origem, notas) afetam o perfil esperado e como os parâmetros planejados foram adequados para ele
+2. O que os desvios entre planejado vs real revelam sobre a moagem e a máquina
+3. O que o EY e o fluxo indicam sobre sub/super-extração ou equilíbrio
+4. Dicas práticas e específicas para a PRÓXIMA extração (moagem, temperatura, tempo, pressão, dose)
+
+Seja técnico, direto e acessível. Use linguagem de barista treinando alguém.
+Responda em português brasileiro. Entre 250 e 380 palavras."""
+
+    resp = client.messages.create(
+        model="claude-opus-4-5", max_tokens=700,
+        messages=[{"role": "user", "content": prompt}])
+    return resp.content[0].text.strip()
 
 # ── Brand wordmark ─────────────────────────────────────────────────────
 
@@ -2583,8 +2694,14 @@ def main():
         st.markdown('<p class="section-label">Compra</p>', unsafe_allow_html=True)
         cp1, cp2, cp3 = st.columns(3, gap="large")
         with cp1:
-            local_compra = st.text_input("Local de Compra",
-                                         placeholder="Ex: Torrefação Orfeu, iFood, Mercado...")
+            _lc_sel = st.selectbox("Local de Compra", _LOCAIS_COMPRA,
+                                   key="sel_local_compra")
+            if _lc_sel == "Outros":
+                local_compra = st.text_input("Qual local?",
+                                             placeholder="Ex: Torrefação Orfeu, iFood...",
+                                             key="inp_local_custom")
+            else:
+                local_compra = _lc_sel
         with cp2:
             valor_compra = st.number_input("Valor Pago (R$)", min_value=0.0,
                                            value=0.0, step=0.50, format="%.2f")
@@ -2657,12 +2774,25 @@ def main():
                     last_grinder = ginfo[0]['last_grinder']
                     last_clicks  = ginfo[0]['last_clicks'] or 0
 
-            sc1, sc2, sc3, sc4 = st.columns([2, 1, 1, 1], gap="medium")
+            # Hora: inicializa com hora atual se não estiver na sessão
+            if "hora_ext" not in st.session_state:
+                st.session_state["hora_ext"] = datetime.now().time()
+
+            sc1, sc2, sc3, sc4, sc5 = st.columns([2, 1, 1, 1, 0.5], gap="medium")
             with sc1:
-                moedor = st.text_input("Moedor", value=last_grinder,
-                                       placeholder="Ex: Comandante C40",
-                                       help="Pré-preenchido com o último moedor usado",
-                                       key="inp_moedor")
+                # Moedor: selectbox com opções pré-definidas + Outros
+                _moedor_opts = _MOEDORES
+                _default_idx = (_moedor_opts.index(last_grinder)
+                                if last_grinder in _moedor_opts else len(_moedor_opts) - 1)
+                _moedor_sel = st.selectbox("Moedor", _moedor_opts,
+                                           index=_default_idx, key="sel_moedor")
+                if _moedor_sel == "Outros":
+                    moedor = st.text_input("Qual moedor?",
+                                           value=last_grinder if last_grinder not in _moedor_opts else "",
+                                           placeholder="Ex: Wilfa Uniform, Fellow Ode...",
+                                           key="inp_moedor_custom")
+                else:
+                    moedor = _moedor_sel
             with sc2:
                 clicks = st.number_input("Clicks", 0, 200, last_clicks, 1,
                                          help="Pré-preenchido com o último valor",
@@ -2671,8 +2801,14 @@ def main():
                 data_ext = st.date_input("Data", value=date.today(),
                                          key="data_ext", format="DD/MM/YYYY")
             with sc4:
-                hora_ext = st.time_input("Hora", value=datetime.now().time(),
-                                         key="hora_ext")
+                hora_ext = st.time_input("Hora", key="hora_ext")
+            with sc5:
+                st.write("")
+                st.write("")
+                if st.button("⟳", key="btn_hora_now",
+                             help="Usar hora atual"):
+                    st.session_state["hora_ext"] = datetime.now().time()
+                    st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
             # ═════════════════════════════════════════════════════════════
@@ -2689,6 +2825,23 @@ def main():
                 .replace('value="92"', f'value="{params["temp"]}"')
                 .replace('value="9"',  f'value="{params["pressure"]}"'))
             components.html(motor_html, height=660, scrolling=False)
+
+            # Comentário do Motor Barista sobre este café específico
+            _motor_key = f"motor_comment_{cid}"
+            if _motor_key not in st.session_state and cafe_info:
+                with st.spinner("☕ Barista analisando o café..."):
+                    st.session_state[_motor_key] = _comentario_motor_barista(
+                        cafe_info[0], params)
+            if st.session_state.get(_motor_key):
+                st.markdown(
+                    f'<div style="background:var(--mc-orange-soft);border:1px solid '
+                    f'var(--mc-orange);border-radius:10px;padding:12px 16px;'
+                    f'margin:0.5rem 0 1.5rem;font-size:13px;line-height:1.65;'
+                    f'color:var(--mc-text)">'
+                    f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange);'
+                    f'text-transform:uppercase;letter-spacing:.1em">☕ O que esperar</span>'
+                    f'<br>{st.session_state[_motor_key]}</div>',
+                    unsafe_allow_html=True)
 
             # ═════════════════════════════════════════════════════════════
             # 2) PARÂMETROS DE EXTRAÇÃO (REALIDADE) + RADAR REAL
@@ -2813,6 +2966,43 @@ def main():
                     st.success("Extração alinhada com o plano — todos os parâmetros dentro da meta.")
                 st.markdown('</div>', unsafe_allow_html=True)
 
+                st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+                st.markdown(
+                    '<p class="section-label" style="margin-bottom:.75rem">'
+                    '🧑‍🍳 Barista Sênior IA</p>',
+                    unsafe_allow_html=True)
+
+                _ia_key = "barista_ia_result"
+                col_btn, _ = st.columns([1, 2])
+                with col_btn:
+                    if st.button("Analisar com Barista IA",
+                                 type="primary", use_container_width=True,
+                                 key="btn_barista_ia"):
+                        real_params = {
+                            "gramas": gramas, "agua": agua, "tempo": tempo,
+                            "temp_real": temp_real, "pressao_real": pressao_real,
+                            "tds": tds,
+                        }
+                        coffee_full = cafe_info[0] if cafe_info else {}
+                        with st.spinner("☕ Barista analisando sua extração..."):
+                            try:
+                                st.session_state[_ia_key] = _diagnostico_barista_ia(
+                                    coffee_full, params, real_params, m_real)
+                            except Exception as e:
+                                st.session_state[_ia_key] = f"_Erro: {e}_"
+
+                if st.session_state.get(_ia_key):
+                    st.markdown(
+                        f'<div style="background:var(--mc-surface-2);border:1px solid '
+                        f'var(--mc-border);border-radius:12px;padding:18px 20px;'
+                        f'margin-top:0.75rem;font-size:14px;line-height:1.75;'
+                        f'color:var(--mc-text);white-space:pre-wrap">'
+                        f'{st.session_state[_ia_key]}</div>',
+                        unsafe_allow_html=True)
+                    if st.button("🗑 Limpar análise", key="btn_clear_ia"):
+                        st.session_state.pop(_ia_key, None)
+                        st.rerun()
+
             # ═════════════════════════════════════════════════════════════
             # 4) CLASSIFICAÇÃO SENSORIAL
             # ═════════════════════════════════════════════════════════════
@@ -2875,6 +3065,9 @@ def main():
                 if user_id and moedor:
                     _run("UPDATE usuarios SET last_grinder=%s, last_clicks=%s WHERE id=%s",
                          (moedor, clicks, user_id))
+                # Limpa hora para próxima extração usar hora atual
+                st.session_state.pop("hora_ext", None)
+                st.session_state.pop("barista_ia_result", None)
                 st.toast("✓ Extração registrada com sucesso", icon="☕")
                 st.balloons()
                 st.rerun()
