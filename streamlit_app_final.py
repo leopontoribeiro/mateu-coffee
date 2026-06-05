@@ -799,23 +799,33 @@ st.markdown("""
     .mc-mark-tiny .mc-mark-coffee { font-size: 15px; }
     .mc-mark-tiny .mc-mark-icon  { font-size: 16px; }
 
-    /* Hero de login */
+    /* Hero de login — logo em destaque máximo */
     .mc-login-hero {
         text-align: center;
-        padding: 0.5rem 0 1.5rem;
+        padding: 2.5rem 0 2rem;
+        border-bottom: 1px solid var(--mc-border);
+        margin-bottom: 1.75rem;
+    }
+    .mc-login-hero img {
+        max-width: 480px !important;
+        width: 90% !important;
+        filter: drop-shadow(0 8px 32px rgba(232, 114, 46, 0.28));
+        transition: filter 0.3s ease;
     }
     .mc-login-title {
-        font-size: 22px;
-        font-weight: 700;
+        font-size: 26px;
+        font-weight: 800;
         color: var(--mc-text);
-        margin: 1.25rem 0 0.25rem 0;
-        letter-spacing: -0.02em;
+        margin: 1.75rem 0 0.4rem 0;
+        letter-spacing: -0.03em;
     }
     .mc-login-sub {
-        font-size: 13px;
+        font-size: 14px;
         color: var(--mc-text-2);
         margin: 0;
-        line-height: 1.55;
+        line-height: 1.6;
+        max-width: 380px;
+        margin: 0 auto;
     }
 
     /* Compact header (logo · email · sair) */
@@ -1136,6 +1146,7 @@ def _run(query: str, params: tuple = ()) -> None:
 
 def _bump() -> None:
     st.session_state["_v"] = st.session_state.get("_v", 0) + 1
+    _fetch.clear()  # invalida cache cross-session — evita dados obsoletos após F5
 
 @st.cache_data(ttl=600, show_spinner=False)
 def _fetch(query: str, params: tuple = (), _v: int = 0) -> list:
@@ -1442,6 +1453,13 @@ def _init_db() -> None:
                     ALTER TABLE extracoes RENAME COLUMN "doçura_stars" TO docura_stars;
                 END IF;
             END $$;
+        """)
+
+        # ── P6: campos reais espelhando Motor Barista ──
+        cur.execute("""
+            ALTER TABLE extracoes
+                ADD COLUMN IF NOT EXISTS temp_real    FLOAT DEFAULT NULL,
+                ADD COLUMN IF NOT EXISTS pressao_real FLOAT DEFAULT NULL;
         """)
 
         conn.commit()
@@ -2324,10 +2342,16 @@ sim();
 
 # ── Vision · leitura de embalagem ──────────────────────────────────────
 def _analisar_embalagem(b64_img: str) -> dict:
-    api_key = (st.secrets.get("ANTHROPIC_API_KEY")
-               or os.environ.get("ANTHROPIC_API_KEY", ""))
+    # Prioriza env var (Render/Railway/Heroku) — st.secrets lança FileNotFoundError
+    # quando não há secrets.toml (plataformas sem Streamlit Cloud config).
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY não configurada.")
+        try:
+            api_key = st.secrets.get("ANTHROPIC_API_KEY", "") or ""
+        except Exception:
+            api_key = ""
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY não configurada. Defina a variável de ambiente no painel do Render.")
 
     client = anthropic.Anthropic(api_key=api_key)
     resp = client.messages.create(
@@ -2379,7 +2403,7 @@ def main():
             with col_main:
                 # Logo + tagline da marca (apenas no login)
                 st.markdown('<div class="mc-login-hero">', unsafe_allow_html=True)
-                _load_logo()
+                _load_logo(max_width=480)
                 st.markdown(
                     '<p class="mc-login-title">Seu diário de extrações</p>'
                     '<p class="mc-login-sub">Acompanhe cada café, cada extração '
@@ -2586,6 +2610,7 @@ def main():
                      data_compra, intensidade, user_id))
                 st.toast(f"☕ {nome} cadastrado com sucesso", icon="✅")
                 st.balloons()
+                st.rerun()  # reseta formulário e revalida lista sem duplicação
 
     # ── Tab 2 · Nova extração ──────────────────────────────────────────
     with tab2:
@@ -2604,25 +2629,58 @@ def main():
             sel    = st.selectbox("Café", list(cafe_map.keys()))
             cid    = cafe_map[sel]
             metodo = st.selectbox("Método de Preparo", METODOS)
-
-            # ── Configuração de Xícaras ────────────────────────────────────
             xicaras = st.radio("Número de Xícaras", [1, 2], horizontal=True, key="config_xicaras")
-            gramas_default = 18.0 if xicaras == 1 else 36.0
-            agua_default   = 300.0 if xicaras == 1 else 600.0
+            multiplier = 1 if xicaras == 1 else 2
 
-            # ═══════════════════════════════════════════════════════════════
-            # 1) MOTOR BARISTA — agora no TOPO da aba (acima de tudo)
-            # ═══════════════════════════════════════════════════════════════
+            # Parâmetros do Motor Barista (calculados cedo — usados como defaults nos dois lados)
+            cafe_info = _fetch("SELECT tipo, torra FROM coffees WHERE id=%s AND user_id=%s LIMIT 1",
+                              (cid, user_id), _v=_v())
+            params = _motor_barista_params(
+                cafe_info[0]["torra"] if cafe_info else "Média",
+                cafe_info[0]["tipo"]  if cafe_info else "Grãos")
+
+            # ─────────────────────────────────────────────────────────────
+            # SETUP DA SESSÃO — Moedor · Clicks · Data · Hora (no topo)
+            # ─────────────────────────────────────────────────────────────
+            st.markdown(
+                '<div style="background:var(--mc-surface);border:1px solid var(--mc-border);'
+                'border-radius:12px;padding:1.25rem 1.5rem 1rem;margin:0.75rem 0 1.75rem">'
+                '<p class="section-label" style="margin-bottom:1rem">Setup da Sessão</p>',
+                unsafe_allow_html=True)
+
+            # Grinder persistence: invalida cache junto com _v() para refletir updates
+            last_grinder, last_clicks = "", 0
+            if user_id:
+                ginfo = _fetch("SELECT last_grinder, last_clicks FROM usuarios WHERE id=%s",
+                              (user_id,), _v=_v())
+                if ginfo and ginfo[0]['last_grinder']:
+                    last_grinder = ginfo[0]['last_grinder']
+                    last_clicks  = ginfo[0]['last_clicks'] or 0
+
+            sc1, sc2, sc3, sc4 = st.columns([2, 1, 1, 1], gap="medium")
+            with sc1:
+                moedor = st.text_input("Moedor", value=last_grinder,
+                                       placeholder="Ex: Comandante C40",
+                                       help="Pré-preenchido com o último moedor usado",
+                                       key="inp_moedor")
+            with sc2:
+                clicks = st.number_input("Clicks", 0, 200, last_clicks, 1,
+                                         help="Pré-preenchido com o último valor",
+                                         key="inp_clicks")
+            with sc3:
+                data_ext = st.date_input("Data", value=date.today(),
+                                         key="data_ext", format="DD/MM/YYYY")
+            with sc4:
+                hora_ext = st.time_input("Hora", value=datetime.now().time(),
+                                         key="hora_ext")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            # ═════════════════════════════════════════════════════════════
+            # 1) MOTOR BARISTA
+            # ═════════════════════════════════════════════════════════════
             _step(1, "Motor Barista",
                   "Simule a extração ideal antes de extrair de verdade. "
                   "Os parâmetros se ajustam à torra e ao tipo do café selecionado.")
-
-            cafe_info = _fetch("SELECT tipo, torra FROM coffees WHERE id=%s AND user_id=%s LIMIT 1",
-                              (cid, user_id), _v=_v())
-            if cafe_info:
-                params = _motor_barista_params(cafe_info[0]["torra"], cafe_info[0]["tipo"])
-            else:
-                params = _motor_barista_params("Média", "Grãos")
 
             motor_html = (_MOTOR_BARISTA_HTML
                 .replace('value="18"', f'value="{params["dose"]}"')
@@ -2632,83 +2690,132 @@ def main():
                 .replace('value="9"',  f'value="{params["pressure"]}"'))
             components.html(motor_html, height=660, scrolling=False)
 
-            # ═══════════════════════════════════════════════════════════════
-            # 2) PARÂMETROS DA EXTRAÇÃO
-            # ═══════════════════════════════════════════════════════════════
-            _step(2, "Parâmetros da extração",
-                  "Registre o que você usou na vida real: dose, água, tempo, moedor.")
+            # ═════════════════════════════════════════════════════════════
+            # 2) PARÂMETROS DE EXTRAÇÃO (REALIDADE) + RADAR REAL
+            #    Espelha exatamente os 5 campos do Motor Barista + TDS
+            # ═════════════════════════════════════════════════════════════
+            _step(2, "Parâmetros de Extração",
+                  "Registre o que aconteceu de verdade — espelha os campos do Motor Barista.")
 
-            # Carrega último moedor do usuário (sempre pré-preenchido, editável)
-            last_grinder = ""
-            last_clicks = 0
-            if user_id:
-                ginfo = _fetch("SELECT last_grinder, last_clicks FROM usuarios WHERE id=%s",
-                              (user_id,), _v=0)
-                if ginfo and ginfo[0]['last_grinder']:
-                    last_grinder = ginfo[0]['last_grinder']
-                    last_clicks  = ginfo[0]['last_clicks'] or 0
+            col_params, col_radar_real = st.columns([1.2, 1], gap="large")
+            with col_params:
+                gramas_default = round(params["dose"]     * multiplier, 1)
+                yield_default  = round(params["yield"]    * multiplier, 1)
+                tempo_default  = int(params["time"])
+                temp_default   = float(params["temp"])
+                press_default  = float(params["pressure"])
 
-            c1, c2 = st.columns(2, gap="large")
-            with c1:
-                gramas = st.number_input("Café Moído (g)",       5.0,  80.0,  gramas_default, 0.1,
-                                         help="Peso do pó medido na balança")
-                agua   = st.number_input("Água Alvo (g)",        50.0, 2000.0, agua_default, 5.0)
-                tds    = st.number_input("TDS Medido (%)",        0.0,  5.0,   0.0,  0.01,
-                                         help="Deixe 0 se não usar refratômetro")
-                tempo  = st.number_input("Tempo de Extração (s)", 1,    600,   150,  1)
-            with c2:
-                # Moedor: sempre pré-preenchido com o último, livre para editar
-                moedor = st.text_input("Moedor", value=last_grinder,
-                                       placeholder="Ex: Comandante C40",
-                                       help="Pré-preenchido com o último moedor usado",
-                                       key="inp_moedor")
-                clicks = st.number_input("Clicks do Moedor", 0, 200, last_clicks, 1,
-                                         help="Pré-preenchido com o último valor")
-                # Data e Hora lado a lado, em colunas internas
-                cdh1, cdh2 = st.columns(2)
-                with cdh1:
-                    data_ext = st.date_input("Data", value=date.today(),
-                                             key="data_ext", format="DD/MM/YYYY")
-                with cdh2:
-                    hora_ext = st.time_input("Hora", value=datetime.now().time(),
-                                             key="hora_ext")
+                gramas       = st.number_input("Dose Real (g)", 1.0, 160.0,
+                                               float(gramas_default), 0.1,
+                                               help="Peso do pó medido na balança")
+                agua         = st.number_input("Yield / Volumetria na Xícara (g)", 5.0, 2000.0,
+                                               float(yield_default), 1.0,
+                                               help="Quantidade real que entrou na xícara (espresso: ~18-50g)")
+                tempo        = st.number_input("Tempo Real (s)", 1, 600, tempo_default, 1)
+                temp_real    = st.number_input("Temperatura Real (°C)", 60.0, 100.0,
+                                               temp_default, 0.5)
+                pressao_real = st.number_input("Pressão Real (bar)", 1.0, 15.0,
+                                               press_default, 0.5)
+                tds          = st.number_input("TDS Medido (%)", 0.0, 5.0, 0.0, 0.01,
+                                               help="Opcional — refratômetro. Deixe 0 se não usar.")
 
-            # 3) NOTAS — full-width (de uma ponta à outra)
+            with col_radar_real:
+                m_real  = CoffeeEngine.calc(gramas, agua, tds if tds > 0 else None, tempo)
+                ey_real = m_real.get("ey", 0.0)
+                st.markdown(
+                    '<p style="font-size:11px;font-weight:700;color:var(--mc-orange);'
+                    'letter-spacing:0.12em;text-transform:uppercase;margin-bottom:0.25rem">'
+                    'Perfil Sensorial — Extração Real</p>',
+                    unsafe_allow_html=True)
+                st.plotly_chart(_radar(CoffeeEngine.sensory(ey_real)),
+                                use_container_width=True, config={'displayModeBar': False})
+                foto_can = st.file_uploader("Foto da Caneca",
+                                            type=["jpg","jpeg","png"],
+                                            key="foto_can")
+                if foto_can:
+                    _img(_b64(foto_can), w=200)
+
             notas_e = st.text_area("Notas da Extração",
                                    placeholder="Impressões sobre a extração...",
                                    height=90, key="notas_ext")
 
-            m  = CoffeeEngine.calc(gramas, agua, tds if tds > 0 else None, tempo)
-            ey = m.get("ey", 0.0)
+            # ═════════════════════════════════════════════════════════════
+            # 3) DIAGNÓSTICO DA EXTRAÇÃO — delta Motor Barista vs Realidade
+            # ═════════════════════════════════════════════════════════════
+            _step(3, "Diagnóstico da Extração",
+                  "Delta entre o que você planejou (Motor Barista) e o que aconteceu de verdade.")
 
-            # ═══════════════════════════════════════════════════════════════
-            # 3) ANÁLISE EM TEMPO REAL
-            # ═══════════════════════════════════════════════════════════════
-            _step(3, "Análise em tempo real",
-                  "Brew ratio, EY e fluxo calculados automaticamente conforme você muda os parâmetros.")
-            with st.expander("Ver detalhes da análise", expanded=True):
+            with st.expander("Ver diagnóstico completo", expanded=True):
                 mc1, mc2, mc3, mc4 = st.columns(4)
-                mc1.metric("Brew Ratio",       m.get("ratio_text", "—"))
-                mc2.metric("Extraction Yield", f"{ey:.2f}%" if ey > 0 else "—",
-                           delta=m.get("status") if ey > 0 else None,
-                           delta_color=m.get("delta_color", "off"))
-                mc3.metric("Fluxo Médio",      f"{m.get('fluxo',0):.2f} g/s")
-                mc4.metric("Status",           m.get("status", "—"))
+                mc1.metric("Brew Ratio",       m_real.get("ratio_text", "—"))
+                mc2.metric("Extraction Yield", f"{ey_real:.2f}%" if ey_real > 0 else "—",
+                           delta=m_real.get("status") if ey_real > 0 else None,
+                           delta_color=m_real.get("delta_color", "off"))
+                mc3.metric("Fluxo Médio",      f"{m_real.get('fluxo',0):.2f} g/s")
+                mc4.metric("Status",           m_real.get("status", "—"))
 
-                col_r, col_p = st.columns([1.6, 1], gap="large")
-                with col_r:
-                    st.plotly_chart(_radar(CoffeeEngine.sensory(ey)),
-                                    use_container_width=True, config={'displayModeBar': False})
-                with col_p:
-                    foto_can = st.file_uploader("Foto da Caneca",
-                                                type=["jpg","jpeg","png"],
-                                                key="foto_can")
-                    if foto_can:
-                        _img(_b64(foto_can), w=210)
+                st.markdown('<div style="margin-top:1rem">', unsafe_allow_html=True)
+                diagnosticos = []
 
-            # ═══════════════════════════════════════════════════════════════
+                dt_tempo = tempo - params["time"]
+                if abs(dt_tempo) >= 4:
+                    dir_t   = "rápida" if dt_tempo < 0 else "lenta"
+                    sugest  = "afine a moagem (mais fino)" if dt_tempo < 0 else "abra a moagem (mais grosso)"
+                    diagnosticos.append(
+                        f"⏱ <b>Fluxo {dir_t}:</b> você planejou {params['time']}s, "
+                        f"mas extraiu em {tempo}s. Sugestão: {sugest}.")
+
+                dt_yield = agua - params["yield"] * multiplier
+                if abs(dt_yield) >= 5:
+                    dir_y = "abaixo" if dt_yield < 0 else "acima"
+                    diagnosticos.append(
+                        f"💧 <b>Yield {dir_y} da meta:</b> planejou "
+                        f"{params['yield']*multiplier:.0f}g, real {agua:.0f}g "
+                        f"(Δ {dt_yield:+.0f}g).")
+
+                dt_temp = temp_real - params["temp"]
+                if abs(dt_temp) >= 1.5:
+                    dir_tmp = "abaixo" if dt_temp < 0 else "acima"
+                    diagnosticos.append(
+                        f"🌡 <b>Temperatura {dir_tmp} do target:</b> planejou "
+                        f"{params['temp']}°C, real {temp_real:.1f}°C (Δ {dt_temp:+.1f}°C).")
+
+                dt_press = pressao_real - params["pressure"]
+                if abs(dt_press) >= 0.8:
+                    dir_p = "abaixo" if dt_press < 0 else "acima"
+                    diagnosticos.append(
+                        f"📊 <b>Pressão {dir_p} do target:</b> planejou "
+                        f"{params['pressure']:.1f} bar, real {pressao_real:.1f} bar "
+                        f"(Δ {dt_press:+.1f} bar).")
+
+                if ey_real > 0:
+                    if ey_real < CoffeeEngine.EY_LOW:
+                        diagnosticos.append(
+                            f"⚡ <b>Sub-extração ({ey_real:.1f}%):</b> sabor raso e ácido — "
+                            "experimente moagem mais fina ou tempo maior.")
+                    elif ey_real > CoffeeEngine.EY_HIGH:
+                        diagnosticos.append(
+                            f"⚡ <b>Super-extração ({ey_real:.1f}%):</b> amargor e adstringência — "
+                            "experimente moagem mais grossa ou tempo menor.")
+                    else:
+                        diagnosticos.append(
+                            f"✅ <b>EY dentro da janela de ouro ({ey_real:.1f}%)</b> — extração equilibrada.")
+
+                if diagnosticos:
+                    for d in diagnosticos:
+                        st.markdown(
+                            f'<div style="background:var(--mc-surface-2);border-left:3px solid '
+                            f'var(--mc-orange);padding:10px 14px;border-radius:0 8px 8px 0;'
+                            f'margin:6px 0;font-size:13px;line-height:1.6;color:var(--mc-text)">'
+                            f'{d}</div>',
+                            unsafe_allow_html=True)
+                else:
+                    st.success("Extração alinhada com o plano — todos os parâmetros dentro da meta.")
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            # ═════════════════════════════════════════════════════════════
             # 4) CLASSIFICAÇÃO SENSORIAL
-            # ═══════════════════════════════════════════════════════════════
+            # ═════════════════════════════════════════════════════════════
             _step(4, "Classificação sensorial",
                   "Avalie cada dimensão de 1 a 5 estrelas. A Nota Final é o destaque do registro.")
 
@@ -2745,9 +2852,9 @@ def main():
                                          placeholder="Ex: Crema 4, Corpo 4, Equilíbrio 5...",
                                          key="balanco_ideal")
 
-            # ═══════════════════════════════════════════════════════════════
+            # ═════════════════════════════════════════════════════════════
             # 5) REGISTRAR
-            # ═══════════════════════════════════════════════════════════════
+            # ═════════════════════════════════════════════════════════════
             _step(5, "Registrar extração",
                   "Salve esta extração no seu histórico para acompanhar a evolução.")
             if st.button("✓ REGISTRAR EXTRAÇÃO", type="primary", use_container_width=True):
@@ -2757,14 +2864,14 @@ def main():
                      tempo_extracao,brew_ratio,ey,fluxo,foto_caneca,classificacao,notas,
                      crema_stars,corpo_stars,equilibrio_stars,acidez_stars,amargor_stars,
                      presenca_boca_stars,docura_stars,nota_final_stars,balanco_ideal,
-                     data_hora_extracao,user_id)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                     data_hora_extracao,user_id,temp_real,pressao_real)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     (cid, data_ext, metodo, gramas, moedor, clicks, agua, tds, tempo,
-                     m.get("ratio",0), ey, m.get("fluxo",0),
+                     m_real.get("ratio",0), ey_real, m_real.get("fluxo",0),
                      _b64(foto_can) if foto_can else None, nota_final_stars, notas_e,
                      crema_stars, corpo_stars, equilibrio_stars, acidez_stars, amargor_stars,
                      presenca_boca_stars, docura_stars, nota_final_stars, balanco_ideal,
-                     data_hora, user_id))
+                     data_hora, user_id, temp_real, pressao_real))
                 if user_id and moedor:
                     _run("UPDATE usuarios SET last_grinder=%s, last_clicks=%s WHERE id=%s",
                          (moedor, clicks, user_id))
