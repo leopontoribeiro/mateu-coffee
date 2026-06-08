@@ -4,3 +4,4 @@ psycopg2-binary==2.9.9
 anthropic>=0.28.0
 Pillow>=10.0.0
 extra-streamlit-components>=0.1.71
+pandas>=2.0.0
