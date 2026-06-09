@@ -327,12 +327,12 @@ def page_home():
 
         with col2:
             st.subheader("Novo Cafe")
-            nome = st.text_input("Nome do Cafe")
-            origem = st.text_input("Origem")
-            tipo = st.selectbox("Tipo", ["Espresso", "Filtrado", "Coado", "Outro"])
-            torrefacao = st.selectbox("Torrefacao", ["Leve", "Media", "Escura"])
-            preco = st.number_input("Preco/kg", min_value=0.0, step=1.0)
-            notas = st.text_area("Notas", height=80)
+            nome = st.text_input("Nome do Cafe", key="cafe_nome")
+            origem = st.text_input("Origem", key="cafe_origem")
+            tipo = st.selectbox("Tipo", ["Espresso", "Filtrado", "Coado", "Outro"], key="cafe_tipo")
+            torrefacao = st.selectbox("Torrefacao", ["Leve", "Media", "Escura"], key="cafe_torrefacao")
+            preco = st.number_input("Preco/kg", min_value=0.0, step=1.0, key="cafe_preco")
+            notas = st.text_area("Notas", height=80, key="cafe_notas")
 
             if st.button("Adicionar Cafe", use_container_width=True):
                 if nome:
@@ -356,15 +356,15 @@ def page_home():
                 cafes = listar_cafes(st.session_state.user_id)
             cafe_opts = {c['nome']: c['id'] for c in cafes}
 
-            cafe_nome = st.selectbox("Cafe", list(cafe_opts.keys()) if cafe_opts else ["Nenhum cafe"])
-            data_extr = st.date_input("Data", value=date.today())
-            gramas = st.number_input("Gramas de Cafe", min_value=0.0, step=0.1)
-            gramas_agua = st.number_input("Gramas de Agua", min_value=0.0, step=0.1)
-            tempo = st.number_input("Tempo (segundos)", min_value=0, step=1)
-            temp = st.number_input("Temperatura (C)", min_value=0.0, step=0.1)
-            pressao = st.number_input("Pressao (bar)", min_value=0.0, step=0.1)
-            metodo = st.selectbox("Metodo", ["Espresso", "V60", "Prensa Francesa", "Moka", "Outro"])
-            notas_extr = st.text_area("Notas", height=80)
+            cafe_nome = st.selectbox("Cafe", list(cafe_opts.keys()) if cafe_opts else ["Nenhum cafe"], key="extr_cafe")
+            data_extr = st.date_input("Data", value=date.today(), key="extr_data")
+            gramas = st.number_input("Gramas de Cafe", min_value=0.0, step=0.1, key="extr_gramas")
+            gramas_agua = st.number_input("Gramas de Agua", min_value=0.0, step=0.1, key="extr_agua")
+            tempo = st.number_input("Tempo (segundos)", min_value=0, step=1, key="extr_tempo")
+            temp = st.number_input("Temperatura (C)", min_value=0.0, step=0.1, key="extr_temp")
+            pressao = st.number_input("Pressao (bar)", min_value=0.0, step=0.1, key="extr_pressao")
+            metodo = st.selectbox("Metodo", ["Espresso", "V60", "Prensa Francesa", "Moka", "Outro"], key="extr_metodo")
+            notas_extr = st.text_area("Notas", height=80, key="extr_notas")
 
             if st.button("Registrar Extracao", use_container_width=True):
                 if cafe_opts and gramas > 0:
@@ -479,7 +479,7 @@ def page_home():
 
         with col1:
             st.subheader("Compartilhar Receita")
-            cafe_comp = st.text_input("Nome do Cafe")
+            cafe_comp = st.text_input("Nome do Cafe", key="comp_cafe_nome")
             metodo_comp = st.selectbox("Metodo", ["Espresso", "V60", "Prensa Francesa", "Moka", "Outro"], key="comp_metodo")
             dose_comp = st.number_input("Dose (gramas)", min_value=0.0, step=0.1, key="comp_dose")
             agua_comp = st.number_input("Agua (ml)", min_value=0.0, step=1.0, key="comp_agua")
