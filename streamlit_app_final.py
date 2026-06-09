@@ -421,9 +421,11 @@ def page_home():
                         data_fmt = d.strftime("%d/%m/%Y") if hasattr(d, "strftime") else str(d)
                         xic = ext.get("num_xicaras") or 1
                         st.caption(f"{data_fmt} | {ext.get('cafe_nome','N/A')} | {xic} xicara(s)")
-                        st.markdown(f"**{ext['gramas_cafe']:.1f}g** cafe | {ext['metodo'] or 'N/A'}")
+                        gramas_exib = ext.get("gramas_cafe") or 0
+                        st.markdown(f"**{gramas_exib:.1f}g** cafe | {ext.get('metodo') or 'N/A'}")
                         if ext.get("tempo_segundos"):
-                            st.caption(f"Tempo: {ext['tempo_segundos']}s | Temp: {ext.get('temperatura',0):.1f}C")
+                            temp_val = ext.get("temperatura") or 0
+                            st.caption(f"Tempo: {ext['tempo_segundos']}s | Temp: {temp_val:.1f}C")
                         if st.button("Deletar", key=f"del_ext_{ext['id']}", use_container_width=True):
                             deletar_extracao(ext["id"], st.session_state.user_id)
                             st.rerun()
@@ -443,12 +445,12 @@ def page_home():
             selecionada_label = st.selectbox("Extracao", list(opcoes.keys()), key="mb_extr_sel")
             ext = opcoes[selecionada_label]
 
-            # Previsão do motor
+            # Previsão do motor — protege NULLs do banco
             previsao = _motor_barista_previsao(
-                gramas=ext.get("gramas_cafe") or 0,
-                agua=ext.get("gramas_agua") or 0,
-                tempo=ext.get("tempo_segundos") or 0,
-                pressao=ext.get("pressao") or 0,
+                gramas=float(ext.get("gramas_cafe") or 0),
+                agua=float(ext.get("gramas_agua") or 0),
+                tempo=int(ext.get("tempo_segundos") or 0),
+                pressao=float(ext.get("pressao") or 0),
                 metodo=ext.get("metodo") or "Espresso"
             )
 
