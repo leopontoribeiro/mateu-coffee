@@ -1,7 +1,7 @@
 """
 Módulo de CRUD para cafés e extrações no PostgreSQL.
 """
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from datetime import date, timedelta
 import psycopg2
 import psycopg2.extras
@@ -34,8 +34,10 @@ def criar_cafe(user_id: int, nome: str, origem: str = "", tipo: str = "",
         """, (user_id, nome, origem, tipo, torrefacao, preco_kg, notas))
         conn.commit()
         return True, "Café adicionado com sucesso"
+    except psycopg2.Error as e:
+        return False, f"Erro banco de dados: {str(e)}"
     except Exception as e:
-        return False, f"Erro: {str(e)}"
+        return False, f"Erro inesperado: {str(e)}"
     finally:
         cursor.close()
         conn.close()
@@ -54,7 +56,9 @@ def listar_cafes(user_id: int) -> List[Dict[str, Any]]:
             FROM cafes WHERE user_id = %s ORDER BY criado_em DESC
         """, (user_id,))
         return [dict(row) for row in cursor.fetchall()]
-    except Exception:
+    except psycopg2.Error as e:
+        import streamlit as st
+        st.error(f"Erro ao listar cafés: {str(e)}")
         return []
     finally:
         cursor.close()
@@ -74,7 +78,9 @@ def obter_cafe(cafe_id: int, user_id: int) -> Optional[Dict[str, Any]]:
         """, (cafe_id, user_id))
         resultado = cursor.fetchone()
         return dict(resultado) if resultado else None
-    except Exception:
+    except psycopg2.Error as e:
+        import streamlit as st
+        st.error(f"Erro ao obter café: {str(e)}")
         return None
     finally:
         cursor.close()
@@ -98,8 +104,10 @@ def atualizar_cafe(cafe_id: int, user_id: int, **kwargs) -> Tuple[bool, str]:
         """, valores)
         conn.commit()
         return True, "Café atualizado com sucesso"
+    except psycopg2.Error as e:
+        return False, f"Erro banco de dados: {str(e)}"
     except Exception as e:
-        return False, f"Erro: {str(e)}"
+        return False, f"Erro inesperado: {str(e)}"
     finally:
         cursor.close()
         conn.close()
@@ -116,8 +124,10 @@ def deletar_cafe(cafe_id: int, user_id: int) -> Tuple[bool, str]:
         cursor.execute("DELETE FROM cafes WHERE id = %s AND user_id = %s", (cafe_id, user_id))
         conn.commit()
         return True, "Café deletado com sucesso"
+    except psycopg2.Error as e:
+        return False, f"Erro banco de dados: {str(e)}"
     except Exception as e:
-        return False, f"Erro: {str(e)}"
+        return False, f"Erro inesperado: {str(e)}"
     finally:
         cursor.close()
         conn.close()
@@ -143,8 +153,10 @@ def criar_extracao(user_id: int, cafe_id: int, data: date, gramas_cafe: float,
         """, (user_id, cafe_id, data, gramas_cafe, gramas_agua, tempo_segundos, temperatura, pressao, metodo, notas))
         conn.commit()
         return True, "Extração registrada com sucesso"
+    except psycopg2.Error as e:
+        return False, f"Erro banco de dados: {str(e)}"
     except Exception as e:
-        return False, f"Erro: {str(e)}"
+        return False, f"Erro inesperado: {str(e)}"
     finally:
         cursor.close()
         conn.close()
@@ -176,7 +188,9 @@ def listar_extractions(user_id: int, cafe_id: int = None, dias: int = 30) -> Lis
             """, (user_id, data_limite))
 
         return [dict(row) for row in cursor.fetchall()]
-    except Exception:
+    except psycopg2.Error as e:
+        import streamlit as st
+        st.error(f"Erro ao listar extrações: {str(e)}")
         return []
     finally:
         cursor.close()
@@ -194,8 +208,10 @@ def deletar_extracao(extracao_id: int, user_id: int) -> Tuple[bool, str]:
         cursor.execute("DELETE FROM extractions WHERE id = %s AND user_id = %s", (extracao_id, user_id))
         conn.commit()
         return True, "Extração deletada com sucesso"
+    except psycopg2.Error as e:
+        return False, f"Erro banco de dados: {str(e)}"
     except Exception as e:
-        return False, f"Erro: {str(e)}"
+        return False, f"Erro inesperado: {str(e)}"
     finally:
         cursor.close()
         conn.close()
@@ -244,12 +260,154 @@ def obter_estatisticas(user_id: int) -> Dict[str, Any]:
             "consumo_hoje": consumo_hoje,
             "consumo_media_dia": consumo_semana / 7 if consumo_semana else 0
         }
-    except Exception:
+    except psycopg2.Error as e:
+        import streamlit as st
+        st.error(f"Erro ao obter estatísticas: {str(e)}")
         return {"total_cafes": 0, "total_extractions": 0, "consumo_semana": 0, "consumo_hoje": 0}
     finally:
         cursor.close()
         conn.close()
 
 
-# Type hints
-from typing import Tuple
+# ── ANÁLISE SENSORIAL ──────────────────────────────────────────────
+
+def atualizar_analise_sensorial(extracao_id: int, user_id: int, aroma: int, acidez: int,
+                                corpo: int, sabor_notas: str, nota_geral: float) -> Tuple[bool, str]:
+    """Atualiza análise sensorial de uma extração."""
+    conn = _get_db()
+    if not conn:
+        return False, "Erro ao conectar ao banco"
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE extractions
+            SET aroma = %s, acidez = %s, corpo = %s, sabor_notas = %s, nota_geral = %s
+            WHERE id = %s AND user_id = %s
+        """, (aroma, acidez, corpo, sabor_notas, nota_geral, extracao_id, user_id))
+        conn.commit()
+        return True, "Análise sensorial salva"
+    except psycopg2.Error as e:
+        return False, f"Erro banco de dados: {str(e)}"
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def obter_melhor_receita_por_metodo(user_id: int, metodo: str) -> Optional[Dict[str, Any]]:
+    """Retorna a receita com melhor nota média para um método."""
+    conn = _get_db()
+    if not conn:
+        return None
+
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor.execute("""
+            SELECT c.nome as cafe, e.metodo, e.gramas_cafe, e.gramas_agua,
+                   AVG(e.nota_geral) as nota_media
+            FROM extractions e
+            LEFT JOIN cafes c ON e.cafe_id = c.id
+            WHERE e.user_id = %s AND e.metodo = %s AND e.nota_geral > 0
+            GROUP BY c.nome, e.metodo, e.gramas_cafe, e.gramas_agua
+            ORDER BY nota_media DESC
+            LIMIT 1
+        """, (user_id, metodo))
+        resultado = cursor.fetchone()
+        return dict(resultado) if resultado else None
+    except psycopg2.Error:
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def obter_notas_por_metodo(user_id: int) -> List[Dict[str, Any]]:
+    """Retorna nota média por método de extração."""
+    conn = _get_db()
+    if not conn:
+        return []
+
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor.execute("""
+            SELECT metodo, AVG(nota_geral) as nota_media, COUNT(*) as total
+            FROM extractions
+            WHERE user_id = %s AND nota_geral > 0
+            GROUP BY metodo
+            ORDER BY nota_media DESC
+        """, (user_id,))
+        return [dict(row) for row in cursor.fetchall()]
+    except psycopg2.Error:
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def obter_evolucao_notas(user_id: int, dias: int = 60) -> List[Dict[str, Any]]:
+    """Retorna evolução de notas ao longo do tempo."""
+    conn = _get_db()
+    if not conn:
+        return []
+
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        data_limite = date.today() - timedelta(days=dias)
+        cursor.execute("""
+            SELECT data, nota_geral
+            FROM extractions
+            WHERE user_id = %s AND data >= %s AND nota_geral > 0
+            ORDER BY data ASC
+        """, (user_id, data_limite))
+        return [dict(row) for row in cursor.fetchall()]
+    except psycopg2.Error:
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ── RECEITAS COMPARTILHADAS ────────────────────────────────────────
+
+def criar_receita_compartilhada(user_id: int, cafe_nome: str, metodo: str,
+                               dose_gramas: float, agua_ml: float, nota: int) -> Tuple[bool, str]:
+    """Cria uma receita compartilhada."""
+    conn = _get_db()
+    if not conn:
+        return False, "Erro ao conectar ao banco"
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO shared_recipes (user_id, cafe_nome, metodo, dose_gramas, agua_ml, nota)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (user_id, cafe_nome, metodo, dose_gramas, agua_ml, nota))
+        conn.commit()
+        return True, "Receita compartilhada com sucesso"
+    except psycopg2.Error as e:
+        return False, f"Erro banco de dados: {str(e)}"
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def listar_receitas_compartilhadas(limite: int = 20) -> List[Dict[str, Any]]:
+    """Lista receitas compartilhadas por toda a comunidade."""
+    conn = _get_db()
+    if not conn:
+        return []
+
+    try:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor.execute("""
+            SELECT cafe_nome, metodo, dose_gramas, agua_ml, nota, criado_em
+            FROM shared_recipes
+            ORDER BY criado_em DESC
+            LIMIT %s
+        """, (limite,))
+        return [dict(row) for row in cursor.fetchall()]
+    except psycopg2.Error:
+        return []
+    finally:
+        cursor.close()
+        conn.close()

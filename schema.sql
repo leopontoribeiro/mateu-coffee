@@ -39,8 +39,29 @@ CREATE TABLE IF NOT EXISTS extractions (
     pressao NUMERIC(5, 2),
     metodo VARCHAR(100),
     notas TEXT,
+    aroma INTEGER DEFAULT 5,
+    acidez INTEGER DEFAULT 5,
+    corpo INTEGER DEFAULT 5,
+    sabor_notas TEXT,
+    nota_geral NUMERIC(3, 1) DEFAULT 5.0,
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Tabela de receitas compartilhadas
+CREATE TABLE IF NOT EXISTS shared_recipes (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    cafe_nome VARCHAR(255) NOT NULL,
+    metodo VARCHAR(100) NOT NULL,
+    dose_gramas NUMERIC(10, 2),
+    agua_ml NUMERIC(10, 2),
+    nota INTEGER,
+    autor_anonimo BOOLEAN DEFAULT TRUE,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Índice para receitas
+CREATE INDEX IF NOT EXISTS idx_shared_recipes_user_id ON shared_recipes(user_id);
 
 -- Índices para melhor performance
 CREATE INDEX IF NOT EXISTS idx_cafes_user_id ON cafes(user_id);

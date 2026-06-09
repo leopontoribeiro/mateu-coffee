@@ -6,16 +6,7 @@ import secrets
 from typing import Optional, Tuple
 import psycopg2
 import psycopg2.extras
-
-
-def _get_db():
-    """Obtém conexão com PostgreSQL a partir de secrets."""
-    import streamlit as st
-    try:
-        db = st.connection("postgresql")
-        return db.connection()
-    except Exception:
-        return None
+from database import _get_db
 
 
 def hash_senha(senha: str) -> str:
@@ -59,8 +50,12 @@ def criar_usuario(email: str, senha: str, nome: str = "") -> Tuple[bool, str]:
         conn.commit()
 
         return True, f"Usuário criado com ID {usuario_id}"
+    except psycopg2.IntegrityError:
+        return False, "Email já cadastrado"
+    except psycopg2.Error as e:
+        return False, f"Erro banco de dados: {str(e)}"
     except Exception as e:
-        return False, f"Erro ao criar usuário: {str(e)}"
+        return False, f"Erro inesperado: {str(e)}"
     finally:
         cursor.close()
         conn.close()
@@ -84,8 +79,10 @@ def verificar_login(email: str, senha: str) -> Tuple[bool, Optional[int], str]:
             return False, None, "Email ou senha incorretos"
 
         return True, usuario['id'], "Login realizado com sucesso"
+    except psycopg2.Error as e:
+        return False, None, f"Erro banco de dados: {str(e)}"
     except Exception as e:
-        return False, None, f"Erro ao fazer login: {str(e)}"
+        return False, None, f"Erro inesperado: {str(e)}"
     finally:
         cursor.close()
         conn.close()
@@ -102,7 +99,9 @@ def obter_usuario_por_id(user_id: int) -> Optional[dict]:
         cursor.execute("SELECT id, email, nome FROM usuarios WHERE id = %s", (user_id,))
         resultado = cursor.fetchone()
         return dict(resultado) if resultado else None
-    except Exception:
+    except psycopg2.Error as e:
+        import streamlit as st
+        st.error(f"Erro ao obter usuário: {str(e)}")
         return None
     finally:
         cursor.close()
