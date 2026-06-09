@@ -337,7 +337,8 @@ def page_home():
                                 except Exception:
                                     pass
                         with cb:
-                            st.caption(f"R$ {cafe['preco_kg']:.2f}/kg" if cafe.get("preco_kg") else "Sem preco")
+                            preco_exib = cafe.get("preco_kg") or 0
+                            st.caption(f"R$ {preco_exib:.2f}/kg" if preco_exib else "Sem preco")
                         with cc:
                             if st.button("Deletar", key=f"del_cafe_{cafe['id']}", use_container_width=True):
                                 deletar_cafe(cafe["id"], st.session_state.user_id)
@@ -466,12 +467,16 @@ def page_home():
                     "docura": ext.get("docura") or 0,
                 }
                 st.plotly_chart(_radar_chart(previsao, avaliacao_atual), use_container_width=True)
+                _gc = float(ext.get('gramas_cafe') or 0)
+                _ga = float(ext.get('gramas_agua') or 0)
+                _ts = int(ext.get('tempo_segundos') or 0)
+                _pr = float(ext.get('pressao') or 0)
                 st.markdown(f"""
                 <div class='motor-barista-box'>
                     <b style='color:#E8722E;'>Previsao do Motor Barista</b><br>
-                    Dose: {ext.get('gramas_cafe',0):.1f}g | Agua: {ext.get('gramas_agua',0):.0f}ml
-                    | Tempo: {ext.get('tempo_segundos',0)}s | Pressao: {ext.get('pressao',0):.1f}bar
-                    | Metodo: {ext.get('metodo','—')}<br>
+                    Dose: {_gc:.1f}g | Agua: {_ga:.0f}ml
+                    | Tempo: {_ts}s | Pressao: {_pr:.1f}bar
+                    | Metodo: {ext.get('metodo') or '—'}<br>
                     <small style='color:#6B6B6B;'>Resultado esperado baseado nos parametros da extracao</small>
                 </div>
                 """, unsafe_allow_html=True)
