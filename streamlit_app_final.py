@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 from datetime import date, datetime, timedelta
 from auth import verificar_login, criar_usuario, obter_usuario_por_id
 from database import (
+    init_db,
     criar_cafe, listar_cafes, obter_cafe, atualizar_cafe, deletar_cafe,
     criar_extracao, listar_extractions, deletar_extracao,
     obter_estatisticas, atualizar_analise_sensorial,
@@ -152,6 +153,10 @@ body { background: var(--mc-bg) !important; color: var(--mc-text) !important; }
 }
 </style>
 """, unsafe_allow_html=True)
+
+# ── DB Init (cria tabelas se não existirem) ─────────────────────────────
+if "db_initialized" not in st.session_state:
+    st.session_state.db_initialized = init_db()
 
 # ── Session State Initialization ────────────────────────────────────────
 if "user_id" not in st.session_state:

@@ -11,10 +11,8 @@ import os
 def _get_db():
     """Obtém conexão com PostgreSQL."""
     try:
-        # Tenta pegar de variáveis de ambiente do Render
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
-            # Fallback para Streamlit secrets (só se disponível)
             try:
                 import streamlit as st
                 database_url = st.secrets.get("database_url") or st.secrets.get("DATABASE_URL")
@@ -24,11 +22,92 @@ def _get_db():
         if not database_url:
             return None
 
+        # Neon requer SSL — garante sslmode=require na URL
+        if "sslmode" not in database_url:
+            sep = "&" if "?" in database_url else "?"
+            database_url = f"{database_url}{sep}sslmode=require"
+
         conn = psycopg2.connect(database_url)
         return conn
     except Exception as e:
         print(f"Erro ao conectar BD: {str(e)}")
         return None
+
+
+def init_db():
+    """Cria tabelas se não existirem."""
+    conn = _get_db()
+    if not conn:
+        return False
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                senha_hash TEXT NOT NULL,
+                nome VARCHAR(255) DEFAULT '',
+                remember_token TEXT,
+                remember_token_expires TIMESTAMP,
+                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cafes (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+                nome VARCHAR(255) NOT NULL,
+                origem VARCHAR(255) DEFAULT '',
+                tipo VARCHAR(100) DEFAULT '',
+                torrefacao VARCHAR(100) DEFAULT '',
+                preco_kg NUMERIC(10,2) DEFAULT 0,
+                estoque_gramas NUMERIC(10,2) DEFAULT 0,
+                notas TEXT DEFAULT '',
+                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS extractions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+                cafe_id INTEGER REFERENCES cafes(id) ON DELETE SET NULL,
+                data DATE NOT NULL,
+                gramas_cafe NUMERIC(10,2) NOT NULL,
+                gramas_agua NUMERIC(10,2),
+                tempo_segundos INTEGER,
+                temperatura NUMERIC(5,2),
+                pressao NUMERIC(5,2),
+                metodo VARCHAR(100) DEFAULT '',
+                notas TEXT DEFAULT '',
+                aroma INTEGER DEFAULT 0,
+                acidez INTEGER DEFAULT 0,
+                corpo INTEGER DEFAULT 0,
+                sabor_notas TEXT DEFAULT '',
+                nota_geral NUMERIC(4,2) DEFAULT 0,
+                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shared_recipes (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+                cafe_nome VARCHAR(255) NOT NULL,
+                metodo VARCHAR(100) DEFAULT '',
+                dose_gramas NUMERIC(10,2) DEFAULT 0,
+                agua_ml NUMERIC(10,2) DEFAULT 0,
+                nota INTEGER DEFAULT 0,
+                criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Erro ao inicializar BD: {str(e)}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
 
 
 # ── CAFÉS ──────────────────────────────────────────────────────
