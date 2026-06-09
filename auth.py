@@ -17,9 +17,14 @@ def hash_senha(senha: str) -> str:
 
 
 def verificar_senha(senha: str, senha_hash: str) -> bool:
-    """Verifica se a senha corresponde ao hash."""
+    """Verifica senha — suporta hash legado (sha256 simples) e atual (pbkdf2)."""
     try:
         salt, hash_armazenado = senha_hash.split('$')
+        # Hashes antigos usavam sha256(salt+senha) com salt de 16 chars (token_hex(8))
+        if len(salt) == 16:
+            h = hashlib.sha256(f"{salt}{senha}".encode()).hexdigest()
+            return h == hash_armazenado
+        # Hashes novos usam pbkdf2 com salt de 32 chars (token_hex(16))
         hash_obj = hashlib.pbkdf2_hmac('sha256', senha.encode(), salt.encode(), 100000)
         return hash_obj.hex() == hash_armazenado
     except Exception:
