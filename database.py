@@ -105,6 +105,14 @@ def init_db():
             "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS nome VARCHAR(255) DEFAULT ''",
             "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token TEXT",
             "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token_expires TIMESTAMP",
+            "ALTER TABLE cafes ADD COLUMN IF NOT EXISTS local_compra VARCHAR(255) DEFAULT ''",
+            "ALTER TABLE cafes ADD COLUMN IF NOT EXISTS foto_embalagem TEXT",
+            "ALTER TABLE extractions ADD COLUMN IF NOT EXISTS num_xicaras INTEGER DEFAULT 1",
+            "ALTER TABLE extractions ADD COLUMN IF NOT EXISTS crema INTEGER DEFAULT 0",
+            "ALTER TABLE extractions ADD COLUMN IF NOT EXISTS amargor INTEGER DEFAULT 0",
+            "ALTER TABLE extractions ADD COLUMN IF NOT EXISTS docura INTEGER DEFAULT 0",
+            "ALTER TABLE extractions ADD COLUMN IF NOT EXISTS volume_xicara INTEGER DEFAULT 0",
+            "ALTER TABLE extractions ADD COLUMN IF NOT EXISTS nota_final INTEGER DEFAULT 0",
         ]
         for sql in migrations:
             cursor.execute(sql)
@@ -122,7 +130,8 @@ def init_db():
 # ── CAFÉS ──────────────────────────────────────────────────────
 
 def criar_cafe(user_id: int, nome: str, origem: str = "", tipo: str = "",
-               torrefacao: str = "", preco_kg: float = 0, notas: str = "") -> Tuple[bool, str]:
+               torrefacao: str = "", preco_kg: float = 0, notas: str = "",
+               local_compra: str = "", foto_embalagem: str = None) -> Tuple[bool, str]:
     """Cria novo café. Retorna (sucesso, mensagem)."""
     conn = _get_db()
     if not conn:
@@ -131,9 +140,9 @@ def criar_cafe(user_id: int, nome: str, origem: str = "", tipo: str = "",
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO cafes (user_id, nome, origem, tipo, torrefacao, preco_kg, notas)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (user_id, nome, origem, tipo, torrefacao, preco_kg, notas))
+            INSERT INTO cafes (user_id, nome, origem, tipo, torrefacao, preco_kg, notas, local_compra, foto_embalagem)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (user_id, nome, origem, tipo, torrefacao, preco_kg, notas, local_compra, foto_embalagem))
         conn.commit()
         return True, "Café adicionado com sucesso"
     except psycopg2.Error as e:
@@ -240,7 +249,7 @@ def deletar_cafe(cafe_id: int, user_id: int) -> Tuple[bool, str]:
 def criar_extracao(user_id: int, cafe_id: int, data: date, gramas_cafe: float,
                    gramas_agua: float = None, tempo_segundos: int = None,
                    temperatura: float = None, pressao: float = None,
-                   metodo: str = "", notas: str = "") -> Tuple[bool, str]:
+                   metodo: str = "", notas: str = "", num_xicaras: int = 1) -> Tuple[bool, str]:
     """Cria nova extração."""
     conn = _get_db()
     if not conn:
@@ -250,9 +259,11 @@ def criar_extracao(user_id: int, cafe_id: int, data: date, gramas_cafe: float,
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO extractions
-            (user_id, cafe_id, data, gramas_cafe, gramas_agua, tempo_segundos, temperatura, pressao, metodo, notas)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (user_id, cafe_id, data, gramas_cafe, gramas_agua, tempo_segundos, temperatura, pressao, metodo, notas))
+            (user_id, cafe_id, data, gramas_cafe, gramas_agua, tempo_segundos,
+             temperatura, pressao, metodo, notas, num_xicaras)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (user_id, cafe_id, data, gramas_cafe, gramas_agua, tempo_segundos,
+              temperatura, pressao, metodo, notas, num_xicaras))
         conn.commit()
         return True, "Extração registrada com sucesso"
     except psycopg2.Error as e:
@@ -373,9 +384,10 @@ def obter_estatisticas(user_id: int) -> Dict[str, Any]:
 
 # ── ANÁLISE SENSORIAL ──────────────────────────────────────────────
 
-def atualizar_analise_sensorial(extracao_id: int, user_id: int, aroma: int, acidez: int,
-                                corpo: int, sabor_notas: str, nota_geral: float) -> Tuple[bool, str]:
-    """Atualiza análise sensorial de uma extração."""
+def salvar_motor_barista(extracao_id: int, user_id: int, volume_xicara: int,
+                         crema: int, corpo: int, acidez: int, amargor: int,
+                         docura: int, nota_final: int, notas: str = "") -> Tuple[bool, str]:
+    """Salva avaliação do Motor Barista para uma extração."""
     conn = _get_db()
     if not conn:
         return False, "Erro ao conectar ao banco"
@@ -384,11 +396,14 @@ def atualizar_analise_sensorial(extracao_id: int, user_id: int, aroma: int, acid
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE extractions
-            SET aroma = %s, acidez = %s, corpo = %s, sabor_notas = %s, nota_geral = %s
+            SET volume_xicara = %s, crema = %s, corpo = %s, acidez = %s,
+                amargor = %s, docura = %s, nota_final = %s, sabor_notas = %s,
+                nota_geral = %s
             WHERE id = %s AND user_id = %s
-        """, (aroma, acidez, corpo, sabor_notas, nota_geral, extracao_id, user_id))
+        """, (volume_xicara, crema, corpo, acidez, amargor, docura, nota_final,
+              notas, nota_final, extracao_id, user_id))
         conn.commit()
-        return True, "Análise sensorial salva"
+        return True, "Avaliação salva com sucesso"
     except psycopg2.Error as e:
         return False, f"Erro banco de dados: {str(e)}"
     finally:

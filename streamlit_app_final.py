@@ -1,24 +1,25 @@
 """
 Mateu Coffee - Premium Coffee Tracking Dashboard
-Versao: 2.0 - Com analise sensorial, comunidade e recomendacoes
+Versao: 3.0 - Motor Barista, foto embalagem, avaliacao sensorial
 """
 import streamlit as st
 import psycopg2
 import pandas as pd
 import plotly.graph_objects as go
+import base64
 from datetime import date, datetime, timedelta
 from auth import verificar_login, criar_usuario, obter_usuario_por_id
 from database import (
     init_db,
     criar_cafe, listar_cafes, obter_cafe, atualizar_cafe, deletar_cafe,
     criar_extracao, listar_extractions, deletar_extracao,
-    obter_estatisticas, atualizar_analise_sensorial,
+    obter_estatisticas, salvar_motor_barista,
     obter_melhor_receita_por_metodo, obter_notas_por_metodo,
     obter_evolucao_notas, criar_receita_compartilhada,
     listar_receitas_compartilhadas
 )
 
-# ── Page config ────────────────────────────────────────────────────────
+# ── Page config ─────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Mateu Coffee",
     page_icon="☕",
@@ -26,7 +27,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ── CSS AVANCADO ────────────────────────────────────────────────────────
+# ── DB Init ──────────────────────────────────────────────────────────────
+if "db_initialized" not in st.session_state:
+    st.session_state.db_initialized = init_db()
+
+# ── CSS ──────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 :root {
@@ -44,7 +49,6 @@ st.markdown("""
     --mc-orange-soft: #2D1F18;
     --mc-orange-glow: rgba(232, 114, 46, 0.2);
 }
-
 body { background: var(--mc-bg) !important; color: var(--mc-text) !important; }
 .main { background: var(--mc-bg) !important; }
 .stApp { background: var(--mc-bg) !important; }
@@ -57,11 +61,7 @@ body { background: var(--mc-bg) !important; color: var(--mc-text) !important; }
     margin-bottom: 16px;
     transition: all 150ms ease;
 }
-
-.mc-card:hover {
-    border-color: var(--mc-orange);
-    box-shadow: 0 0 16px var(--mc-orange-glow);
-}
+.mc-card:hover { border-color: var(--mc-orange); box-shadow: 0 0 16px var(--mc-orange-glow); }
 
 .mc-stat {
     background: var(--mc-surface);
@@ -71,12 +71,7 @@ body { background: var(--mc-bg) !important; color: var(--mc-text) !important; }
     text-align: center;
     transition: all 150ms ease;
 }
-
-.mc-stat:hover {
-    border-color: var(--mc-orange);
-    background: var(--mc-surface-2);
-}
-
+.mc-stat:hover { border-color: var(--mc-orange); background: var(--mc-surface-2); }
 .mc-stat-value { font-size: 32px; font-weight: 700; color: var(--mc-orange); }
 .mc-stat-label { font-size: 12px; color: var(--mc-text-2); text-transform: uppercase; }
 
@@ -91,253 +86,283 @@ body { background: var(--mc-bg) !important; color: var(--mc-text) !important; }
     padding: 12px 20px !important;
     transition: all 150ms ease !important;
 }
-
 .stButton > button:hover {
     background: var(--mc-orange-hover) !important;
     transform: translateY(-2px) !important;
     box-shadow: 0 4px 12px rgba(232, 114, 46, 0.3) !important;
 }
-
-.stTextInput input,
-.stNumberInput input,
-.stSelectbox select,
-.stTextArea textarea,
-.stSlider input {
+.stTextInput input, .stNumberInput input, .stSelectbox select,
+.stTextArea textarea, .stSlider input {
     background: var(--mc-surface) !important;
     color: var(--mc-text) !important;
     border: 1px solid var(--mc-border) !important;
     border-radius: 8px !important;
     min-height: 44px !important;
 }
+.stTextInput input:focus, .stNumberInput input:focus,
+.stTextArea textarea:focus { border-color: var(--mc-orange) !important; }
 
-.stTextInput input:focus,
-.stNumberInput input:focus,
-.stSelectbox select:focus,
-.stTextArea textarea:focus {
-    border-color: var(--mc-orange) !important;
-    box-shadow: 0 0 8px var(--mc-orange-glow) !important;
+.mc-logo-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
 }
-
-.stDataFrame { background: var(--mc-surface) !important; }
-
-.mc-tutorial {
-    background: linear-gradient(135deg, #2D1F18 0%, #1E232D 100%);
+.mc-brand-title {
+    font-size: 36px;
+    font-weight: 800;
+    color: var(--mc-orange);
+    letter-spacing: 2px;
+    margin-top: 16px;
+    text-align: center;
+}
+.mc-brand-subtitle {
+    font-size: 14px;
+    color: var(--mc-text-2);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-top: 4px;
+    text-align: center;
+}
+.motor-barista-box {
+    background: linear-gradient(135deg, #1A1A1A 0%, #2D1F18 100%);
     border: 1px solid var(--mc-orange);
     border-radius: 12px;
     padding: 20px;
-    margin-bottom: 16px;
+    margin: 16px 0;
     box-shadow: 0 0 20px var(--mc-orange-glow);
 }
-
-.mc-recipe-card {
-    background: var(--mc-surface-2);
-    border: 1px solid var(--mc-border);
-    border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 12px;
-    cursor: pointer;
-    transition: all 150ms ease;
-}
-
-.mc-recipe-card:hover {
-    border-color: var(--mc-orange);
-    background: var(--mc-surface-3);
-}
-
+.estrela-label { font-size: 13px; color: var(--mc-text-2); margin-bottom: 4px; }
 @media (max-width: 768px) {
-    .stButton > button {
-        min-height: 52px !important;
-        font-size: 18px !important;
-    }
+    .stButton > button { min-height: 52px !important; font-size: 18px !important; }
     .mc-stat-value { font-size: 24px; }
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ── DB Init (cria tabelas se não existirem) ─────────────────────────────
-if "db_initialized" not in st.session_state:
-    st.session_state.db_initialized = init_db()
+# ── Session State ────────────────────────────────────────────────────────
+for k, v in [("user_id", None), ("email", None), ("page", "home"), ("show_tutorial", False)]:
+    if k not in st.session_state:
+        st.session_state[k] = v
 
-# ── Session State Initialization ────────────────────────────────────────
-if "user_id" not in st.session_state:
-    st.session_state.user_id = None
-if "email" not in st.session_state:
-    st.session_state.email = None
-if "page" not in st.session_state:
-    st.session_state.page = "home"
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = True
-if "show_tutorial" not in st.session_state:
-    st.session_state.show_tutorial = False
+# ── Helpers ───────────────────────────────────────────────────────────────
+def _logo_b64() -> str:
+    import os
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "mateu_coffee_logo.png")
+    try:
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except Exception:
+        return ""
 
-# ── LOGIN PAGE ──────────────────────────────────────────────────────────
+def _img_to_b64(uploaded) -> str:
+    return base64.b64encode(uploaded.read()).decode()
+
+def _motor_barista_previsao(gramas: float, agua: float, tempo: int, pressao: float, metodo: str) -> dict:
+    """Calcula previsão do Motor Barista com base nos parâmetros."""
+    ratio = agua / gramas if gramas > 0 else 2.0
+    # Scores base em escala 1-5
+    crema    = min(5, max(1, round(5 - abs(pressao - 9) * 0.4))) if pressao > 0 else 3
+    corpo    = min(5, max(1, round(5 - (ratio - 2) * 0.5))) if metodo == "Espresso" else min(5, max(1, round(3 + (ratio - 15) * 0.1)))
+    acidez   = min(5, max(1, round(3 + (tempo - 25) * 0.05))) if metodo == "Espresso" else min(5, max(1, round(3 - (tempo - 180) * 0.01)))
+    amargor  = min(5, max(1, round(3 + (tempo - 25) * 0.06))) if metodo == "Espresso" else min(5, max(1, round(2 + (tempo - 120) * 0.01)))
+    docura   = min(5, max(1, 6 - crema))
+    volume   = min(5, max(1, round(agua / 15))) if metodo == "Espresso" else min(5, max(1, 3))
+    return {"crema": crema, "corpo": corpo, "acidez": acidez,
+            "amargor": amargor, "docura": docura, "volume_xicara": volume}
+
+def _radar_chart(previsao: dict, avaliacao: dict = None):
+    cats = ["Volume\nXícara", "Crema", "Corpo", "Acidez", "Amargor", "Doçura"]
+    prev = [previsao["volume_xicara"], previsao["crema"], previsao["corpo"],
+            previsao["acidez"], previsao["amargor"], previsao["docura"]]
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=prev + [prev[0]], theta=cats + [cats[0]],
+        fill="toself", name="Previsão Motor",
+        line=dict(color="#E8722E", width=2, dash="dash"),
+        fillcolor="rgba(232,114,46,0.15)"
+    ))
+    if avaliacao:
+        av = [avaliacao.get("volume_xicara", 0), avaliacao.get("crema", 0),
+              avaliacao.get("corpo", 0), avaliacao.get("acidez", 0),
+              avaliacao.get("amargor", 0), avaliacao.get("docura", 0)]
+        if any(v > 0 for v in av):
+            fig.add_trace(go.Scatterpolar(
+                r=av + [av[0]], theta=cats + [cats[0]],
+                fill="toself", name="Sua Avaliação",
+                line=dict(color="#F5EDE8", width=2),
+                fillcolor="rgba(245,237,232,0.1)"
+            ))
+    fig.update_layout(
+        polar=dict(
+            bgcolor="#1A1A1A",
+            radialaxis=dict(visible=True, range=[0, 5], tickfont=dict(color="#6B6B6B"), gridcolor="#3A3A3A"),
+            angularaxis=dict(tickfont=dict(color="#B8B0A8"), gridcolor="#3A3A3A"),
+        ),
+        showlegend=True,
+        legend=dict(font=dict(color="#B8B0A8"), bgcolor="rgba(0,0,0,0)"),
+        paper_bgcolor="#0A0A0A",
+        plot_bgcolor="#0A0A0A",
+        margin=dict(l=40, r=40, t=40, b=40),
+        height=350,
+    )
+    return fig
+
+# ── LOGIN PAGE ────────────────────────────────────────────────────────────
 def page_login():
-    """Pagina de login e registro com tutorial."""
-    col1, col2 = st.columns([1, 1])
+    logo_b64 = _logo_b64()
+    col_brand, col_forms = st.columns([1, 1])
 
-    with col1:
-        st.markdown("<h2 style='text-align: center; color: var(--mc-orange); margin-bottom: 30px;'>Mateu Coffee</h2>", unsafe_allow_html=True)
-        st.subheader("Login")
-        email_login = st.text_input("Email", key="login_email")
-        senha_login = st.text_input("Senha", type="password", key="login_senha")
+    with col_brand:
+        if logo_b64:
+            st.markdown(f"""
+            <div class='mc-logo-container'>
+                <img src='data:image/png;base64,{logo_b64}' width='200' style='border-radius:12px;'>
+                <div class='mc-brand-title'>MATEU COFFEE</div>
+                <div class='mc-brand-subtitle'>Rastreamento Premium</div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("<div class='mc-brand-title'>MATEU COFFEE</div>", unsafe_allow_html=True)
 
-        if st.button("Entrar", use_container_width=True):
-            if email_login and senha_login:
-                with st.spinner("Verificando credenciais..."):
-                    sucesso, user_id, msg = verificar_login(email_login, senha_login)
-                if sucesso:
-                    st.session_state.user_id = user_id
-                    st.session_state.email = email_login
-                    st.session_state.show_tutorial = True
-                    st.session_state.page = "home"
-                    st.rerun()
+    with col_forms:
+        tab_login, tab_reg = st.tabs(["Entrar", "Criar Conta"])
+
+        with tab_login:
+            email_login = st.text_input("Email", key="login_email")
+            senha_login = st.text_input("Senha", type="password", key="login_senha")
+            if st.button("Entrar", use_container_width=True, key="btn_entrar"):
+                if email_login and senha_login:
+                    with st.spinner("Verificando..."):
+                        sucesso, user_id, msg = verificar_login(email_login, senha_login)
+                    if sucesso:
+                        st.session_state.user_id = user_id
+                        st.session_state.email = email_login
+                        st.session_state.show_tutorial = False
+                        st.session_state.page = "home"
+                        st.rerun()
+                    else:
+                        st.error(msg)
                 else:
-                    st.error(msg)
-            else:
-                st.error("Preencha email e senha")
+                    st.error("Preencha email e senha")
 
-    with col2:
-        st.subheader("Criar Conta")
-        email_reg = st.text_input("Email", key="reg_email")
-        nome_reg = st.text_input("Nome", key="reg_nome")
-        senha_reg = st.text_input("Senha", type="password", key="reg_senha")
-        senha_conf = st.text_input("Confirmar Senha", type="password", key="reg_conf")
-
-        if st.button("Criar Conta", use_container_width=True):
-            if not email_reg or not senha_reg:
-                st.error("Preencha email e senha")
-            elif senha_reg != senha_conf:
-                st.error("Senhas nao conferem")
-            else:
-                with st.spinner("Criando conta..."):
-                    sucesso, msg = criar_usuario(email_reg, senha_reg, nome_reg)
-                if sucesso:
-                    st.success("Conta criada! Faca login para continuar.")
+        with tab_reg:
+            email_reg = st.text_input("Email", key="reg_email")
+            nome_reg = st.text_input("Nome", key="reg_nome")
+            senha_reg = st.text_input("Senha", type="password", key="reg_senha")
+            senha_conf = st.text_input("Confirmar Senha", type="password", key="reg_conf")
+            if st.button("Criar Conta", use_container_width=True, key="btn_criar_conta"):
+                if not email_reg or not senha_reg:
+                    st.error("Preencha email e senha")
+                elif senha_reg != senha_conf:
+                    st.error("Senhas nao conferem")
                 else:
-                    st.error(msg)
+                    with st.spinner("Criando conta..."):
+                        sucesso, msg = criar_usuario(email_reg, senha_reg, nome_reg)
+                    if sucesso:
+                        st.success("Conta criada! Faca login.")
+                    else:
+                        st.error(msg)
 
-# ── HOME PAGE ───────────────────────────────────────────────────────────
+# ── HOME PAGE ─────────────────────────────────────────────────────────────
 def page_home():
-    """Home com dashboard completo."""
     usuario = obter_usuario_por_id(st.session_state.user_id)
+    nome_exibir = (usuario.get("nome") or usuario.get("email", "")) if usuario else st.session_state.email
 
-    # Header com theme toggle
     col1, col2, col3 = st.columns([1, 1, 0.15])
     with col1:
-        st.markdown(f"<h1 style='color: var(--mc-orange);'>Ola, {usuario['nome'] or usuario['email']}</h1>", unsafe_allow_html=True)
+        logo_b64 = _logo_b64()
+        if logo_b64:
+            st.markdown(f"""
+            <div style='display:flex;align-items:center;gap:12px;'>
+                <img src='data:image/png;base64,{logo_b64}' width='48' style='border-radius:8px;'>
+                <span style='font-size:22px;font-weight:800;color:#E8722E;'>MATEU COFFEE</span>
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown(f"<p style='color:#B8B0A8;margin-top:4px;'>Olá, {nome_exibir}</p>", unsafe_allow_html=True)
     with col3:
-        if st.button("Sair", use_container_width=True):
+        if st.button("Sair", use_container_width=True, key="btn_sair"):
             st.session_state.user_id = None
             st.session_state.email = None
-            st.session_state.show_tutorial = False
             st.session_state.page = "login"
             st.rerun()
 
-    # Tutorial ao primeiro uso
-    if st.session_state.show_tutorial:
-        st.markdown("""
-        <div class='mc-tutorial'>
-            <h3 style='color: var(--mc-orange);'>Bem-vindo ao Mateu Coffee!</h3>
-            <p>Dicas rapidas para comeco:</p>
-            <ul>
-                <li><strong>Novo Cafe:</strong> Registre seus cafes favoritos com origem e aroma</li>
-                <li><strong>Nova Extracao:</strong> Registre cada cafe que voce faz com dados sensoriais</li>
-                <li><strong>Comunidade:</strong> Compartilhe suas melhores receitas</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-        col1, col2, col3 = st.columns(3)
-        with col2:
-            if st.button("Entendi!", use_container_width=True):
-                st.session_state.show_tutorial = False
-                st.rerun()
-
-    # Estatisticas
-    with st.spinner("Carregando estatisticas..."):
-        stats = obter_estatisticas(st.session_state.user_id)
-
+    # Estatísticas
+    stats = obter_estatisticas(st.session_state.user_id)
     col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.markdown(f"""
-        <div class='mc-stat'>
-            <div class='mc-stat-value'>{stats['total_cafes']}</div>
-            <div class='mc-stat-label'>Cafes Cadastrados</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.markdown(f"""
-        <div class='mc-stat'>
-            <div class='mc-stat-value'>{stats['total_extractions']}</div>
-            <div class='mc-stat-label'>Extracoes</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col3:
-        st.markdown(f"""
-        <div class='mc-stat'>
-            <div class='mc-stat-value'>{stats['consumo_hoje']:.0f}g</div>
-            <div class='mc-stat-label'>Consumo Hoje</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col4:
-        st.markdown(f"""
-        <div class='mc-stat'>
-            <div class='mc-stat-value'>{stats['consumo_semana']:.0f}g</div>
-            <div class='mc-stat-label'>Esta Semana</div>
-        </div>
-        """, unsafe_allow_html=True)
+    for col, val, label in [
+        (col1, stats["total_cafes"], "Cafes Cadastrados"),
+        (col2, stats["total_extractions"], "Extracoes"),
+        (col3, f"{stats['consumo_hoje']:.0f}g", "Consumo Hoje"),
+        (col4, f"{stats['consumo_semana']:.0f}g", "Esta Semana"),
+    ]:
+        with col:
+            st.markdown(f"""
+            <div class='mc-stat'>
+                <div class='mc-stat-value'>{val}</div>
+                <div class='mc-stat-label'>{label}</div>
+            </div>""", unsafe_allow_html=True)
 
     st.divider()
 
-    # Abas principais
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "Cafes", "Extracoes", "Analises", "Comunidade", "Recomendacoes"
+        "Meus Cafes", "Registrar Extracao", "Motor Barista", "Analises", "Comunidade"
     ])
 
-    # ── ABA 1: CAFES ──
+    # ── ABA 1: CAFES ──────────────────────────────────────────────────────
     with tab1:
-        col1, col2 = st.columns([0.7, 0.3])
+        col_list, col_form = st.columns([0.65, 0.35])
 
-        with col1:
+        with col_list:
             st.subheader("Cafes Cadastrados")
-            with st.spinner("Carregando cafes..."):
-                cafes = listar_cafes(st.session_state.user_id)
-
+            cafes = listar_cafes(st.session_state.user_id)
             if cafes:
                 for cafe in cafes:
                     with st.container(border=True):
-                        col_a, col_b, col_c = st.columns([0.6, 0.2, 0.2])
-                        with col_a:
+                        ca, cb, cc = st.columns([0.55, 0.25, 0.20])
+                        with ca:
                             st.markdown(f"**{cafe['nome']}**")
-                            st.caption(f"Origem: {cafe['origem'] or 'N/A'} | Tipo: {cafe['tipo'] or 'N/A'}")
-                            if cafe['notas']:
-                                st.caption(f"Notas: {cafe['notas']}")
-                        with col_b:
-                            st.caption(f"R$ {cafe['preco_kg']:.2f}/kg" if cafe['preco_kg'] else "Sem preco")
-                        with col_c:
+                            st.caption(f"Origem: {cafe.get('origem') or 'N/A'} | Tipo: {cafe.get('tipo') or 'N/A'} | Torra: {cafe.get('torrefacao') or 'N/A'}")
+                            if cafe.get("local_compra"):
+                                st.caption(f"Local: {cafe['local_compra']}")
+                            if cafe.get("notas"):
+                                with st.expander("Notas"):
+                                    st.write(cafe["notas"])
+                            # foto
+                            if cafe.get("foto_embalagem"):
+                                try:
+                                    img_data = base64.b64decode(cafe["foto_embalagem"])
+                                    st.image(img_data, width=120)
+                                except Exception:
+                                    pass
+                        with cb:
+                            st.caption(f"R$ {cafe['preco_kg']:.2f}/kg" if cafe.get("preco_kg") else "Sem preco")
+                        with cc:
                             if st.button("Deletar", key=f"del_cafe_{cafe['id']}", use_container_width=True):
-                                with st.spinner("Deletando..."):
-                                    deletar_cafe(cafe['id'], st.session_state.user_id)
-                                st.success("Cafe deletado!")
+                                deletar_cafe(cafe["id"], st.session_state.user_id)
                                 st.rerun()
             else:
-                st.info("Nenhum cafe cadastrado. Crie um para comeco!")
+                st.info("Nenhum cafe cadastrado.")
 
-        with col2:
+        with col_form:
             st.subheader("Novo Cafe")
-            nome = st.text_input("Nome do Cafe", key="cafe_nome")
-            origem = st.text_input("Origem", key="cafe_origem")
-            tipo = st.selectbox("Tipo", ["Espresso", "Filtrado", "Coado", "Outro"], key="cafe_tipo")
-            torrefacao = st.selectbox("Torrefacao", ["Leve", "Media", "Escura"], key="cafe_torrefacao")
-            preco = st.number_input("Preco/kg", min_value=0.0, step=1.0, key="cafe_preco")
-            notas = st.text_area("Notas", height=80, key="cafe_notas")
+            nome = st.text_input("Nome do Cafe *", key="cafe_nome")
+            local_compra = st.text_input("Local de Compra", key="cafe_local")
+            origem = st.text_input("Origem / Fazenda", key="cafe_origem")
+            tipo = st.selectbox("Tipo", ["Graos", "Moido", "Capsula", "Outro"], key="cafe_tipo")
+            torrefacao = st.selectbox("Torra", ["Clara", "Media", "Escura"], key="cafe_torrefacao")
+            preco = st.number_input("Preco pago (R$)", min_value=0.0, step=0.5, key="cafe_preco")
+            notas = st.text_area("Notas / Descricao", height=80, key="cafe_notas")
+            foto = st.file_uploader("Foto da Embalagem", type=["jpg", "jpeg", "png"], key="cafe_foto")
 
-            if st.button("Adicionar Cafe", use_container_width=True):
+            if st.button("Adicionar Cafe", use_container_width=True, key="btn_add_cafe"):
                 if nome:
-                    with st.spinner("Salvando cafe..."):
-                        sucesso, msg = criar_cafe(st.session_state.user_id, nome, origem, tipo, torrefacao, preco, notas)
+                    foto_b64 = _img_to_b64(foto) if foto else None
+                    sucesso, msg = criar_cafe(
+                        st.session_state.user_id, nome, origem, tipo, torrefacao,
+                        preco, notas, local_compra, foto_b64
+                    )
                     if sucesso:
                         st.success(msg)
                         st.rerun()
@@ -346,151 +371,172 @@ def page_home():
                 else:
                     st.error("Nome do cafe e obrigatorio")
 
-    # ── ABA 2: EXTRACOES ──
+    # ── ABA 2: EXTRACOES ──────────────────────────────────────────────────
     with tab2:
-        col1, col2 = st.columns([0.6, 0.4])
+        col_form, col_list = st.columns([0.5, 0.5])
 
-        with col1:
+        with col_form:
             st.subheader("Registrar Extracao")
-            with st.spinner("Carregando cafes..."):
-                cafes = listar_cafes(st.session_state.user_id)
-            cafe_opts = {c['nome']: c['id'] for c in cafes}
+            cafes = listar_cafes(st.session_state.user_id)
+            cafe_opts = {c["nome"]: c["id"] for c in cafes}
 
-            cafe_nome = st.selectbox("Cafe", list(cafe_opts.keys()) if cafe_opts else ["Nenhum cafe"], key="extr_cafe")
-            data_extr = st.date_input("Data", value=date.today(), key="extr_data")
-            gramas = st.number_input("Gramas de Cafe", min_value=0.0, step=0.1, key="extr_gramas")
-            gramas_agua = st.number_input("Gramas de Agua", min_value=0.0, step=0.1, key="extr_agua")
-            tempo = st.number_input("Tempo (segundos)", min_value=0, step=1, key="extr_tempo")
-            temp = st.number_input("Temperatura (C)", min_value=0.0, step=0.1, key="extr_temp")
-            pressao = st.number_input("Pressao (bar)", min_value=0.0, step=0.1, key="extr_pressao")
-            metodo = st.selectbox("Metodo", ["Espresso", "V60", "Prensa Francesa", "Moka", "Outro"], key="extr_metodo")
+            cafe_selecionado = st.selectbox("Cafe", list(cafe_opts.keys()) if cafe_opts else ["Nenhum cafe"], key="extr_cafe")
+            data_str = st.text_input("Data (DD/MM/AAAA)", value=date.today().strftime("%d/%m/%Y"), key="extr_data")
+            num_xicaras = st.selectbox("Numero de Xicaras", [1, 2], key="extr_xicaras")
+            metodo = st.selectbox("Metodo", ["Espresso", "V60", "Prensa Francesa", "Moka", "Coado", "Outro"], key="extr_metodo")
+            gramas = st.number_input("Dose de Cafe (g)", min_value=0.0, step=0.5, key="extr_gramas")
+            gramas_agua = st.number_input("Agua (ml/g)", min_value=0.0, step=1.0, key="extr_agua")
+            tempo = st.number_input("Tempo de Extracao (segundos)", min_value=0, step=1, key="extr_tempo")
+            temp = st.number_input("Temperatura (C)", min_value=0.0, step=0.5, key="extr_temp")
+            pressao = st.number_input("Pressao (bar)", min_value=0.0, step=0.5, key="extr_pressao")
             notas_extr = st.text_area("Notas", height=80, key="extr_notas")
 
-            if st.button("Registrar Extracao", use_container_width=True):
+            if st.button("Registrar Extracao", use_container_width=True, key="btn_reg_extr"):
                 if cafe_opts and gramas > 0:
-                    with st.spinner("Registrando extracao..."):
-                        cafe_id = cafe_opts[cafe_nome]
-                        sucesso, msg = criar_extracao(
-                            st.session_state.user_id, cafe_id, data_extr, gramas,
-                            gramas_agua, tempo, temp, pressao, metodo, notas_extr
-                        )
+                    try:
+                        data_extr = datetime.strptime(data_str, "%d/%m/%Y").date()
+                    except ValueError:
+                        st.error("Data invalida. Use DD/MM/AAAA")
+                        st.stop()
+                    cafe_id = cafe_opts[cafe_selecionado]
+                    sucesso, msg = criar_extracao(
+                        st.session_state.user_id, cafe_id, data_extr, gramas,
+                        gramas_agua, tempo, temp, pressao, metodo, notas_extr, num_xicaras
+                    )
                     if sucesso:
                         st.success(msg)
                         st.rerun()
                     else:
                         st.error(msg)
                 else:
-                    st.error("Selecione um cafe e gramas")
+                    st.error("Selecione um cafe e informe a dose")
 
-        with col2:
+        with col_list:
             st.subheader("Ultimas Extracoes")
-            with st.spinner("Carregando extracoes..."):
-                extractions = listar_extractions(st.session_state.user_id, dias=30)
-
+            extractions = listar_extractions(st.session_state.user_id, dias=90)
             if extractions:
                 for ext in extractions[:10]:
                     with st.container(border=True):
-                        st.caption(f"{ext['data']} | {ext.get('cafe_nome', 'N/A')}")
-                        st.markdown(f"**{ext['gramas_cafe']:.1f}g** | {ext['metodo'] or 'N/A'}")
-                        if ext.get('tempo_segundos'):
-                            st.caption(f"Tempo: {ext['tempo_segundos']}s | Temp: {ext.get('temperatura', 0):.1f}C")
+                        d = ext["data"]
+                        data_fmt = d.strftime("%d/%m/%Y") if hasattr(d, "strftime") else str(d)
+                        xic = ext.get("num_xicaras") or 1
+                        st.caption(f"{data_fmt} | {ext.get('cafe_nome','N/A')} | {xic} xicara(s)")
+                        st.markdown(f"**{ext['gramas_cafe']:.1f}g** cafe | {ext['metodo'] or 'N/A'}")
+                        if ext.get("tempo_segundos"):
+                            st.caption(f"Tempo: {ext['tempo_segundos']}s | Temp: {ext.get('temperatura',0):.1f}C")
                         if st.button("Deletar", key=f"del_ext_{ext['id']}", use_container_width=True):
-                            with st.spinner("Deletando..."):
-                                deletar_extracao(ext['id'], st.session_state.user_id)
+                            deletar_extracao(ext["id"], st.session_state.user_id)
                             st.rerun()
             else:
                 st.info("Nenhuma extracao registrada")
 
-    # ── ABA 3: ANALISES SENSORIAIS ──
+    # ── ABA 3: MOTOR BARISTA ─────────────────────────────────────────────
     with tab3:
-        st.subheader("Analises Sensoriais")
-        with st.spinner("Carregando dados..."):
-            extractions = listar_extractions(st.session_state.user_id, dias=60)
+        st.subheader("Motor Barista")
+        st.caption("Selecione uma extracao para ver a previsao e registrar sua avaliacao sensorial")
 
-        if extractions:
-            for idx, ext in enumerate(extractions[:10]):
-                with st.container(border=True):
-                    col_a, col_b = st.columns([0.7, 0.3])
-                    with col_a:
-                        st.markdown(f"**{ext.get('cafe_nome', 'Cafe')}** - {ext['data']}")
-                        st.caption(f"Metodo: {ext['metodo']} | {ext['gramas_cafe']:.1f}g")
-
-                    with col_b:
-                        st.metric("Nota Geral", f"{ext.get('nota_geral', 0):.1f}/10")
-
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        aroma = st.slider("Aroma", 1, 10, int(ext.get('aroma', 5)), key=f"aroma_{ext['id']}")
-                    with col2:
-                        acidez = st.slider("Acidez", 1, 10, int(ext.get('acidez', 5)), key=f"acidez_{ext['id']}")
-                    with col3:
-                        corpo = st.slider("Corpo", 1, 10, int(ext.get('corpo', 5)), key=f"corpo_{ext['id']}")
-
-                    sabor = st.text_input("Notas de Sabor (ex: chocolate, frutado)", value=ext.get('sabor_notas', ''), key=f"sabor_{ext['id']}")
-                    nota_final = st.slider("Nota Final", 0.0, 10.0, float(ext.get('nota_geral', 5.0)), key=f"nota_{ext['id']}")
-
-                    if st.button("Salvar Analise", key=f"save_analise_{ext['id']}", use_container_width=True):
-                        with st.spinner("Salvando analise..."):
-                            atualizar_analise_sensorial(ext['id'], st.session_state.user_id, aroma, acidez, corpo, sabor, nota_final)
-                        st.success("Analise salva!")
-                        st.rerun()
-
-            # Graficos de analise
-            st.divider()
-            st.subheader("Graficos de Desempenho")
-
-            notas_por_metodo = obter_notas_por_metodo(st.session_state.user_id)
-            if notas_por_metodo:
-                df_metodos = pd.DataFrame(notas_por_metodo)
-                fig_metodos = go.Figure(data=[
-                    go.Bar(x=df_metodos['metodo'], y=df_metodos['nota_media'], marker_color='#E8722E')
-                ])
-                fig_metodos.update_layout(
-                    title="Nota Media por Metodo",
-                    xaxis_title="Metodo",
-                    yaxis_title="Nota Media",
-                    template="plotly_dark",
-                    paper_bgcolor="#0A0A0A",
-                    plot_bgcolor="#1A1A1A"
-                )
-                st.plotly_chart(fig_metodos, use_container_width=True)
-
-            evolucao = obter_evolucao_notas(st.session_state.user_id, dias=60)
-            if evolucao:
-                df_evolucao = pd.DataFrame(evolucao)
-                fig_evolucao = go.Figure(data=[
-                    go.Scatter(x=df_evolucao['data'], y=df_evolucao['nota_geral'], mode='lines+markers', marker_color='#E8722E')
-                ])
-                fig_evolucao.update_layout(
-                    title="Evolucao de Notas",
-                    xaxis_title="Data",
-                    yaxis_title="Nota",
-                    template="plotly_dark",
-                    paper_bgcolor="#0A0A0A",
-                    plot_bgcolor="#1A1A1A"
-                )
-                st.plotly_chart(fig_evolucao, use_container_width=True)
+        extractions = listar_extractions(st.session_state.user_id, dias=180)
+        if not extractions:
+            st.info("Registre extracoes para usar o Motor Barista.")
         else:
-            st.info("Registre extracoes para ver analises")
+            opcoes = {f"{(ext['data'].strftime('%d/%m/%Y') if hasattr(ext['data'],'strftime') else str(ext['data']))} — {ext.get('cafe_nome','?')} ({ext['metodo']})": ext for ext in extractions[:20]}
+            selecionada_label = st.selectbox("Extracao", list(opcoes.keys()), key="mb_extr_sel")
+            ext = opcoes[selecionada_label]
 
-    # ── ABA 4: COMUNIDADE ──
+            # Previsão do motor
+            previsao = _motor_barista_previsao(
+                gramas=ext.get("gramas_cafe") or 0,
+                agua=ext.get("gramas_agua") or 0,
+                tempo=ext.get("tempo_segundos") or 0,
+                pressao=ext.get("pressao") or 0,
+                metodo=ext.get("metodo") or "Espresso"
+            )
+
+            col_radar, col_aval = st.columns([0.55, 0.45])
+
+            with col_radar:
+                avaliacao_atual = {
+                    "volume_xicara": ext.get("volume_xicara") or 0,
+                    "crema": ext.get("crema") or 0,
+                    "corpo": ext.get("corpo") or 0,
+                    "acidez": ext.get("acidez") or 0,
+                    "amargor": ext.get("amargor") or 0,
+                    "docura": ext.get("docura") or 0,
+                }
+                st.plotly_chart(_radar_chart(previsao, avaliacao_atual), use_container_width=True)
+                st.markdown(f"""
+                <div class='motor-barista-box'>
+                    <b style='color:#E8722E;'>Previsao do Motor Barista</b><br>
+                    Dose: {ext.get('gramas_cafe',0):.1f}g | Agua: {ext.get('gramas_agua',0):.0f}ml
+                    | Tempo: {ext.get('tempo_segundos',0)}s | Pressao: {ext.get('pressao',0):.1f}bar
+                    | Metodo: {ext.get('metodo','—')}<br>
+                    <small style='color:#6B6B6B;'>Resultado esperado baseado nos parametros da extracao</small>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col_aval:
+                st.markdown("**Sua Avaliacao Sensorial**")
+                vol  = st.slider("Volume na Xicara", 1, 5, int(ext.get("volume_xicara") or previsao["volume_xicara"]), key=f"mb_vol_{ext['id']}")
+                cre  = st.slider("Crema", 1, 5, int(ext.get("crema") or previsao["crema"]), key=f"mb_cre_{ext['id']}")
+                cor  = st.slider("Corpo", 1, 5, int(ext.get("corpo") or previsao["corpo"]), key=f"mb_cor_{ext['id']}")
+                aci  = st.slider("Acidez", 1, 5, int(ext.get("acidez") or previsao["acidez"]), key=f"mb_aci_{ext['id']}")
+                ama  = st.slider("Amargor", 1, 5, int(ext.get("amargor") or previsao["amargor"]), key=f"mb_ama_{ext['id']}")
+                doc  = st.slider("Docura", 1, 5, int(ext.get("docura") or previsao["docura"]), key=f"mb_doc_{ext['id']}")
+                nf   = st.slider("Nota Final", 1, 5, int(ext.get("nota_final") or 3), key=f"mb_nf_{ext['id']}")
+                obs  = st.text_area("Observacoes", value=ext.get("sabor_notas") or "", key=f"mb_obs_{ext['id']}", height=80)
+
+                if st.button("Salvar Avaliacao", use_container_width=True, key=f"mb_save_{ext['id']}"):
+                    sucesso, msg = salvar_motor_barista(
+                        ext["id"], st.session_state.user_id,
+                        vol, cre, cor, aci, ama, doc, nf, obs
+                    )
+                    if sucesso:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+    # ── ABA 4: ANALISES ──────────────────────────────────────────────────
     with tab4:
+        st.subheader("Analises de Desempenho")
+        extractions = listar_extractions(st.session_state.user_id, dias=90)
+
+        notas_por_metodo = obter_notas_por_metodo(st.session_state.user_id)
+        if notas_por_metodo:
+            df = pd.DataFrame(notas_por_metodo)
+            fig = go.Figure(data=[go.Bar(x=df["metodo"], y=df["nota_media"], marker_color="#E8722E")])
+            fig.update_layout(title="Nota Media por Metodo", template="plotly_dark",
+                              paper_bgcolor="#0A0A0A", plot_bgcolor="#1A1A1A")
+            st.plotly_chart(fig, use_container_width=True)
+
+        evolucao = obter_evolucao_notas(st.session_state.user_id, dias=90)
+        if evolucao:
+            df2 = pd.DataFrame(evolucao)
+            fig2 = go.Figure(data=[go.Scatter(x=df2["data"], y=df2["nota_geral"],
+                                              mode="lines+markers", marker_color="#E8722E")])
+            fig2.update_layout(title="Evolucao de Notas", template="plotly_dark",
+                               paper_bgcolor="#0A0A0A", plot_bgcolor="#1A1A1A")
+            st.plotly_chart(fig2, use_container_width=True)
+
+        if not notas_por_metodo and not evolucao:
+            st.info("Registre extracoes e avaliações no Motor Barista para ver analises.")
+
+    # ── ABA 5: COMUNIDADE ────────────────────────────────────────────────
+    with tab5:
         col1, col2 = st.columns([0.5, 0.5])
 
         with col1:
             st.subheader("Compartilhar Receita")
             cafe_comp = st.text_input("Nome do Cafe", key="comp_cafe_nome")
-            metodo_comp = st.selectbox("Metodo", ["Espresso", "V60", "Prensa Francesa", "Moka", "Outro"], key="comp_metodo")
-            dose_comp = st.number_input("Dose (gramas)", min_value=0.0, step=0.1, key="comp_dose")
+            metodo_comp = st.selectbox("Metodo", ["Espresso", "V60", "Prensa Francesa", "Moka", "Coado", "Outro"], key="comp_metodo")
+            dose_comp = st.number_input("Dose (g)", min_value=0.0, step=0.5, key="comp_dose")
             agua_comp = st.number_input("Agua (ml)", min_value=0.0, step=1.0, key="comp_agua")
             nota_comp = st.slider("Sua Nota", 1, 10, 7, key="comp_nota")
-
-            if st.button("Compartilhar Receita", use_container_width=True):
+            if st.button("Compartilhar Receita", use_container_width=True, key="btn_comp"):
                 if cafe_comp and dose_comp > 0:
-                    with st.spinner("Compartilhando receita..."):
-                        sucesso, msg = criar_receita_compartilhada(
-                            st.session_state.user_id, cafe_comp, metodo_comp, dose_comp, agua_comp, nota_comp
-                        )
+                    sucesso, msg = criar_receita_compartilhada(
+                        st.session_state.user_id, cafe_comp, metodo_comp, dose_comp, agua_comp, nota_comp
+                    )
                     if sucesso:
                         st.success("Receita compartilhada!")
                         st.rerun()
@@ -501,46 +547,20 @@ def page_home():
 
         with col2:
             st.subheader("Receitas da Comunidade")
-            with st.spinner("Carregando receitas..."):
-                receitas = listar_receitas_compartilhadas(limite=20)
-
+            receitas = listar_receitas_compartilhadas(limite=20)
             if receitas:
-                for receita in receitas:
+                for r in receitas:
                     st.markdown(f"""
-                    <div class='mc-recipe-card'>
-                        <strong>{receita['cafe_nome']}</strong><br>
-                        {receita['metodo']} | {receita['dose_gramas']:.1f}g + {receita['agua_ml']:.0f}ml<br>
-                        <span style='color: var(--mc-orange);'>Nota: {receita['nota']}/10</span>
+                    <div class='mc-card'>
+                        <strong>{r['cafe_nome']}</strong><br>
+                        {r['metodo']} | {r['dose_gramas']:.1f}g + {r['agua_ml']:.0f}ml<br>
+                        <span style='color:#E8722E;'>Nota: {r['nota']}/10</span>
                     </div>
                     """, unsafe_allow_html=True)
             else:
                 st.info("Nenhuma receita compartilhada ainda")
 
-    # ── ABA 5: RECOMENDACOES ──
-    with tab5:
-        st.subheader("Recomendacoes Personalizadas")
-
-        metodos = ["Espresso", "V60", "Prensa Francesa", "Moka"]
-        for metodo in metodos:
-            with st.spinner(f"Buscando melhor receita para {metodo}..."):
-                melhor = obter_melhor_receita_por_metodo(st.session_state.user_id, metodo)
-            if melhor:
-                st.markdown(f"""
-                <div class='mc-card'>
-                    <h4 style='color: var(--mc-orange);'>{metodo}</h4>
-                    <p><strong>Cafe:</strong> {melhor['cafe'] or 'N/A'}</p>
-                    <p><strong>Receita:</strong> {melhor['gramas_cafe']:.1f}g + {melhor['gramas_agua']:.0f}g agua</p>
-                    <p><strong>Nota Media:</strong> {melhor['nota_media']:.1f}/10</p>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div class='mc-card'>
-                    <p>{metodo}: Registre extracoes para ter recomendacoes</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-# ── MAIN ───────────────────────────────────────────────────────────────
+# ── MAIN ─────────────────────────────────────────────────────────────────
 if st.session_state.user_id:
     page_home()
 else:
