@@ -100,6 +100,15 @@ def init_db():
                 criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Migrações — colunas que podem faltar em tabelas antigas
+        migrations = [
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS nome VARCHAR(255) DEFAULT ''",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token TEXT",
+            "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token_expires TIMESTAMP",
+        ]
+        for sql in migrations:
+            cursor.execute(sql)
+
         conn.commit()
         return True
     except Exception as e:
