@@ -5,15 +5,26 @@ from typing import List, Optional, Dict, Any, Tuple
 from datetime import date, timedelta
 import psycopg2
 import psycopg2.extras
+import os
 
 
 def _get_db():
     """Obtém conexão com PostgreSQL."""
-    import streamlit as st
     try:
-        db = st.connection("postgresql")
-        return db.connection()
-    except Exception:
+        # Tenta pegar de variáveis de ambiente do Render
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            # Fallback para Streamlit secrets
+            import streamlit as st
+            database_url = st.secrets.get("database_url") or st.secrets.get("DATABASE_URL")
+
+        if not database_url:
+            return None
+
+        conn = psycopg2.connect(database_url)
+        return conn
+    except Exception as e:
+        print(f"Erro ao conectar BD: {str(e)}")
         return None
 
 
