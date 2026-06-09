@@ -14,9 +14,12 @@ def _get_db():
         # Tenta pegar de variáveis de ambiente do Render
         database_url = os.environ.get("DATABASE_URL")
         if not database_url:
-            # Fallback para Streamlit secrets
-            import streamlit as st
-            database_url = st.secrets.get("database_url") or st.secrets.get("DATABASE_URL")
+            # Fallback para Streamlit secrets (só se disponível)
+            try:
+                import streamlit as st
+                database_url = st.secrets.get("database_url") or st.secrets.get("DATABASE_URL")
+            except Exception:
+                pass
 
         if not database_url:
             return None
