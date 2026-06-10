@@ -1097,11 +1097,78 @@ st.markdown("""
 
     /* ─── Mobile ──────────────────────────────────────────────── */
     @media (max-width: 640px) {
-        .block-container { padding: 1rem 1rem 2rem !important; }
+        .block-container { padding: 0.75rem 0.85rem 4rem !important; }
         h1 { font-size: 22px !important; }
         h2 { font-size: 18px !important; }
-        .stTabs [data-baseweb="tab"] { padding: 8px 14px; font-size: 12px; }
-        .stButton > button { width: 100%; }
+        h3 { font-size: 16px !important; }
+
+        /* Tabs: barra fixa no topo, rolável na horizontal, sem quebra */
+        .stTabs [data-baseweb="tab-list"] {
+            width: 100% !important;
+            overflow-x: auto !important;
+            flex-wrap: nowrap !important;
+            position: sticky;
+            top: 0;
+            z-index: 999;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            gap: 2px;
+            padding: 5px;
+        }
+        .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar { display: none; }
+        .stTabs [data-baseweb="tab"] {
+            padding: 10px 13px;
+            font-size: 12px;
+            white-space: nowrap;
+            flex-shrink: 0;
+            min-height: 42px;
+        }
+        .stTabs [data-baseweb="tab-panel"] { padding-top: 1.1rem !important; }
+
+        /* Alvos de toque ≥44px (recomendação Apple/Google) */
+        .stButton > button {
+            width: 100%;
+            min-height: 46px;
+            font-size: 15px !important;
+        }
+        .stDownloadButton > button { width: 100%; min-height: 46px; }
+        [data-testid="stExpander"] summary { min-height: 46px; padding: 10px 12px; }
+        .stCheckbox { min-height: 40px; }
+
+        /* font-size 16px nos inputs impede o zoom automático do iOS */
+        .stTextInput input, .stTextArea textarea,
+        .stNumberInput input, .stDateInput input,
+        .stSelectbox [data-baseweb="select"] div { font-size: 16px !important; }
+        .stTextInput input, .stNumberInput input, .stDateInput input { min-height: 44px; }
+
+        /* Colunas empilham em vez de espremer */
+        [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; gap: 0.5rem !important; }
+        [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+            flex: 1 1 calc(50% - 0.5rem) !important;
+            min-width: calc(50% - 0.5rem) !important;
+        }
+        /* Formulários longos: 1 coluna só */
+        [data-testid="stForm"] [data-testid="stColumn"],
+        [data-testid="stExpander"] [data-testid="stColumn"] {
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+
+        /* Métricas compactas */
+        [data-testid="stMetric"] { padding: 8px 10px !important; }
+        [data-testid="stMetricValue"] { font-size: 20px !important; }
+        [data-testid="stMetricLabel"] { font-size: 11px !important; }
+
+        /* Sliders: área de toque maior */
+        .stSlider, [data-testid="stSelectSlider"] { padding: 6px 4px; }
+        .stSlider [role="slider"] { width: 22px !important; height: 22px !important; }
+
+        /* Imagens nunca estouram a largura */
+        img { max-width: 100% !important; height: auto !important; }
+
+        /* Login: hero mais enxuto */
+        .mc-login-hero img { max-width: 280px !important; }
+        .mc-login-sub { font-size: 13px !important; }
     }
 </style>
 """, unsafe_allow_html=True)
