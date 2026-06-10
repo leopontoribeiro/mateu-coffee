@@ -1482,6 +1482,21 @@ def _init_db() -> None:
                 ADD COLUMN IF NOT EXISTS temp_real    FLOAT DEFAULT NULL,
                 ADD COLUMN IF NOT EXISTS pressao_real FLOAT DEFAULT NULL;
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS backups (
+                id           SERIAL PRIMARY KEY,
+                tipo         TEXT NOT NULL DEFAULT 'manual',
+                criado_em    TIMESTAMP DEFAULT NOW(),
+                notas        TEXT DEFAULT '',
+                coffees_data JSONB DEFAULT '[]',
+                extracoes_data JSONB DEFAULT '[]',
+                capsulas_data  JSONB DEFAULT '[]',
+                usuarios_data  JSONB DEFAULT '[]',
+                app_code     TEXT DEFAULT '',
+                git_hash     TEXT DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_backups_criado_em ON backups(criado_em DESC);
+        """)
 
         conn.commit()
         st.session_state["_db_ready"] = True
@@ -1490,6 +1505,141 @@ def _init_db() -> None:
         raise
     finally:
         cur.close()
+
+# ── Backup ─────────────────────────────────────────────────────────────
+import json as _json
+import os as _os
+
+def _backup_criar(tipo: str = "manual", notas: str = "") -> bool:
+    """Cria snapshot completo dos dados + código do app."""
+    try:
+        coffees    = _fetch("SELECT * FROM coffees", _v=_v())
+        extracoes  = _fetch("SELECT * FROM extracoes", _v=_v())
+        capsulas   = _fetch("SELECT * FROM capsulas", _v=_v())
+        usuarios   = _fetch("SELECT id, email, nome, criado_em FROM usuarios", _v=_v())
+
+        def _rows_to_json(rows):
+            out = []
+            for r in rows:
+                d = dict(r)
+                for k, val in d.items():
+                    if hasattr(val, 'isoformat'):
+                        d[k] = val.isoformat()
+                    elif val is None:
+                        d[k] = None
+                out.append(d)
+            return _json.dumps(out, ensure_ascii=False)
+
+        app_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "streamlit_app_final.py")
+        try:
+            with open(app_path, "r", encoding="utf-8") as f:
+                app_code = f.read()
+        except Exception:
+            app_code = ""
+
+        try:
+            import subprocess
+            git_hash = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=_os.path.dirname(app_path), stderr=subprocess.DEVNULL
+            ).decode().strip()
+        except Exception:
+            git_hash = ""
+
+        _run("""INSERT INTO backups
+                    (tipo, notas, coffees_data, extracoes_data, capsulas_data, usuarios_data, app_code, git_hash)
+                VALUES (%s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s)""",
+             (tipo, notas,
+              _rows_to_json(coffees), _rows_to_json(extracoes),
+              _rows_to_json(capsulas), _rows_to_json(usuarios),
+              app_code, git_hash))
+        return True
+    except Exception as e:
+        st.error(f"Erro ao criar backup: {e}")
+        return False
+
+
+def _backup_listar() -> list:
+    return _fetch("""SELECT id, tipo, criado_em, notas, git_hash,
+                            jsonb_array_length(coffees_data)   AS n_cafes,
+                            jsonb_array_length(extracoes_data) AS n_extracoes,
+                            jsonb_array_length(capsulas_data)  AS n_capsulas
+                     FROM backups ORDER BY criado_em DESC LIMIT 30""", _v=_v())
+
+
+def _backup_restaurar_dados(backup_id: int) -> bool:
+    """Restaura apenas os DADOS (tabelas coffees, extracoes, capsulas) do backup.
+    Cria um backup 'pre-restore' automaticamente antes de alterar qualquer coisa."""
+    try:
+        rows = _fetch("SELECT coffees_data, extracoes_data, capsulas_data FROM backups WHERE id=%s",
+                      (backup_id,), _v=_v())
+        if not rows:
+            st.error("Backup não encontrado.")
+            return False
+
+        _backup_criar("pre-restore", f"Auto-backup antes de restaurar backup #{backup_id}")
+
+        b = rows[0]
+        coffees   = _json.loads(b["coffees_data"])
+        extracoes = _json.loads(b["extracoes_data"])
+        capsulas  = _json.loads(b["capsulas_data"])
+
+        conn = _conn()
+        cur  = conn.cursor()
+        try:
+            cur.execute("DELETE FROM extracoes")
+            cur.execute("DELETE FROM capsulas")
+            cur.execute("DELETE FROM coffees")
+
+            for c in coffees:
+                cols = [k for k in c if c[k] is not None or k in ("id",)]
+                placeholders = ", ".join(["%s"] * len(cols))
+                col_str = ", ".join(cols)
+                vals = [c[k] for k in cols]
+                cur.execute(f"INSERT INTO coffees ({col_str}) VALUES ({placeholders}) ON CONFLICT (id) DO NOTHING", vals)
+
+            for e in extracoes:
+                cols = [k for k in e]
+                placeholders = ", ".join(["%s"] * len(cols))
+                col_str = ", ".join(cols)
+                vals = [e[k] for k in cols]
+                cur.execute(f"INSERT INTO extracoes ({col_str}) VALUES ({placeholders}) ON CONFLICT (id) DO NOTHING", vals)
+
+            for cap in capsulas:
+                cols = [k for k in cap]
+                placeholders = ", ".join(["%s"] * len(cols))
+                col_str = ", ".join(cols)
+                vals = [cap[k] for k in cols]
+                cur.execute(f"INSERT INTO capsulas ({col_str}) VALUES ({placeholders}) ON CONFLICT (id) DO NOTHING", vals)
+
+            conn.commit()
+            _bump()
+            return True
+        except Exception as e:
+            conn.rollback()
+            st.error(f"Erro ao restaurar dados: {e}")
+            return False
+        finally:
+            cur.close()
+    except Exception as e:
+        st.error(f"Erro ao restaurar: {e}")
+        return False
+
+
+def _auto_backup_check(user_id: int) -> None:
+    """Cria backup semanal automático se o último foi há mais de 7 dias."""
+    if st.session_state.get("_auto_backup_done"):
+        return
+    st.session_state["_auto_backup_done"] = True
+    try:
+        rows = _fetch("SELECT criado_em FROM backups WHERE tipo='semanal' ORDER BY criado_em DESC LIMIT 1", _v=_v())
+        import datetime as _dt
+        now = _dt.datetime.utcnow()
+        if not rows or (now - rows[0]["criado_em"]).days >= 7:
+            _backup_criar("semanal", "Backup automático semanal")
+    except Exception:
+        pass
+
 
 # ── Helpers ────────────────────────────────────────────────────────────
 def _compress_image_bytes(raw_bytes: bytes, max_width: int = 1200,
@@ -2622,9 +2772,11 @@ def main():
     # Widget de consumo (hoje · semana · média · total)
     _show_daily_consumption()
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    _auto_backup_check(st.session_state['user_id'])
+
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ",
-        "  Histórico  ", "  📖 Receitas  ", "  🫘 Cápsulas  "])
+        "  Histórico  ", "  📖 Receitas  ", "  🫘 Cápsulas  ", "  🛡️ Backup  "])
 
     user_id = st.session_state['user_id']
 
@@ -3941,6 +4093,81 @@ def main():
                             if st.button("← Cancelar", key=f"cap_del_cancel_{cap['id']}"):
                                 st.session_state.pop(f"confirm_del_cap_{cap['id']}", None)
                                 st.rerun()
+
+
+    # ── Tab 7 · Backup ────────────────────────────────────────────────
+    with tab7:
+        st.markdown('<p class="section-label">Sistema de Backup</p>', unsafe_allow_html=True)
+
+        st.info(
+            "**Backups automáticos semanais** são criados toda vez que você acessa o app "
+            "após 7 dias do último backup. Você também pode criar backups manuais "
+            "e restaurar o banco de dados para qualquer ponto anterior.",
+            icon="🛡️")
+
+        # ── Criar backup manual ──────────────────────────────────────
+        with st.expander("➕ Criar backup manual agora", expanded=False):
+            notas_backup = st.text_input("Descrição (opcional)", key="bk_notas",
+                                         placeholder="Ex: antes de apagar cafés antigos")
+            if st.button("💾 Criar backup", type="primary", key="bk_criar"):
+                with st.spinner("Criando backup…"):
+                    ok = _backup_criar("manual", notas_backup)
+                if ok:
+                    st.success("Backup criado com sucesso!", icon="✅")
+                    st.rerun()
+
+        st.markdown("---")
+
+        # ── Lista de backups ─────────────────────────────────────────
+        backups = _backup_listar()
+        if not backups:
+            st.info("Nenhum backup encontrado. Crie o primeiro backup acima.")
+        else:
+            st.markdown(f"**{len(backups)} backup(s) disponíveis** (máx. 30 exibidos)")
+            import datetime as _dt2
+            for bk in backups:
+                criado = bk["criado_em"]
+                if isinstance(criado, str):
+                    criado = _dt2.datetime.fromisoformat(criado)
+                data_fmt = criado.strftime("%d/%m/%Y %H:%M")
+                tipo_icon = {"manual": "🔵", "semanal": "🟢", "pre-restore": "🟡"}.get(bk["tipo"], "⚪")
+                titulo = f"{tipo_icon} **{data_fmt}** — {bk['tipo'].upper()}"
+                if bk.get("notas"):
+                    titulo += f" — _{bk['notas']}_"
+                stats = (f"☕ {bk['n_cafes']} cafés · "
+                         f"⚗️ {bk['n_extracoes']} extrações · "
+                         f"🫘 {bk['n_capsulas']} cápsulas")
+                if bk.get("git_hash"):
+                    stats += f" · git `{bk['git_hash']}`"
+
+                with st.expander(titulo, expanded=False):
+                    st.caption(stats)
+
+                    if st.session_state.get(f"confirm_restore_{bk['id']}"):
+                        st.warning(
+                            "⚠️ Isso **substituirá todos os seus dados** pelos dados deste backup. "
+                            "Um backup de segurança será criado automaticamente antes. Confirma?")
+                        rc1, rc2 = st.columns(2)
+                        with rc1:
+                            if st.button("✅ Confirmar restauração", type="primary",
+                                         key=f"bk_restore_ok_{bk['id']}",
+                                         use_container_width=True):
+                                with st.spinner("Restaurando dados…"):
+                                    ok = _backup_restaurar_dados(bk["id"])
+                                st.session_state.pop(f"confirm_restore_{bk['id']}", None)
+                                if ok:
+                                    st.success("Dados restaurados com sucesso!", icon="✅")
+                                    st.rerun()
+                        with rc2:
+                            if st.button("← Cancelar", key=f"bk_restore_cancel_{bk['id']}",
+                                         use_container_width=True):
+                                st.session_state.pop(f"confirm_restore_{bk['id']}", None)
+                                st.rerun()
+                    else:
+                        if st.button("🔄 Restaurar este backup", key=f"bk_restore_{bk['id']}",
+                                     use_container_width=True):
+                            st.session_state[f"confirm_restore_{bk['id']}"] = True
+                            st.rerun()
 
 
 if __name__ == "__main__":
