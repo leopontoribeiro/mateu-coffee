@@ -1308,11 +1308,10 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
                 (token, expira, usuario['id'])
             )
             st.session_state['remember_token'] = token
-            # Cookie persistente no browser (30 dias) — sobrevive a fechar a aba
-            try:
-                _cm().set(_COOKIE_NAME, token, expires_at=expira, key="set_remember")
-            except Exception:
-                pass
+            # NÃO grava o cookie aqui: o st.rerun() do botão de login desmontaria
+            # o componente antes do browser executar o JS (cookie nunca era salvo).
+            # A gravação acontece no próximo run, já na página autenticada.
+            st.session_state['_pending_cookie'] = (token, expira)
         except Exception:
             # login funcionou, mas remember-me falhou — não bloqueia a sessão
             pass
@@ -2836,6 +2835,15 @@ def main():
             _logout()
             st.rerun()
 
+    # Grava cookie de login persistente pendente — aqui o componente permanece
+    # montado até o fim do run, garantindo que o JS execute no browser.
+    if st.session_state.get('_pending_cookie'):
+        _tok, _exp = st.session_state.pop('_pending_cookie')
+        try:
+            _cm().set(_COOKIE_NAME, _tok, expires_at=_exp, key="set_remember")
+        except Exception:
+            pass
+
     # Widget de consumo (hoje · semana · média · total)
     _show_daily_consumption()
 
@@ -3035,11 +3043,7 @@ def main():
                     last_grinder = ginfo[0]['last_grinder']
                     last_clicks  = ginfo[0]['last_clicks'] or 0
 
-            # Hora: inicializa com hora atual se não estiver na sessão
-            if "hora_ext" not in st.session_state:
-                st.session_state["hora_ext"] = datetime.now().time()
-
-            sc1, sc2, sc3, sc4, sc5 = st.columns([2, 1, 1, 1, 0.5], gap="medium")
+            sc1, sc2 = st.columns([2, 1], gap="medium")
             with sc1:
                 # Moedor: selectbox com opções pré-definidas + Outros
                 _moedor_opts = _MOEDORES
@@ -3058,26 +3062,31 @@ def main():
                 clicks = st.number_input("Clicks", 0, 200, last_clicks, 1,
                                          help="Pré-preenchido com o último valor",
                                          key="inp_clicks")
-            with sc3:
-                data_ext = st.date_input("Data", value=date.today(),
-                                         key="data_ext", format="DD/MM/YYYY")
-            with sc4:
-                hora_ext = st.time_input("Hora", key="hora_ext")
-            with sc5:
-                st.write("")
-                st.write("")
-                if st.button("⟳", key="btn_hora_now",
-                             help="Usar hora atual"):
-                    st.session_state["hora_ext"] = datetime.now().time()
-                    st.rerun()
+            st.caption("🕐 Data e hora são registradas automaticamente no momento do registro.")
             st.markdown('</div>', unsafe_allow_html=True)
 
             # ═════════════════════════════════════════════════════════════
             # 1) MOTOR BARISTA
             # ═════════════════════════════════════════════════════════════
             _step(1, "Motor Barista",
-                  "Simule a extração ideal antes de extrair de verdade. "
+                  "Analise primeiro a melhor extração para este grão. "
                   "Os parâmetros se ajustam à torra e ao tipo do café selecionado.")
+
+            # Receita sugerida — o melhor uso deste grão, antes de extrair
+            _rs = params
+            st.markdown(
+                f'<div style="background:var(--mc-orange-soft);border:1px solid var(--mc-orange);'
+                f'border-radius:12px;padding:14px 18px;margin:0 0 1rem">'
+                f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange);'
+                f'text-transform:uppercase;letter-spacing:.1em">🎯 Receita sugerida para este grão</span>'
+                f'<div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:8px;font-size:14px;'
+                f'color:var(--mc-text)">'
+                f'<span><b>{_rs["dose"]}g</b> dose</span>'
+                f'<span><b>{_rs["yield"]}g</b> yield (1:{_rs["yield"]/_rs["dose"]:.1f})</span>'
+                f'<span><b>{_rs["time"]}s</b> tempo</span>'
+                f'<span><b>{_rs["temp"]}°C</b> água</span>'
+                f'<span><b>{_rs["pressure"]} bar</b> pressão</span>'
+                f'</div></div>', unsafe_allow_html=True)
 
             motor_html = (_MOTOR_BARISTA_HTML
                 .replace('value="18"', f'value="{params["dose"]}"')
@@ -3270,34 +3279,26 @@ def main():
             _step(4, "Classificação sensorial",
                   "Avalie cada dimensão de 1 a 5 estrelas. A Nota Final é o destaque do registro.")
 
-            STAR_OPTS = [1, 2, 3, 4, 5]
+            # Barras de progresso 1–5 (arraste para avaliar)
             col_s1, col_s2, col_s3, col_s4 = st.columns(4, gap="large")
             with col_s1:
-                crema_stars = st.select_slider("Crema", options=STAR_OPTS,
-                                               format_func=_stars, value=3, key="crema_stars")
+                crema_stars = st.slider("Crema", 1, 5, 3, key="crema_stars")
             with col_s2:
-                corpo_stars = st.select_slider("Corpo", options=STAR_OPTS,
-                                               format_func=_stars, value=3, key="corpo_stars")
+                corpo_stars = st.slider("Corpo", 1, 5, 3, key="corpo_stars")
             with col_s3:
-                equilibrio_stars = st.select_slider("Equilíbrio", options=STAR_OPTS,
-                                                    format_func=_stars, value=3, key="equilibrio_stars")
+                equilibrio_stars = st.slider("Equilíbrio", 1, 5, 3, key="equilibrio_stars")
             with col_s4:
-                acidez_stars = st.select_slider("Acidez", options=STAR_OPTS,
-                                                format_func=_stars, value=3, key="acidez_stars")
+                acidez_stars = st.slider("Acidez", 1, 5, 3, key="acidez_stars")
 
             col_s5, col_s6, col_s7, col_s8 = st.columns(4, gap="large")
             with col_s5:
-                amargor_stars = st.select_slider("Amargor", options=STAR_OPTS,
-                                                 format_func=_stars, value=3, key="amargor_stars")
+                amargor_stars = st.slider("Amargor", 1, 5, 3, key="amargor_stars")
             with col_s6:
-                presenca_boca_stars = st.select_slider("Presença na Boca", options=STAR_OPTS,
-                                                       format_func=_stars, value=3, key="presenca_stars")
+                presenca_boca_stars = st.slider("Presença na Boca", 1, 5, 3, key="presenca_stars")
             with col_s7:
-                docura_stars = st.select_slider("Doçura", options=STAR_OPTS,
-                                                format_func=_stars, value=3, key="docura_stars")
+                docura_stars = st.slider("Doçura", 1, 5, 3, key="docura_stars")
             with col_s8:
-                nota_final_stars = st.select_slider("Nota Final", options=STAR_OPTS,
-                                                    format_func=_stars, value=3, key="nota_final_stars")
+                nota_final_stars = st.slider("Nota Final", 1, 5, 3, key="nota_final_stars")
 
             balanco_ideal = st.text_input("Balanço Perfeito (do diagnóstico)",
                                          placeholder="Ex: Crema 4, Corpo 4, Equilíbrio 5...",
@@ -3309,7 +3310,8 @@ def main():
             _step(5, "Registrar extração",
                   "Salve esta extração no seu histórico para acompanhar a evolução.")
             if st.button("✓ REGISTRAR EXTRAÇÃO", type="primary", use_container_width=True):
-                data_hora = datetime.combine(data_ext, hora_ext)
+                data_hora = datetime.now()
+                data_ext  = data_hora.date()
                 _run("""INSERT INTO extracoes
                     (coffee_id,data,metodo,gramas,moedor,clicks_moedor,agua_alvo,tds,
                      tempo_extracao,brew_ratio,ey,fluxo,foto_caneca,classificacao,notas,
