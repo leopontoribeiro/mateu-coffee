@@ -3259,7 +3259,18 @@ def main():
                                 st.session_state[_ia_key] = _diagnostico_barista_ia(
                                     coffee_full, params, real_params, m_real)
                             except Exception as e:
-                                st.session_state[_ia_key] = f"_Erro: {e}_"
+                                _msg = str(e)
+                                if "credit balance" in _msg or "billing" in _msg.lower():
+                                    st.session_state[_ia_key] = (
+                                        "⚠️ O Barista IA está temporariamente indisponível: "
+                                        "os créditos da API de IA acabaram. "
+                                        "Recarregue em console.anthropic.com → Plans & Billing.")
+                                elif "rate_limit" in _msg or "overloaded" in _msg.lower():
+                                    st.session_state[_ia_key] = (
+                                        "⚠️ Serviço de IA sobrecarregado no momento. "
+                                        "Tente novamente em alguns segundos.")
+                                else:
+                                    st.session_state[_ia_key] = f"_Erro: {_msg}_"
 
                 if st.session_state.get(_ia_key):
                     st.markdown(
