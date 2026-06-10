@@ -2965,6 +2965,48 @@ def main():
             sel    = st.selectbox("Café", list(cafe_map.keys()))
             cid    = cafe_map[sel]
             metodo = st.selectbox("Método de Preparo", METODOS)
+
+            # Guia de ratio por método — referência rápida de entusiasta
+            _RATIO_GUIDE = {
+                "Espresso":     "1:2 (18g → 36g) · 25–32s · moagem fina",
+                "Pour Over":    "1:15–1:16 · 2:30–3:30 · moagem média-fina",
+                "Coado":        "1:15 (ex: 20g → 300g) · moagem média",
+                "French Press": "1:14 · 4 min de imersão · moagem grossa",
+                "Aeropress":    "1:13–1:16 · 1:30–2:30 · versátil",
+                "Chemex":       "1:16 · 3:30–4:30 · moagem média-grossa",
+                "Moka Pot":     "1:10 · fogo baixo · moagem fina-média",
+                "Cold Brew":    "1:8 concentrado · 12–18h · moagem grossa",
+            }
+            _hint = next((v for k, v in _RATIO_GUIDE.items() if k.lower() in metodo.lower()), None)
+            if _hint:
+                st.caption(f"📐 Referência {metodo}: {_hint}")
+
+            # Última receita deste café — o coração do dial-in
+            _last = _fetch("""SELECT gramas, agua_alvo, tempo_extracao, clicks_moedor,
+                                     moedor, temp_real, nota_final_stars, ey, data
+                              FROM extracoes WHERE coffee_id=%s AND metodo=%s
+                              ORDER BY data DESC, created_at DESC LIMIT 1""",
+                           (cid, metodo), _v=_v())
+            if _last:
+                lx = _last[0]
+                _ln = int(lx.get('nota_final_stars') or 0)
+                _ley = float(lx.get('ey') or 0)
+                st.markdown(
+                    f'<div style="background:var(--mc-surface-2);border:1px solid var(--mc-border);'
+                    f'border-left:3px solid var(--mc-orange);border-radius:0 10px 10px 0;'
+                    f'padding:10px 14px;margin:4px 0 8px;font-size:13px;line-height:1.7;color:var(--mc-text)">'
+                    f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange);'
+                    f'text-transform:uppercase;letter-spacing:.1em">🔁 Última receita ({metodo})</span><br>'
+                    f"<b>{float(lx['gramas'] or 0):.1f}g → {float(lx['agua_alvo'] or 0):.0f}g</b> · "
+                    f"{int(lx['tempo_extracao'] or 0)}s · "
+                    f"{int(lx['clicks_moedor'] or 0)} clicks ({lx['moedor'] or '—'}) · "
+                    f"{float(lx['temp_real'] or 0):.0f}°C"
+                    + (f" · EY {_ley:.1f}%" if _ley > 0 else "")
+                    + (f" · {_stars(_ln)}" if _ln else "")
+                    + f"<br><span style='color:var(--mc-text-3);font-size:12px'>"
+                    f"{lx['data'].strftime('%d/%m/%Y')} — use como ponto de partida e ajuste 1 variável por vez</span>"
+                    f'</div>', unsafe_allow_html=True)
+
             xicaras = st.radio("Número de Xícaras", [1, 2], horizontal=True, key="config_xicaras")
             multiplier = 1 if xicaras == 1 else 2
 
@@ -3331,6 +3373,24 @@ def main():
                                 _tag(f"{c['tamanho_pacote']}g") +
                                 (_tag("Torra " + c['data_torra'].strftime('%d/%m/%Y'), True)
                                  if c['data_torra'] else ""))
+                        # Frescor da torra — janela de degaseificação/pico
+                        if c['data_torra']:
+                            _dias = (date.today() - c['data_torra']).days
+                            if _dias < 0:
+                                _fresh = None
+                            elif _dias <= 4:
+                                _fresh = (f"💨 Em descanso ({_dias}d) — degaseificando, espere até o 5º dia", "#4A9EFF")
+                            elif _dias <= 21:
+                                _fresh = (f"✨ Janela ideal ({_dias}d pós-torra) — pico de sabor", "#3DD68C")
+                            elif _dias <= 45:
+                                _fresh = (f"👍 Ainda bom ({_dias}d) — aromas começando a decair", "#E8A33D")
+                            else:
+                                _fresh = (f"⏳ {_dias}d pós-torra — priorize consumir logo", "#E85D5D")
+                            if _fresh:
+                                tags += (f'<span style="display:inline-block;background:transparent;'
+                                         f'border:1px solid {_fresh[1]};color:{_fresh[1]};'
+                                         f'border-radius:20px;padding:3px 10px;font-size:11px;'
+                                         f'font-weight:600;margin:2px 4px 2px 0">{_fresh[0]}</span>')
                         intens = c.get('intensidade') or 0
                         info = (_irow("Classificação", c.get('classificacao_cafe') or "—") +
                                 _irow("Região",        c['regiao']  or "—") +
