@@ -25,6 +25,17 @@ st.set_page_config(
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Fuso local — o servidor (Render) roda em UTC; sem isso a hora sai errada
+from zoneinfo import ZoneInfo
+_TZ = ZoneInfo("America/Sao_Paulo")
+
+def _now_local():
+    from datetime import datetime as _dtt
+    return _dtt.now(_TZ).replace(tzinfo=None)
+
+def _today_local():
+    return _now_local().date()
+
 def _load_mobile_css() -> None:
     css_path = os.path.join(_DIR, ".streamlit", "static", "mateu_coffee_mobile.css")
     if os.path.exists(css_path):
@@ -56,7 +67,7 @@ def _load_logo(max_width: int = 380) -> bool:
 
 def _show_daily_consumption() -> None:
     """Widget de consumo: hoje + semana + média + total — apenas do usuário logado."""
-    hoje = date.today()
+    hoje = _today_local()
     user_id = st.session_state.get('user_id')
 
     stats = _fetch("""
@@ -1166,9 +1177,12 @@ st.markdown("""
         /* Imagens nunca estouram a largura */
         img { max-width: 100% !important; height: auto !important; }
 
-        /* Login: hero mais enxuto */
-        .mc-login-hero img { max-width: 280px !important; }
+        /* Login: hero em destaque */
+        .mc-login-hero img { max-width: 360px !important; }
         .mc-login-sub { font-size: 13px !important; }
+
+        /* Logo da topbar: tamanho controlado no mobile */
+        .mc-topbar-logo { height: 56px !important; width: auto !important; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1935,7 +1949,7 @@ def _relative_date(d) -> str:
         return "—"
     if hasattr(d, "date"):
         d = d.date()
-    today = date.today()
+    today = _today_local()
     delta = (today - d).days
     if delta < 0:
         return d.strftime("%d/%m/%Y")
@@ -2426,7 +2440,7 @@ class CoffeeEngine:
             "ratio_text": f"1 : {ratio:.1f}",
             "ratio": ratio,
             "ey": 0.0,
-            "status": "Aguardando TDS",
+            "status": "",
             "delta_color": "off",
             "fluxo": water_g / max(time_s, 1),
         }
@@ -2730,11 +2744,13 @@ def main():
             with col_main:
                 # Logo + tagline da marca (apenas no login)
                 st.markdown('<div class="mc-login-hero">', unsafe_allow_html=True)
-                _load_logo(max_width=480)
+                _load_logo(max_width=560)
                 st.markdown(
                     '<p class="mc-login-title">Seu diário de extrações</p>'
-                    '<p class="mc-login-sub">Acompanhe cada café, cada extração '
-                    'e a evolução do seu paladar — para baristas e entusiastas.</p>'
+                    '<p class="mc-login-sub">Para baristas, entusiastas e apaixonados '
+                    'por café. Para mim e para você também.</p>'
+                    '<p style="text-align:center;font-size:10px;color:var(--mc-text-3);'
+                    'margin:4px 0 0">v3.2 · 10/06/2026</p>'
                     '</div>',
                     unsafe_allow_html=True)
 
@@ -2812,7 +2828,7 @@ def main():
             st.markdown(
                 f'<div style="padding-top:4px">'
                 f'<img src="data:image/png;base64,{logo_b64}" alt="Mateu Coffee" '
-                f'style="height:48px;width:auto;display:block">'
+                f'class="mc-topbar-logo" style="height:72px;width:auto;display:block">'
                 f'</div>',
                 unsafe_allow_html=True)
         else:
@@ -2933,7 +2949,7 @@ def main():
             valor_compra = st.number_input("Valor Pago (R$)", min_value=0.0,
                                            value=0.0, step=0.50, format="%.2f")
         with cp3:
-            data_compra = st.date_input("Data da Compra", value=date.today(),
+            data_compra = st.date_input("Data da Compra", value=_today_local(),
                                         format="DD/MM/YYYY", key="data_compra")
 
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
@@ -2947,7 +2963,7 @@ def main():
                      foto_embalagem,local_compra,valor_compra,data_compra,
                      intensidade,user_id)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                    (date.today(), nome.strip(), tipo, torra, notas, class_c,
+                    (_today_local(), nome.strip(), tipo, torra, notas, class_c,
                      classificacao_cafe, regiao, data_tort, tamanho, foto_emb_b64,
                      local_compra.strip() or None,
                      valor_compra if valor_compra > 0 else None,
@@ -3096,23 +3112,6 @@ def main():
                 .replace('value="9"',  f'value="{params["pressure"]}"'))
             components.html(motor_html, height=660, scrolling=False)
 
-            # Comentário do Motor Barista sobre este café específico
-            _motor_key = f"motor_comment_{cid}"
-            if _motor_key not in st.session_state and cafe_info:
-                with st.spinner("☕ Barista analisando o café..."):
-                    st.session_state[_motor_key] = _comentario_motor_barista(
-                        cafe_info[0], params)
-            if st.session_state.get(_motor_key):
-                st.markdown(
-                    f'<div style="background:var(--mc-orange-soft);border:1px solid '
-                    f'var(--mc-orange);border-radius:10px;padding:12px 16px;'
-                    f'margin:0.5rem 0 1.5rem;font-size:13px;line-height:1.65;'
-                    f'color:var(--mc-text)">'
-                    f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange);'
-                    f'text-transform:uppercase;letter-spacing:.1em">☕ O que esperar</span>'
-                    f'<br>{st.session_state[_motor_key]}</div>',
-                    unsafe_allow_html=True)
-
             # ═════════════════════════════════════════════════════════════
             # 2) PARÂMETROS DE EXTRAÇÃO (REALIDADE) + RADAR REAL
             #    Espelha exatamente os 5 campos do Motor Barista + TDS
@@ -3170,12 +3169,16 @@ def main():
 
             with st.expander("Ver diagnóstico completo", expanded=True):
                 mc1, mc2, mc3, mc4 = st.columns(4)
-                mc1.metric("Brew Ratio",       m_real.get("ratio_text", "—"))
-                mc2.metric("Extraction Yield", f"{ey_real:.2f}%" if ey_real > 0 else "—",
-                           delta=m_real.get("status") if ey_real > 0 else None,
-                           delta_color=m_real.get("delta_color", "off"))
-                mc3.metric("Fluxo Médio",      f"{m_real.get('fluxo',0):.2f} g/s")
-                mc4.metric("Status",           m_real.get("status", "—"))
+                mc1.metric("Brew Ratio",  m_real.get("ratio_text", "—"))
+                mc2.metric("Fluxo Médio", f"{m_real.get('fluxo',0):.2f} g/s")
+                mc3.metric("Tempo",       f"{tempo}s")
+                # EY e status só fazem sentido com TDS medido (refratômetro)
+                if ey_real > 0:
+                    mc4.metric("Extraction Yield", f"{ey_real:.2f}%",
+                               delta=m_real.get("status"),
+                               delta_color=m_real.get("delta_color", "off"))
+                else:
+                    mc4.metric("Dose", f"{gramas:.1f}g")
 
                 st.markdown('<div style="margin-top:1rem">', unsafe_allow_html=True)
                 diagnosticos = []
@@ -3236,54 +3239,6 @@ def main():
                     st.success("Extração alinhada com o plano — todos os parâmetros dentro da meta.")
                 st.markdown('</div>', unsafe_allow_html=True)
 
-                st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-                st.markdown(
-                    '<p class="section-label" style="margin-bottom:.75rem">'
-                    '🧑‍🍳 Barista Sênior IA</p>',
-                    unsafe_allow_html=True)
-
-                _ia_key = "barista_ia_result"
-                col_btn, _ = st.columns([1, 2])
-                with col_btn:
-                    if st.button("Analisar com Barista IA",
-                                 type="primary", use_container_width=True,
-                                 key="btn_barista_ia"):
-                        real_params = {
-                            "gramas": gramas, "agua": agua, "tempo": tempo,
-                            "temp_real": temp_real, "pressao_real": pressao_real,
-                            "tds": tds,
-                        }
-                        coffee_full = cafe_info[0] if cafe_info else {}
-                        with st.spinner("☕ Barista analisando sua extração..."):
-                            try:
-                                st.session_state[_ia_key] = _diagnostico_barista_ia(
-                                    coffee_full, params, real_params, m_real)
-                            except Exception as e:
-                                _msg = str(e)
-                                if "credit balance" in _msg or "billing" in _msg.lower():
-                                    st.session_state[_ia_key] = (
-                                        "⚠️ O Barista IA está temporariamente indisponível: "
-                                        "os créditos da API de IA acabaram. "
-                                        "Recarregue em console.anthropic.com → Plans & Billing.")
-                                elif "rate_limit" in _msg or "overloaded" in _msg.lower():
-                                    st.session_state[_ia_key] = (
-                                        "⚠️ Serviço de IA sobrecarregado no momento. "
-                                        "Tente novamente em alguns segundos.")
-                                else:
-                                    st.session_state[_ia_key] = f"_Erro: {_msg}_"
-
-                if st.session_state.get(_ia_key):
-                    st.markdown(
-                        f'<div style="background:var(--mc-surface-2);border:1px solid '
-                        f'var(--mc-border);border-radius:12px;padding:18px 20px;'
-                        f'margin-top:0.75rem;font-size:14px;line-height:1.75;'
-                        f'color:var(--mc-text);white-space:pre-wrap">'
-                        f'{st.session_state[_ia_key]}</div>',
-                        unsafe_allow_html=True)
-                    if st.button("🗑 Limpar análise", key="btn_clear_ia"):
-                        st.session_state.pop(_ia_key, None)
-                        st.rerun()
-
             # ═════════════════════════════════════════════════════════════
             # 4) CLASSIFICAÇÃO SENSORIAL
             # ═════════════════════════════════════════════════════════════
@@ -3321,7 +3276,7 @@ def main():
             _step(5, "Registrar extração",
                   "Salve esta extração no seu histórico para acompanhar a evolução.")
             if st.button("✓ REGISTRAR EXTRAÇÃO", type="primary", use_container_width=True):
-                data_hora = datetime.now()
+                data_hora = _now_local()
                 data_ext  = data_hora.date()
                 _run("""INSERT INTO extracoes
                     (coffee_id,data,metodo,gramas,moedor,clicks_moedor,agua_alvo,tds,
@@ -3341,7 +3296,6 @@ def main():
                          (moedor, clicks, user_id))
                 # Limpa hora para próxima extração usar hora atual
                 st.session_state.pop("hora_ext", None)
-                st.session_state.pop("barista_ia_result", None)
                 st.toast("✓ Extração registrada com sucesso", icon="☕")
                 st.balloons()
                 st.rerun()
@@ -3388,7 +3342,7 @@ def main():
                                  if c['data_torra'] else ""))
                         # Frescor da torra — janela de degaseificação/pico
                         if c['data_torra']:
-                            _dias = (date.today() - c['data_torra']).days
+                            _dias = (_today_local() - c['data_torra']).days
                             if _dias < 0:
                                 _fresh = None
                             elif _dias <= 4:
@@ -3509,7 +3463,7 @@ def main():
                                                        key=f"ec_valor_{c['id']}")
                         with cp_c:
                             ed_dt_compra = st.date_input("Data da Compra",
-                                                         value=c.get('data_compra') or date.today(),
+                                                         value=c.get('data_compra') or _today_local(),
                                                          format="DD/MM/YYYY",
                                                          key=f"ec_dtcp_{c['id']}")
 
