@@ -2750,7 +2750,7 @@ def main():
                     '<p class="mc-login-sub">Para baristas, entusiastas e apaixonados '
                     'por café. Para mim e para você também.</p>'
                     '<p style="text-align:center;font-size:10px;color:var(--mc-text-3);'
-                    'margin:4px 0 0">v3.2 · 10/06/2026</p>'
+                    'margin:4px 0 0">v3.2.1 · 10/06/2026</p>'
                     '</div>',
                     unsafe_allow_html=True)
 
