@@ -52,7 +52,7 @@ def _load_logo(max_width: int = 380) -> bool:
         if b64:
             st.markdown(
                 f'<div style="text-align:center;padding:1rem 0">'
-                f'<img src="data:image/png;base64,{b64}" alt="Mateu Coffee" '
+                f'<img src="data:image/webp;base64,{b64}" alt="Mateu Coffee" '
                 f'style="max-width:{max_width}px;width:100%;height:auto;'
                 f'margin:0 auto;display:block">'
                 f'</div>',
@@ -109,10 +109,14 @@ def _show_daily_consumption() -> None:
 @st.cache_data(show_spinner=False)
 def _logo_b64() -> Optional[str]:
     """Lê o logo uma vez e cacheia indefinidamente (arquivo estático)."""
-    logo_path = os.path.join(_DIR, "assets", "mateu_coffee_logo.png")
-    if os.path.exists(logo_path):
-        with open(logo_path, "rb") as f:
-            return base64.b64encode(f.read()).decode()
+    # WebP otimizado (13KB) em vez do PNG original (346KB) — o base64 é
+    # embutido no HTML 3x por página; isso era o gargalo no mobile.
+    for fname in ("mateu_coffee_logo.webp", "mateu_coffee_logo_opt.png",
+                  "mateu_coffee_logo.png"):
+        logo_path = os.path.join(_DIR, "assets", fname)
+        if os.path.exists(logo_path):
+            with open(logo_path, "rb") as f:
+                return base64.b64encode(f.read()).decode()
     return None
 
 def _show_logo() -> None:
@@ -120,7 +124,7 @@ def _show_logo() -> None:
     if b64:
         st.markdown(
             f'<div class="mc-hero-full">'
-            f'<img src="data:image/png;base64,{b64}" alt="Mateu Coffee">'
+            f'<img src="data:image/webp;base64,{b64}" alt="Mateu Coffee">'
             f'<p class="mc-tagline">Para baristas e entusiastas,<br>para mim, e para você também</p>'
             f'</div>',
             unsafe_allow_html=True)
@@ -2763,13 +2767,13 @@ def _analisar_embalagem(b64_img: str) -> dict:
     raw = raw.lstrip("```json").lstrip("```").rstrip("```").strip()
     return json.loads(raw)
 
-_APP_VERSION = "3.3.2"
+_APP_VERSION = "3.3.3"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
     """Tela 'Sobre' — abre ao clicar na marca; fecha ao clicar fora."""
     b64 = _logo_b64()
-    logo_html = (f'<img src="data:image/png;base64,{b64}" alt="Mateu Coffee" '
+    logo_html = (f'<img src="data:image/webp;base64,{b64}" alt="Mateu Coffee" '
                  f'style="max-width:300px;width:100%;height:auto;display:block;'
                  f'margin:0 auto">') if b64 else "<h2>MATEU COFFEE</h2>"
     st.markdown(
@@ -2898,7 +2902,7 @@ def main():
             st.markdown(
                 f'<div style="padding-top:4px">'
                 f'<a href="?about=1" target="_self" title="Sobre o Mateu Coffee">'
-                f'<img src="data:image/png;base64,{logo_b64}" alt="Mateu Coffee" '
+                f'<img src="data:image/webp;base64,{logo_b64}" alt="Mateu Coffee" '
                 f'class="mc-topbar-logo" style="height:94px;width:auto;display:block;'
                 f'cursor:pointer"></a>'
                 f'</div>',
