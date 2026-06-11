@@ -1182,6 +1182,12 @@ st.markdown("""
 
         /* Logo da topbar: tamanho controlado no mobile */
         .mc-topbar-logo { height: 73px !important; width: auto !important; }
+
+        /* Login: a coluna central ocupa a tela toda (corrige meia-tela) */
+        [data-testid="stColumn"]:has(.mc-login-hero) {
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -2719,9 +2725,9 @@ def _analisar_embalagem(b64_img: str) -> dict:
     raw = raw.lstrip("```json").lstrip("```").rstrip("```").strip()
     return json.loads(raw)
 
-_APP_VERSION = "3.3"
+_APP_VERSION = "3.3.1"
 
-@st.dialog(" ")
+@st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
     """Tela 'Sobre' — abre ao clicar na marca; fecha ao clicar fora."""
     b64 = _logo_b64()
@@ -2742,12 +2748,29 @@ def _about_dialog():
 def main():
     _init_db()
 
+    # Slot fixo de cookie: SEMPRE renderizado (mesma posição na árvore de
+    # elementos em todos os runs). Se aparecesse/sumisse condicionalmente,
+    # o Streamlit remontaria os st.tabs e voltaria para a 1ª aba a cada
+    # primeira interação após login/logout.
+    _pend  = st.session_state.pop('_pending_cookie', None)
+    _clear = st.session_state.pop('_clear_cookie', False)
+    if _pend:
+        _js = (f"window.parent.document.cookie='{_COOKIE_NAME}={_pend[0]}; "
+               f"max-age={30*86400}; path=/; SameSite=Lax';")
+    elif _clear:
+        _js = f"window.parent.document.cookie='{_COOKIE_NAME}=; max-age=0; path=/';"
+    else:
+        _js = ""
+    components.html(f"<script>{_js}</script>", height=0)
+
+    # Dialog "Sobre" — aberto pelo clique na marca (?about=1), em qualquer estado
+    if "about" in st.query_params:
+        del st.query_params["about"]
+        _about_dialog()
+
     # ── Autenticação ────────────────────────────────────────────────────
     if 'user_id' not in st.session_state:
         if not _check_remember_token():
-            # Logout recente: apaga cookie persistente via JS
-            if st.session_state.pop('_clear_cookie', False):
-                _clear_cookie_js()
             # Container centralizado para a página de login
             _, col_main, _ = st.columns([0.18, 0.64, 0.18])
             with col_main:
@@ -2861,20 +2884,6 @@ def main():
                      help="Sair da conta"):
             _logout()
             st.rerun()
-
-    # Grava cookie de login persistente pendente — aqui o componente permanece
-    # montado até o fim do run, garantindo que o JS execute no browser.
-    if st.session_state.get('_pending_cookie'):
-        _tok, _exp = st.session_state.pop('_pending_cookie')
-        try:
-            _set_cookie_js(_tok)
-        except Exception:
-            pass
-
-    # Dialog "Sobre" — aberto pelo clique na marca (?about=1)
-    if "about" in st.query_params:
-        del st.query_params["about"]
-        _about_dialog()
 
     # Widget de consumo (hoje · semana · média · total)
     _show_daily_consumption()
