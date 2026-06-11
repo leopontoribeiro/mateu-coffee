@@ -1188,6 +1188,44 @@ st.markdown("""
             flex: 1 1 100% !important;
             min-width: 100% !important;
         }
+
+        /* Login mobile: conteúdo no alto da tela, sem vão */
+        .block-container:has(.mc-login-hero) { padding-top: 0.75rem !important; }
+        .mc-login-hero { padding-top: 0 !important; }
+
+        /* Topbar mobile: marca centralizada em linha própria, e-mail abaixo */
+        [data-testid="stColumn"]:has(.mc-topbar-logo) {
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+        .mc-topbar-logo { margin: 0 auto !important; }
+        .mc-topbar-user { justify-content: center !important; }
+
+        /* Indicador de que há mais abas à direita (fade + seta) */
+        .stTabs { position: relative; }
+        .stTabs::after {
+            content: "›";
+            position: absolute;
+            top: 8px; right: 0;
+            height: 44px; width: 34px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px; font-weight: 700;
+            color: var(--mc-orange);
+            background: linear-gradient(to right, transparent, var(--mc-bg) 55%);
+            pointer-events: none;
+            z-index: 5;
+        }
+    }
+
+    /* Slot invisível do cookie: não ocupa espaço nem vira "sombra" */
+    [data-testid="stElementContainer"]:has(iframe[height="0"]) {
+        display: none !important;
+    }
+
+    /* Login: centraliza o conteúdo sem colunas (sem skeleton) */
+    .block-container:has(.mc-login-hero) {
+        max-width: 680px !important;
+        margin: 0 auto !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1315,8 +1353,8 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
     """
     try:
         result = _fetch(
-            "SELECT id, email, senha_hash FROM usuarios WHERE email=%s LIMIT 1",
-            (email,), _v=0,
+            "SELECT id, email, senha_hash FROM usuarios WHERE LOWER(email)=LOWER(%s) LIMIT 1",
+            (email.strip(),), _v=0,
         )
     except Exception:
         return LoginResult.ERROR
@@ -2725,7 +2763,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
     raw = raw.lstrip("```json").lstrip("```").rstrip("```").strip()
     return json.loads(raw)
 
-_APP_VERSION = "3.3.1"
+_APP_VERSION = "3.3.2"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -2771,8 +2809,8 @@ def main():
     # ── Autenticação ────────────────────────────────────────────────────
     if 'user_id' not in st.session_state:
         if not _check_remember_token():
-            # Container centralizado para a página de login
-            _, col_main, _ = st.columns([0.18, 0.64, 0.18])
+            # Container único — centralização via CSS (sem skeleton de colunas)
+            col_main = st.container()
             with col_main:
                 # Logo + slogan da marca (apenas no login)
                 st.markdown('<div class="mc-login-hero">', unsafe_allow_html=True)
@@ -2840,7 +2878,7 @@ def main():
                             try:
                                 hash_pwd = _hash_senha(new_senha)
                                 _run("INSERT INTO usuarios (email, senha_hash) VALUES (%s, %s)",
-                                     (new_email, hash_pwd))
+                                     (new_email.strip().lower(), hash_pwd))
                                 st.toast("Conta criada com sucesso", icon="✅")
                                 st.success("Pronto! Vá na aba **Entrar** para começar.")
                             except Exception:
@@ -3026,8 +3064,7 @@ def main():
                 "Cold Brew":    "1:8 concentrado · 12–18h · moagem grossa",
             }
             _hint = next((v for k, v in _RATIO_GUIDE.items() if k.lower() in metodo.lower()), None)
-            if _hint:
-                st.caption(f"📐 Referência {metodo}: {_hint}")
+            st.caption(f"📐 Referência {metodo}: {_hint}" if _hint else "")
 
             # Última receita deste café — o coração do dial-in
             _last = _fetch("""SELECT gramas, agua_alvo, tempo_extracao, clicks_moedor,
@@ -3035,11 +3072,12 @@ def main():
                               FROM extracoes WHERE coffee_id=%s AND metodo=%s
                               ORDER BY data DESC, created_at DESC LIMIT 1""",
                            (cid, metodo), _v=_v())
+            _last_html = ""
             if _last:
                 lx = _last[0]
                 _ln = int(lx.get('nota_final_stars') or 0)
                 _ley = float(lx.get('ey') or 0)
-                st.markdown(
+                _last_html = (
                     f'<div style="background:var(--mc-surface-2);border:1px solid var(--mc-border);'
                     f'border-left:3px solid var(--mc-orange);border-radius:0 10px 10px 0;'
                     f'padding:10px 14px;margin:4px 0 8px;font-size:13px;line-height:1.7;color:var(--mc-text)">'
@@ -3053,7 +3091,9 @@ def main():
                     + (f" · {_stars(_ln)}" if _ln else "")
                     + f"<br><span style='color:var(--mc-text-3);font-size:12px'>"
                     f"{lx['data'].strftime('%d/%m/%Y')} — use como ponto de partida e ajuste 1 variável por vez</span>"
-                    f'</div>', unsafe_allow_html=True)
+                    f'</div>')
+            # Elemento sempre presente — estrutura estável
+            st.markdown(_last_html, unsafe_allow_html=True)
 
             xicaras = st.radio("Número de Xícaras", [1, 2], horizontal=True, key="config_xicaras")
             multiplier = 1 if xicaras == 1 else 2
@@ -3159,24 +3199,33 @@ def main():
 
             col_params, col_radar_real = st.columns([1.2, 1], gap="large")
             with col_params:
-                gramas_default = round(params["dose"]     * multiplier, 1)
-                yield_default  = round(params["yield"]    * multiplier, 1)
-                tempo_default  = int(params["time"])
-                temp_default   = float(params["temp"])
-                press_default  = float(params["pressure"])
+                # Widgets com key fixa: identidade estável entre reruns (evita
+                # que as abas voltem para a 1ª ao trocar xícaras/café).
+                # Os defaults são semeados via session_state quando café ou
+                # nº de xícaras mudam.
+                _seed_sig = (cid, multiplier)
+                if st.session_state.get("_ext_seed") != _seed_sig:
+                    st.session_state["_ext_seed"]  = _seed_sig
+                    st.session_state["ext_gramas"] = round(float(params["dose"])  * multiplier, 1)
+                    st.session_state["ext_agua"]   = round(float(params["yield"]) * multiplier, 1)
+                    st.session_state["ext_tempo"]  = int(params["time"])
+                    st.session_state["ext_temp"]   = float(params["temp"])
+                    st.session_state["ext_press"]  = float(params["pressure"])
+                    st.session_state.setdefault("ext_tds", 0.0)
 
                 gramas       = st.number_input("Dose Real (g)", 1.0, 160.0,
-                                               float(gramas_default), 0.1,
+                                               step=0.1, key="ext_gramas",
                                                help="Peso do pó medido na balança")
                 agua         = st.number_input("Yield / Volumetria na Xícara (g)", 5.0, 2000.0,
-                                               float(yield_default), 1.0,
+                                               step=1.0, key="ext_agua",
                                                help="Quantidade real que entrou na xícara (espresso: ~18-50g)")
-                tempo        = st.number_input("Tempo Real (s)", 1, 600, tempo_default, 1)
+                tempo        = st.number_input("Tempo Real (s)", 1, 600, step=1, key="ext_tempo")
                 temp_real    = st.number_input("Temperatura Real (°C)", 60.0, 100.0,
-                                               temp_default, 0.5)
+                                               step=0.5, key="ext_temp")
                 pressao_real = st.number_input("Pressão Real (bar)", 1.0, 20.0,
-                                               press_default, 0.5)
-                tds          = st.number_input("TDS Medido (%)", 0.0, 5.0, 0.0, 0.01,
+                                               step=0.5, key="ext_press")
+                tds          = st.number_input("TDS Medido (%)", 0.0, 5.0,
+                                               step=0.01, key="ext_tds",
                                                help="Opcional — refratômetro. Deixe 0 se não usar.")
 
             with col_radar_real:
@@ -3206,19 +3255,16 @@ def main():
                   "Delta entre o que você planejou (Motor Barista) e o que aconteceu de verdade.")
 
             with st.expander("Ver diagnóstico completo", expanded=True):
+                # Estrutura FIXA de elementos: sempre 4 métricas iguais e um
+                # único markdown de diagnóstico. Se a quantidade de elementos
+                # variasse entre reruns, o Streamlit remontaria as abas e
+                # voltaria para a 1ª (bug clássico do st.tabs).
                 mc1, mc2, mc3, mc4 = st.columns(4)
                 mc1.metric("Brew Ratio",  m_real.get("ratio_text", "—"))
                 mc2.metric("Fluxo Médio", f"{m_real.get('fluxo',0):.2f} g/s")
                 mc3.metric("Tempo",       f"{tempo}s")
-                # EY e status só fazem sentido com TDS medido (refratômetro)
-                if ey_real > 0:
-                    mc4.metric("Extraction Yield", f"{ey_real:.2f}%",
-                               delta=m_real.get("status"),
-                               delta_color=m_real.get("delta_color", "off"))
-                else:
-                    mc4.metric("Dose", f"{gramas:.1f}g")
+                mc4.metric("Dose",        f"{gramas:.1f}g")
 
-                st.markdown('<div style="margin-top:1rem">', unsafe_allow_html=True)
                 diagnosticos = []
 
                 dt_tempo = tempo - params["time"]
@@ -3265,17 +3311,21 @@ def main():
                         diagnosticos.append(
                             f"✅ <b>EY dentro da janela de ouro ({ey_real:.1f}%)</b> — extração equilibrada.")
 
-                if diagnosticos:
-                    for d in diagnosticos:
-                        st.markdown(
-                            f'<div style="background:var(--mc-surface-2);border-left:3px solid '
-                            f'var(--mc-orange);padding:10px 14px;border-radius:0 8px 8px 0;'
-                            f'margin:6px 0;font-size:13px;line-height:1.6;color:var(--mc-text)">'
-                            f'{d}</div>',
+                if ey_real > 0:
+                    diagnosticos.append(
+                        f"🧪 <b>Extraction Yield: {ey_real:.2f}%</b> — {m_real.get('status','')}.")
+
+                if not diagnosticos:
+                    diagnosticos = ["✅ <b>Extração alinhada com o plano</b> — "
+                                    "todos os parâmetros dentro da meta."]
+                # Um único elemento markdown, sempre presente
+                _diag_html = "".join(
+                    f'<div style="background:var(--mc-surface-2);border-left:3px solid '
+                    f'var(--mc-orange);padding:10px 14px;border-radius:0 8px 8px 0;'
+                    f'margin:6px 0;font-size:13px;line-height:1.6;color:var(--mc-text)">'
+                    f'{d}</div>' for d in diagnosticos)
+                st.markdown(f'<div style="margin-top:1rem">{_diag_html}</div>',
                             unsafe_allow_html=True)
-                else:
-                    st.success("Extração alinhada com o plano — todos os parâmetros dentro da meta.")
-                st.markdown('</div>', unsafe_allow_html=True)
 
             # ═════════════════════════════════════════════════════════════
             # 4) CLASSIFICAÇÃO SENSORIAL
