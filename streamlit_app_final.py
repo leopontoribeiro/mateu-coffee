@@ -13,7 +13,6 @@ import secrets
 from typing import Optional
 import anthropic
 from PIL import Image
-import extra_streamlit_components as stx
 
 # ── Page config ────────────────────────────────────────────────────────
 st.set_page_config(
@@ -1108,7 +1107,7 @@ st.markdown("""
 
     /* ─── Mobile ──────────────────────────────────────────────── */
     @media (max-width: 640px) {
-        .block-container { padding: 0.75rem 0.85rem 4rem !important; }
+        .block-container { padding: 0.75rem 0.85rem 9rem !important; }
         h1 { font-size: 22px !important; }
         h2 { font-size: 18px !important; }
         h3 { font-size: 16px !important; }
@@ -1182,7 +1181,7 @@ st.markdown("""
         .mc-login-sub { font-size: 13px !important; }
 
         /* Logo da topbar: tamanho controlado no mobile */
-        .mc-topbar-logo { height: 56px !important; width: auto !important; }
+        .mc-topbar-logo { height: 73px !important; width: auto !important; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1266,12 +1265,24 @@ def _v() -> int:
 # Cookie no browser é o único jeito de manter sessão entre visitas.
 _COOKIE_NAME = "mc_remember"
 
-def _cm() -> "stx.CookieManager":
-    """Singleton cacheado entre reruns. Sem isso a 1ª chamada por sessão
-    sempre retorna None — porque a leitura do cookie é assíncrona via JS."""
-    if "_cookie_mgr" not in st.session_state:
-        st.session_state["_cookie_mgr"] = stx.CookieManager(key="mc_cookies")
-    return st.session_state["_cookie_mgr"]
+def _set_cookie_js(token: str, days: int = 30) -> None:
+    """Grava cookie via JS nativo (iframe same-origin) — sem libs externas."""
+    components.html(
+        f"<script>window.parent.document.cookie="
+        f"'{_COOKIE_NAME}={token}; max-age={days*86400}; path=/; SameSite=Lax';</script>",
+        height=0)
+
+def _clear_cookie_js() -> None:
+    components.html(
+        f"<script>window.parent.document.cookie="
+        f"'{_COOKIE_NAME}=; max-age=0; path=/';</script>", height=0)
+
+def _read_cookie() -> Optional[str]:
+    """Lê o cookie enviado pelo browser na conexão (st.context, Streamlit 1.37+)."""
+    try:
+        return st.context.cookies.get(_COOKIE_NAME)
+    except Exception:
+        return None
 
 def _hash_senha(senha: str, salt: str = "") -> str:
     """Hash simples com salt."""
@@ -1350,25 +1361,9 @@ def _check_remember_token() -> bool:
     if st.session_state.get('_token_checked'):
         return False
 
-    # 1) Cookie persistente do browser
-    token = None
-    try:
-        token = _cm().get(_COOKIE_NAME)
-    except Exception:
-        token = None
-
-    # 2) Fallback: token salvo na session_state (mesmo tab, reload rápido)
+    # 1) Cookie persistente do browser (síncrono via st.context — sem reruns)
+    token = _read_cookie() or st.session_state.get('remember_token')
     if not token:
-        token = st.session_state.get('remember_token')
-
-    if not token:
-        # Cookie manager é assíncrono — precisa de até 3 reruns para carregar.
-        # Não marcamos _token_checked ainda para permitir a tentativa seguinte.
-        attempts = st.session_state.get('_cookie_attempts', 0)
-        st.session_state['_cookie_attempts'] = attempts + 1
-        if attempts < 3:
-            return False
-        # Após 3 tentativas sem token, desiste
         st.session_state['_token_checked'] = True
         return False
 
@@ -1403,11 +1398,8 @@ def _logout() -> None:
             _run("UPDATE usuarios SET remember_token=NULL, remember_token_expires=NULL WHERE id=%s", (user_id,))
         except Exception:
             pass
-    # Apaga cookie persistente
-    try:
-        _cm().delete(_COOKIE_NAME, key="del_remember")
-    except Exception:
-        pass
+    # Cookie é apagado no próximo run (página de login), onde o JS executa
+    st.session_state['_clear_cookie'] = True
     st.session_state.pop('user_id', None)
     st.session_state.pop('user_email', None)
     st.session_state.pop('remember_token', None)
@@ -2570,13 +2562,13 @@ _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
 
     <div class="cg">
       <div class="cl"><label>Volumetria na Xícara (Yield)</label><span id="vy">36.0 g</span></div>
-      <input type="range" id="iy" min="20" max="60" step="1" value="36">
+      <input type="range" id="iy" min="20" max="300" step="1" value="36">
       <div class="ht">Peso final do líquido extraído. Define a taxa de concentração (Ratio).</div>
     </div>
 
     <div class="cg">
       <div class="cl"><label>Tempo de Extração</label><span id="vt">28 s</span></div>
-      <input type="range" id="it" min="15" max="45" step="1" value="28">
+      <input type="range" id="it" min="10" max="180" step="1" value="28">
       <div class="ht">Tempos baixos subextraem; altos superextraem.</div>
     </div>
 
@@ -2588,7 +2580,7 @@ _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
 
     <div class="cg">
       <div class="cl"><label>Pressão da Bomba</label><span id="vb">9.0 bar</span></div>
-      <input type="range" id="ib" min="6" max="12" step="0.5" value="9">
+      <input type="range" id="ib" min="1" max="20" step="0.5" value="9">
       <div class="ht">Fora de 8–10 bar gera canalizações ou falta de crema.</div>
     </div>
   </div>
@@ -2727,30 +2719,47 @@ def _analisar_embalagem(b64_img: str) -> dict:
     raw = raw.lstrip("```json").lstrip("```").rstrip("```").strip()
     return json.loads(raw)
 
+_APP_VERSION = "3.3"
+
+@st.dialog(" ")
+def _about_dialog():
+    """Tela 'Sobre' — abre ao clicar na marca; fecha ao clicar fora."""
+    b64 = _logo_b64()
+    logo_html = (f'<img src="data:image/png;base64,{b64}" alt="Mateu Coffee" '
+                 f'style="max-width:300px;width:100%;height:auto;display:block;'
+                 f'margin:0 auto">') if b64 else "<h2>MATEU COFFEE</h2>"
+    st.markdown(
+        f'<div style="text-align:center;padding:1rem 0 0.5rem">{logo_html}'
+        f'<p style="margin:1.25rem 0 0.25rem;font-size:15px;color:var(--mc-text)">'
+        f'Versão <b>{_APP_VERSION}</b></p>'
+        f'<p style="margin:0.25rem 0;font-size:13px;color:var(--mc-text-2)">'
+        f'Criado em junho de 2026</p>'
+        f'<p style="margin:0.75rem 0 0;font-size:14px;color:var(--mc-text)">'
+        f'Desenvolvido por <b>Leandro Ribeiro</b></p></div>',
+        unsafe_allow_html=True)
+
 # ── Main ───────────────────────────────────────────────────────────────
 def main():
     _init_db()
 
-    # Instancia cookie manager ANTES de checar sessão. A leitura é
-    # assíncrona via JS — em casos extremos pode exigir 1 rerun, mas
-    # o singleton em session_state cobre o caso normal.
-    _cm()
-
     # ── Autenticação ────────────────────────────────────────────────────
     if 'user_id' not in st.session_state:
         if not _check_remember_token():
+            # Logout recente: apaga cookie persistente via JS
+            if st.session_state.pop('_clear_cookie', False):
+                _clear_cookie_js()
             # Container centralizado para a página de login
             _, col_main, _ = st.columns([0.18, 0.64, 0.18])
             with col_main:
-                # Logo + tagline da marca (apenas no login)
+                # Logo + slogan da marca (apenas no login)
                 st.markdown('<div class="mc-login-hero">', unsafe_allow_html=True)
                 _load_logo(max_width=560)
                 st.markdown(
-                    '<p class="mc-login-title">Seu diário de extrações</p>'
-                    '<p class="mc-login-sub">Para baristas, entusiastas e apaixonados '
-                    'por café. Para mim e para você também.</p>'
-                    '<p style="text-align:center;font-size:10px;color:var(--mc-text-3);'
-                    'margin:4px 0 0">v3.2.1 · 10/06/2026</p>'
+                    '<p style="text-align:center;font-family:Georgia,\'Times New Roman\','
+                    'serif;font-style:italic;font-size:19px;line-height:1.6;'
+                    'color:var(--mc-text-2);max-width:420px;margin:0.5rem auto 0">'
+                    'Para baristas, entusiastas e apaixonados por café. '
+                    'Para mim e para você também.</p>'
                     '</div>',
                     unsafe_allow_html=True)
 
@@ -2827,8 +2836,10 @@ def main():
         if logo_b64:
             st.markdown(
                 f'<div style="padding-top:4px">'
+                f'<a href="?about=1" target="_self" title="Sobre o Mateu Coffee">'
                 f'<img src="data:image/png;base64,{logo_b64}" alt="Mateu Coffee" '
-                f'class="mc-topbar-logo" style="height:72px;width:auto;display:block">'
+                f'class="mc-topbar-logo" style="height:94px;width:auto;display:block;'
+                f'cursor:pointer"></a>'
                 f'</div>',
                 unsafe_allow_html=True)
         else:
@@ -2856,9 +2867,14 @@ def main():
     if st.session_state.get('_pending_cookie'):
         _tok, _exp = st.session_state.pop('_pending_cookie')
         try:
-            _cm().set(_COOKIE_NAME, _tok, expires_at=_exp, key="set_remember")
+            _set_cookie_js(_tok)
         except Exception:
             pass
+
+    # Dialog "Sobre" — aberto pelo clique na marca (?about=1)
+    if "about" in st.query_params:
+        del st.query_params["about"]
+        _about_dialog()
 
     # Widget de consumo (hoje · semana · média · total)
     _show_daily_consumption()
@@ -2915,8 +2931,7 @@ def main():
                                horizontal=True)
             notas   = st.text_area("Notas de Sabor / Torra", key="inp_notas",
                                    placeholder="Ex: Blueberry, chocolate, floral...", height=108)
-            class_c = st.select_slider("Classificação", options=[1,2,3,4,5],
-                                       format_func=_stars, value=3, key="class_cafe")
+            class_c = st.slider("Classificação", 1, 5, 3, key="class_cafe")
             foto_emb = st.file_uploader("Foto da Embalagem", type=["jpg","jpeg","png"],
                                         key="foto_emb")
             foto_emb_b64 = _b64(foto_emb) if foto_emb else None
@@ -3102,7 +3117,21 @@ def main():
                 f'<span><b>{_rs["time"]}s</b> tempo</span>'
                 f'<span><b>{_rs["temp"]}°C</b> água</span>'
                 f'<span><b>{_rs["pressure"]} bar</b> pressão</span>'
-                f'</div></div>', unsafe_allow_html=True)
+                f'</div>'
+                + (
+                    f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
+                    f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
+                    f'☕☕ <b>Ajuste para 2 xícaras:</b> dose <b>{_rs["dose"]*2:.1f}g</b> · '
+                    f'yield total <b>{_rs["yield"]*2:.0f}g</b> dividido em '
+                    f'<b>{_rs["yield"]:.0f}g por xícara</b> — mesmo ratio (1:{_rs["yield"]/_rs["dose"]:.1f}) '
+                    f'e mesma concentração, tempo alvo {_rs["time"]}s.</div>'
+                    if xicaras == 2 else
+                    f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
+                    f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
+                    f'☕ <b>1 xícara:</b> volume integral de <b>{_rs["yield"]}g</b> na xícara — '
+                    f'máxima concentração e corpo.</div>'
+                  )
+                + '</div>', unsafe_allow_html=True)
 
             motor_html = (_MOTOR_BARISTA_HTML
                 .replace('value="18"', f'value="{params["dose"]}"')
@@ -3136,7 +3165,7 @@ def main():
                 tempo        = st.number_input("Tempo Real (s)", 1, 600, tempo_default, 1)
                 temp_real    = st.number_input("Temperatura Real (°C)", 60.0, 100.0,
                                                temp_default, 0.5)
-                pressao_real = st.number_input("Pressão Real (bar)", 1.0, 15.0,
+                pressao_real = st.number_input("Pressão Real (bar)", 1.0, 20.0,
                                                press_default, 0.5)
                 tds          = st.number_input("TDS Medido (%)", 0.0, 5.0, 0.0, 0.01,
                                                help="Opcional — refratômetro. Deixe 0 se não usar.")
@@ -3425,11 +3454,7 @@ def main():
                                                           key=f"ec_torra_dt_{c['id']}")
                             _class_val = int(c['classificacao'] or 3)
                             _class_val = max(1, min(5, _class_val)) if _class_val else 3
-                            ed_class_estr = st.select_slider("Classificação geral",
-                                                             options=[1,2,3,4,5],
-                                                             format_func=_stars,
-                                                             value=_class_val,
-                                                             key=f"ec_class_{c['id']}")
+                            ed_class_estr = st.slider("Classificação geral", 1, 5, _class_val, key=f"ec_class_{c['id']}")
                             ed_notas = st.text_area("Notas de Sabor / Torra",
                                                     value=c['notas'] or "", height=108,
                                                     key=f"ec_notas_{c['id']}")
@@ -3609,9 +3634,9 @@ def main():
                                     ed_agua = st.number_input("Água (g)", value=e['agua_alvo'], key=f"tab3_ed_a_{e['id']}")
                                     ed_tempo = st.number_input("Tempo (s)", value=e['tempo_extracao'], key=f"tab3_ed_t_{e['id']}")
                                 with ed_col2:
-                                    ed_class = st.select_slider("Classificação", options=[1,2,3,4,5],
-                                                               value=e['classificacao'] or 3,
-                                                               format_func=_stars, key=f"tab3_ed_c_{e['id']}")
+                                    ed_class = st.slider("Classificação", 1, 5,
+                                                         e['classificacao'] or 3,
+                                                         key=f"tab3_ed_c_{e['id']}")
                                     ed_notas = st.text_area("Comentários", value=e['notas'] or "", key=f"tab3_ed_n_{e['id']}", height=80)
 
                                 if st.button("💾 Salvar Edição", key=f"tab3_save_e_{e['id']}", use_container_width=True):
@@ -3782,47 +3807,23 @@ def main():
                         STAR_OPTS = [1, 2, 3, 4, 5]
                         es1, es2, es3, es4 = st.columns(4, gap="large")
                         with es1:
-                            ed_crema = st.select_slider("Crema", options=STAR_OPTS,
-                                                        format_func=_stars,
-                                                        value=int(r.get('crema_stars') or 3),
-                                                        key=f"e4_crema_{r['id']}")
+                            ed_crema = st.slider("Crema", 1, 5, int(r.get('crema_stars') or 3), key=f"e4_crema_{r['id']}")
                         with es2:
-                            ed_corpo = st.select_slider("Corpo", options=STAR_OPTS,
-                                                        format_func=_stars,
-                                                        value=int(r.get('corpo_stars') or 3),
-                                                        key=f"e4_corpo_{r['id']}")
+                            ed_corpo = st.slider("Corpo", 1, 5, int(r.get('corpo_stars') or 3), key=f"e4_corpo_{r['id']}")
                         with es3:
-                            ed_equil = st.select_slider("Equilíbrio", options=STAR_OPTS,
-                                                        format_func=_stars,
-                                                        value=int(r.get('equilibrio_stars') or 3),
-                                                        key=f"e4_equil_{r['id']}")
+                            ed_equil = st.slider("Equilíbrio", 1, 5, int(r.get('equilibrio_stars') or 3), key=f"e4_equil_{r['id']}")
                         with es4:
-                            ed_acid = st.select_slider("Acidez", options=STAR_OPTS,
-                                                       format_func=_stars,
-                                                       value=int(r.get('acidez_stars') or 3),
-                                                       key=f"e4_acid_{r['id']}")
+                            ed_acid = st.slider("Acidez", 1, 5, int(r.get('acidez_stars') or 3), key=f"e4_acid_{r['id']}")
 
                         es5, es6, es7, es8 = st.columns(4, gap="large")
                         with es5:
-                            ed_amargor = st.select_slider("Amargor", options=STAR_OPTS,
-                                                          format_func=_stars,
-                                                          value=int(r.get('amargor_stars') or 3),
-                                                          key=f"e4_amar_{r['id']}")
+                            ed_amargor = st.slider("Amargor", 1, 5, int(r.get('amargor_stars') or 3), key=f"e4_amar_{r['id']}")
                         with es6:
-                            ed_pres = st.select_slider("Presença na Boca", options=STAR_OPTS,
-                                                       format_func=_stars,
-                                                       value=int(r.get('presenca_boca_stars') or 3),
-                                                       key=f"e4_pres_{r['id']}")
+                            ed_pres = st.slider("Presença na Boca", 1, 5, int(r.get('presenca_boca_stars') or 3), key=f"e4_pres_{r['id']}")
                         with es7:
-                            ed_doc = st.select_slider("Doçura", options=STAR_OPTS,
-                                                      format_func=_stars,
-                                                      value=int(r.get('docura_stars') or 3),
-                                                      key=f"e4_doc_{r['id']}")
+                            ed_doc = st.slider("Doçura", 1, 5, int(r.get('docura_stars') or 3), key=f"e4_doc_{r['id']}")
                         with es8:
-                            ed_nota = st.select_slider("Nota Final", options=STAR_OPTS,
-                                                       format_func=_stars,
-                                                       value=int(r.get('nota_final_stars') or 3),
-                                                       key=f"e4_nota_{r['id']}")
+                            ed_nota = st.slider("Nota Final", 1, 5, int(r.get('nota_final_stars') or 3), key=f"e4_nota_{r['id']}")
 
                         if st.button("💾 Salvar Alterações", key=f"tab4_save_e_{r['id']}",
                                      type="primary"):
@@ -3955,30 +3956,22 @@ def main():
         _SC = [1, 2, 3, 4, 5]
         csx1, csx2, csx3, csx4 = st.columns(4, gap="large")
         with csx1:
-            cap_crema   = st.select_slider("Crema", options=_SC, format_func=_stars,
-                                           value=3, key="cap_crema")
+            cap_crema   = st.slider("Crema", 1, 5, 3, key="cap_crema")
         with csx2:
-            cap_corpo   = st.select_slider("Corpo", options=_SC, format_func=_stars,
-                                           value=3, key="cap_corpo")
+            cap_corpo   = st.slider("Corpo", 1, 5, 3, key="cap_corpo")
         with csx3:
-            cap_equil   = st.select_slider("Equilíbrio", options=_SC, format_func=_stars,
-                                           value=3, key="cap_equil")
+            cap_equil   = st.slider("Equilíbrio", 1, 5, 3, key="cap_equil")
         with csx4:
-            cap_acid    = st.select_slider("Acidez", options=_SC, format_func=_stars,
-                                           value=3, key="cap_acid")
+            cap_acid    = st.slider("Acidez", 1, 5, 3, key="cap_acid")
         csx5, csx6, csx7, csx8 = st.columns(4, gap="large")
         with csx5:
-            cap_amar    = st.select_slider("Amargor", options=_SC, format_func=_stars,
-                                           value=3, key="cap_amar")
+            cap_amar    = st.slider("Amargor", 1, 5, 3, key="cap_amar")
         with csx6:
-            cap_pres    = st.select_slider("Presença na Boca", options=_SC, format_func=_stars,
-                                           value=3, key="cap_pres")
+            cap_pres    = st.slider("Presença na Boca", 1, 5, 3, key="cap_pres")
         with csx7:
-            cap_doc     = st.select_slider("Doçura", options=_SC, format_func=_stars,
-                                           value=3, key="cap_doc")
+            cap_doc     = st.slider("Doçura", 1, 5, 3, key="cap_doc")
         with csx8:
-            cap_nota    = st.select_slider("Nota Final", options=_SC, format_func=_stars,
-                                           value=3, key="cap_nota")
+            cap_nota    = st.slider("Nota Final", 1, 5, 3, key="cap_nota")
 
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         if st.button("Salvar Cápsula", type="primary", use_container_width=True, key="btn_save_cap"):
@@ -4107,38 +4100,22 @@ def main():
                         _SC2 = [1, 2, 3, 4, 5]
                         ces1, ces2, ces3, ces4 = st.columns(4, gap="large")
                         with ces1:
-                            edc_crema = st.select_slider("Crema", options=_SC2, format_func=_stars,
-                                                         value=int(cap.get("crema_stars") or 3),
-                                                         key=f"cedit_crema_{cap['id']}")
+                            edc_crema = st.slider("Crema", 1, 5, int(cap.get("crema_stars") or 3), key=f"cedit_crema_{cap['id']}")
                         with ces2:
-                            edc_corpo = st.select_slider("Corpo", options=_SC2, format_func=_stars,
-                                                         value=int(cap.get("corpo_stars") or 3),
-                                                         key=f"cedit_corpo_{cap['id']}")
+                            edc_corpo = st.slider("Corpo", 1, 5, int(cap.get("corpo_stars") or 3), key=f"cedit_corpo_{cap['id']}")
                         with ces3:
-                            edc_equil = st.select_slider("Equilíbrio", options=_SC2, format_func=_stars,
-                                                         value=int(cap.get("equilibrio_stars") or 3),
-                                                         key=f"cedit_equil_{cap['id']}")
+                            edc_equil = st.slider("Equilíbrio", 1, 5, int(cap.get("equilibrio_stars") or 3), key=f"cedit_equil_{cap['id']}")
                         with ces4:
-                            edc_acid  = st.select_slider("Acidez", options=_SC2, format_func=_stars,
-                                                         value=int(cap.get("acidez_stars") or 3),
-                                                         key=f"cedit_acid_{cap['id']}")
+                            edc_acid  = st.slider("Acidez", 1, 5, int(cap.get("acidez_stars") or 3), key=f"cedit_acid_{cap['id']}")
                         ces5, ces6, ces7, ces8 = st.columns(4, gap="large")
                         with ces5:
-                            edc_amar  = st.select_slider("Amargor", options=_SC2, format_func=_stars,
-                                                         value=int(cap.get("amargor_stars") or 3),
-                                                         key=f"cedit_amar_{cap['id']}")
+                            edc_amar  = st.slider("Amargor", 1, 5, int(cap.get("amargor_stars") or 3), key=f"cedit_amar_{cap['id']}")
                         with ces6:
-                            edc_pres  = st.select_slider("Presença na Boca", options=_SC2, format_func=_stars,
-                                                         value=int(cap.get("presenca_boca_stars") or 3),
-                                                         key=f"cedit_pres_{cap['id']}")
+                            edc_pres  = st.slider("Presença na Boca", 1, 5, int(cap.get("presenca_boca_stars") or 3), key=f"cedit_pres_{cap['id']}")
                         with ces7:
-                            edc_doc   = st.select_slider("Doçura", options=_SC2, format_func=_stars,
-                                                         value=int(cap.get("docura_stars") or 3),
-                                                         key=f"cedit_doc_{cap['id']}")
+                            edc_doc   = st.slider("Doçura", 1, 5, int(cap.get("docura_stars") or 3), key=f"cedit_doc_{cap['id']}")
                         with ces8:
-                            edc_nota  = st.select_slider("Nota Final", options=_SC2, format_func=_stars,
-                                                         value=int(cap.get("nota_final_stars") or 3),
-                                                         key=f"cedit_nota_{cap['id']}")
+                            edc_nota  = st.slider("Nota Final", 1, 5, int(cap.get("nota_final_stars") or 3), key=f"cedit_nota_{cap['id']}")
 
                         cse1, cse2 = st.columns(2)
                         with cse1:
