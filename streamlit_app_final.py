@@ -1231,6 +1231,159 @@ st.markdown("""
         max-width: 680px !important;
         margin: 0 auto !important;
     }
+
+    /* ═══════════════════════════════════════════════════════════
+       LOGIN FORM — card glassmorphism sobre o fundo escuro
+       ═══════════════════════════════════════════════════════════ */
+    .mc-login-card {
+        background: var(--mc-surface);
+        border: 1px solid var(--mc-border-strong);
+        border-radius: 18px;
+        padding: 28px 28px 20px;
+        margin: 0 0 1rem;
+        box-shadow: 0 8px 40px rgba(0,0,0,0.45), 0 0 0 1px rgba(232,114,46,0.08);
+    }
+
+    /* Segmented toggle Entrar / Criar Conta */
+    .mc-auth-toggle {
+        display: flex;
+        background: var(--mc-surface-2);
+        border: 1px solid var(--mc-border);
+        border-radius: 12px;
+        padding: 4px;
+        margin: 0 0 1.5rem;
+        gap: 4px;
+    }
+    .mc-auth-btn {
+        flex: 1;
+        text-align: center;
+        padding: 10px 0;
+        border-radius: 9px;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        color: var(--mc-text-2);
+        user-select: none;
+        letter-spacing: -0.01em;
+    }
+    .mc-auth-btn.active {
+        background: var(--mc-orange);
+        color: #0A0A0A;
+        box-shadow: 0 2px 12px var(--mc-orange-glow);
+    }
+
+    /* Divisor de seção com texto */
+    .mc-divider-text {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 1.25rem 0;
+        color: var(--mc-text-3);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+    .mc-divider-text::before,
+    .mc-divider-text::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: var(--mc-border);
+    }
+
+    /* Tagline da página de login */
+    .mc-login-tagline {
+        font-family: Georgia, 'Times New Roman', serif;
+        font-style: italic;
+        font-size: 17px;
+        line-height: 1.65;
+        color: var(--mc-text-2);
+        text-align: center;
+        max-width: 400px;
+        margin: 0.5rem auto 1.75rem;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       TOPBAR — versão refinada com bordas e sombra
+       ═══════════════════════════════════════════════════════════ */
+    .mc-topbar-v2 {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 0 12px;
+        border-bottom: 1px solid var(--mc-border);
+        margin-bottom: 1.25rem;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       MOBILE — navegação inferior nativa (iOS/Android feel)
+       ═══════════════════════════════════════════════════════════ */
+    @media (max-width: 640px) {
+        /* Tabs no topo ficam bem — mas adicionamos padding inferior
+           para não sobrepor o indicador de barra de sistema do iOS */
+        .block-container { padding-bottom: 5rem !important; }
+
+        /* Botão primary mais chamativo */
+        .stButton > button[kind="primary"] {
+            background: linear-gradient(135deg, var(--mc-orange) 0%, #F08842 100%) !important;
+            box-shadow: 0 4px 16px rgba(232,114,46,0.4) !important;
+            border-radius: 12px !important;
+            font-size: 16px !important;
+            letter-spacing: -0.01em !important;
+        }
+
+        /* Card de login: padding menor no mobile */
+        .mc-login-card { padding: 20px 16px 16px; border-radius: 14px; }
+        .mc-login-tagline { font-size: 15px; margin-bottom: 1.25rem; }
+
+        /* Inputs de login maiores */
+        .stTextInput input { min-height: 50px !important; font-size: 16px !important; }
+
+        /* Hero image do login: margem zero no mobile */
+        .mc-login-hero { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+        .mc-login-hero img { max-width: 280px !important; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       FORM CARDS — agrupa seções de formulário visualmente
+       ═══════════════════════════════════════════════════════════ */
+    .mc-form-section {
+        background: var(--mc-surface);
+        border: 1px solid var(--mc-border);
+        border-radius: 14px;
+        padding: 20px 22px;
+        margin: 0 0 1rem;
+    }
+    @media (max-width: 640px) {
+        .mc-form-section { padding: 14px 14px; border-radius: 12px; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       CHECKBOX — visual mais claro
+       ═══════════════════════════════════════════════════════════ */
+    .stCheckbox > label {
+        color: var(--mc-text-2) !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        text-transform: none !important;
+        letter-spacing: 0 !important;
+    }
+    .stCheckbox > label > div > div {
+        background: var(--mc-orange) !important;
+        border-color: var(--mc-orange) !important;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       TABS — ícones maiores e rótulos mais legíveis no mobile
+       ═══════════════════════════════════════════════════════════ */
+    @media (max-width: 640px) {
+        .stTabs [data-baseweb="tab"] {
+            padding: 9px 11px !important;
+            font-size: 13px !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1471,6 +1624,7 @@ def _init_db() -> None:
             );
         """)
         # Migrations para tabela existente (compatível com schemas antigos)
+        cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS nome TEXT DEFAULT '';")
         cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token TEXT;")
         cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token_expires TIMESTAMP;")
         cur.execute("""
@@ -2818,22 +2972,36 @@ def main():
             with col_main:
                 # Logo + slogan da marca (apenas no login)
                 st.markdown('<div class="mc-login-hero">', unsafe_allow_html=True)
-                _load_logo(max_width=560)
+                _load_logo(max_width=480)
                 st.markdown(
-                    '<p style="text-align:center;font-family:Georgia,\'Times New Roman\','
-                    'serif;font-style:italic;font-size:19px;line-height:1.6;'
-                    'color:var(--mc-text-2);max-width:420px;margin:0.5rem auto 0">'
-                    'Para baristas, entusiastas e apaixonados por café. '
+                    '<p class="mc-login-tagline">'
+                    'Para baristas, entusiastas e apaixonados por café.<br>'
                     'Para mim e para você também.</p>'
                     '</div>',
                     unsafe_allow_html=True)
 
-                tab_login, tab_cadastro = st.tabs(["  Entrar  ", "  Criar Conta  "])
+                # Segmented control: Entrar / Criar Conta
+                _auth_mode = st.session_state.get("_auth_mode", "login")
+                _toggle_col1, _toggle_col2 = st.columns(2, gap="small")
+                with _toggle_col1:
+                    if st.button("☕  Entrar", use_container_width=True,
+                                 type="primary" if _auth_mode == "login" else "secondary",
+                                 key="toggle_login"):
+                        st.session_state["_auth_mode"] = "login"
+                        st.rerun()
+                with _toggle_col2:
+                    if st.button("✨  Criar Conta", use_container_width=True,
+                                 type="primary" if _auth_mode == "cadastro" else "secondary",
+                                 key="toggle_cadastro"):
+                        st.session_state["_auth_mode"] = "cadastro"
+                        st.rerun()
 
-                with tab_login:
+                st.markdown('<div style="height:0.75rem"></div>', unsafe_allow_html=True)
+
+                if _auth_mode == "login":
                     st.markdown(
-                        '<p class="mc-step-title" style="margin:0.5rem 0 1.25rem">'
-                        'Bem-vindo de volta</p>',
+                        '<p class="mc-step-title" style="margin:0 0 1.1rem">'
+                        'Bem-vindo de volta ☕</p>',
                         unsafe_allow_html=True)
                     email = st.text_input("E-mail", key="login_email",
                                           placeholder="seu@email.com")
@@ -2841,26 +3009,37 @@ def main():
                                           placeholder="••••••••")
                     remember_me = st.checkbox("Manter-me conectado por 30 dias",
                                               value=True, key="login_remember")
-
-                    if st.button("Entrar", type="primary",
+                    st.markdown('<div style="height:0.25rem"></div>', unsafe_allow_html=True)
+                    if st.button("Entrar  →", type="primary",
                                  use_container_width=True, key="btn_login"):
-                        outcome = _login(email, senha, remember=remember_me)
-                        if outcome == LoginResult.OK:
-                            st.toast("Login realizado", icon="✅")
-                            st.rerun()
-                        elif outcome == LoginResult.INVALID:
-                            st.error("E-mail ou senha incorretos. Verifique e tente de novo.")
+                        if not email or not senha:
+                            st.error("Preencha e-mail e senha.")
                         else:
-                            st.error("Erro ao acessar o banco de dados. Tente novamente em instantes.")
+                            outcome = _login(email.strip(), senha, remember=remember_me)
+                            if outcome == LoginResult.OK:
+                                st.toast("Login realizado ✅")
+                                st.rerun()
+                            elif outcome == LoginResult.INVALID:
+                                st.error("E-mail ou senha incorretos. Verifique e tente de novo.")
+                            else:
+                                st.error("Erro ao acessar o banco de dados. Tente novamente em instantes.")
 
-                with tab_cadastro:
                     st.markdown(
-                        '<p class="mc-step-title" style="margin:0.5rem 0 0.25rem">'
-                        'Crie sua conta</p>'
-                        '<p class="mc-step-sub" style="margin:0 0 1.25rem">'
+                        '<p style="text-align:center;font-size:12px;color:var(--mc-text-3);'
+                        'margin:1rem 0 0">Ainda não tem conta? '
+                        'Clique em <strong style="color:var(--mc-orange)">Criar Conta</strong> acima.</p>',
+                        unsafe_allow_html=True)
+
+                else:  # _auth_mode == "cadastro"
+                    st.markdown(
+                        '<p class="mc-step-title" style="margin:0 0 0.25rem">'
+                        'Crie sua conta ✨</p>'
+                        '<p class="mc-step-sub" style="margin:0 0 1.1rem">'
                         'É grátis e leva 30 segundos. Seus cafés ficam guardados '
                         'só para você.</p>',
                         unsafe_allow_html=True)
+                    new_nome  = st.text_input("Seu nome", key="cadastro_nome",
+                                              placeholder="Como quer ser chamado?")
                     new_email = st.text_input("E-mail", key="cadastro_email",
                                               placeholder="seu@email.com")
                     new_senha = st.text_input("Senha (mínimo 6 caracteres)",
@@ -2869,11 +3048,11 @@ def main():
                     new_senha_conf = st.text_input("Confirmar senha", type="password",
                                                    key="cadastro_senha_conf",
                                                    placeholder="••••••••")
-
-                    if st.button("Criar conta", type="primary",
+                    st.markdown('<div style="height:0.25rem"></div>', unsafe_allow_html=True)
+                    if st.button("Criar conta  →", type="primary",
                                  use_container_width=True, key="btn_cadastrar"):
                         if not new_email or not new_senha:
-                            st.error("Preencha todos os campos.")
+                            st.error("Preencha e-mail e senha.")
                         elif new_senha != new_senha_conf:
                             st.error("As senhas não conferem.")
                         elif len(new_senha) < 6:
@@ -2881,34 +3060,50 @@ def main():
                         else:
                             try:
                                 hash_pwd = _hash_senha(new_senha)
-                                _run("INSERT INTO usuarios (email, senha_hash) VALUES (%s, %s)",
-                                     (new_email.strip().lower(), hash_pwd))
-                                st.toast("Conta criada com sucesso", icon="✅")
-                                st.success("Pronto! Vá na aba **Entrar** para começar.")
+                                nome_limpo = new_nome.strip() if new_nome else ""
+                                _run("INSERT INTO usuarios (email, senha_hash, nome) VALUES (%s, %s, %s)",
+                                     (new_email.strip().lower(), hash_pwd, nome_limpo))
+                                # Auto-login após cadastro
+                                outcome = _login(new_email.strip(), new_senha, remember=True)
+                                if outcome == LoginResult.OK:
+                                    st.toast("Bem-vindo ao Mateu Coffee! ☕")
+                                    st.rerun()
+                                else:
+                                    st.toast("Conta criada! Faça login para continuar.", icon="✅")
+                                    st.session_state["_auth_mode"] = "login"
+                                    st.rerun()
                             except Exception:
                                 st.error("Esse e-mail já está cadastrado.")
+
+                    st.markdown(
+                        '<p style="text-align:center;font-size:12px;color:var(--mc-text-3);'
+                        'margin:1rem 0 0">Já tem conta? '
+                        'Clique em <strong style="color:var(--mc-orange)">Entrar</strong> acima.</p>',
+                        unsafe_allow_html=True)
         return
 
     # ── App Logado ──────────────────────────────────────────────────────
-    # Topbar compacta: logo · email · sair (uma linha só)
     user_email_display = st.session_state.get('user_email', '')
     initial = (user_email_display[:1] or "?").upper()
+    # Mostra nome se disponível, senão a parte do email antes do @
+    _user_rows = _fetch("SELECT nome FROM usuarios WHERE id=%s",
+                        (st.session_state['user_id'],), _v=0)
+    _user_nome = (_user_rows[0].get("nome") or "").strip() if _user_rows else ""
+    _display_name = _user_nome if _user_nome else user_email_display.split("@")[0]
 
-    col_brand, col_user, col_logout = st.columns([0.65, 0.25, 0.10], gap="small")
+    col_brand, col_user, col_logout = st.columns([0.60, 0.30, 0.10], gap="small")
     with col_brand:
-        # Marca oficial — usa o PNG real do logo (cacheado em base64)
         logo_b64 = _logo_b64()
         if logo_b64:
             st.markdown(
-                f'<div style="padding-top:4px">'
+                f'<div style="padding-top:2px">'
                 f'<a href="?about=1" target="_self" title="Sobre o Mateu Coffee">'
                 f'<img src="data:image/webp;base64,{logo_b64}" alt="Mateu Coffee" '
-                f'class="mc-topbar-logo" style="height:94px;width:auto;display:block;'
+                f'class="mc-topbar-logo" style="height:88px;width:auto;display:block;'
                 f'cursor:pointer"></a>'
                 f'</div>',
                 unsafe_allow_html=True)
         else:
-            # Fallback elegante caso o PNG não esteja disponível
             st.markdown(
                 '<div style="padding-top:4px">'
                 + _wordmark_html("compact", with_tag=False) +
@@ -2916,12 +3111,16 @@ def main():
                 unsafe_allow_html=True)
     with col_user:
         st.markdown(
-            f'<div class="mc-topbar-user" style="justify-content:flex-end;padding-top:6px">'
-            f'<div class="mc-topbar-user-avatar">{initial}</div>'
-            f'<span>{user_email_display}</span>'
+            f'<div class="mc-topbar-user" style="justify-content:flex-end;padding-top:8px;gap:10px">'
+            f'<div class="mc-topbar-user-avatar" style="width:32px;height:32px;font-size:14px">{initial}</div>'
+            f'<div style="text-align:right">'
+            f'<div style="font-size:13px;font-weight:700;color:var(--mc-text);line-height:1.2">{_display_name}</div>'
+            f'<div style="font-size:10px;color:var(--mc-text-3);font-weight:500">{user_email_display}</div>'
+            f'</div>'
             f'</div>',
             unsafe_allow_html=True)
     with col_logout:
+        st.markdown('<div style="padding-top:6px"></div>', unsafe_allow_html=True)
         if st.button("Sair", use_container_width=True, key="btn_logout",
                      help="Sair da conta"):
             _logout()
@@ -2933,8 +3132,8 @@ def main():
     _auto_backup_check(st.session_state['user_id'])
 
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ",
-        "  Histórico  ", "  📖 Receitas  ", "  🫘 Cápsulas  ", "  🛡️ Backup  "])
+        "  ☕ Novo Café  ", "  ⚗️ Extração  ", "  📦 Meus Cafés  ",
+        "  📊 Histórico  ", "  📖 Receitas  ", "  🫘 Cápsulas  ", "  🛡️ Backup  "])
 
     user_id = st.session_state['user_id']
 
