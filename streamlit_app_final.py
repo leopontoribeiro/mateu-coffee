@@ -14,6 +14,46 @@ from typing import Optional
 import anthropic
 from PIL import Image
 
+# ── Barista Expert AI ──────────────────────────────────────────────────
+def ask_barista_expert(pergunta: str) -> str:
+    """Pergunta ao Barista Expert usando Claude API com knowledge base."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return "⚠️ Variável ANTHROPIC_API_KEY não configurada"
+
+    try:
+        # Carregar knowledge base
+        with open("coffee_knowledge.json", "r", encoding="utf-8") as f:
+            kb = json.load(f)
+        kb_text = json.dumps(kb, indent=2, ensure_ascii=False)
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        system_prompt = f"""Você é um Barista Expert — especialista em café com 15+ anos de experiência.
+
+Use a seguinte base de conhecimento:
+{kb_text}
+
+Instruções:
+1. Responda em português brasileiro, prático e direto
+2. Use especificações exatas da knowledge base
+3. Dê dicas actionáveis que o usuário possa executar já
+4. Se não souber, admita e sugira experimentação
+5. Refira-se à knowledge base quando relevante
+6. Responda como um barista experiente explicando para outro café."""
+
+        message = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=1024,
+            system=system_prompt,
+            messages=[{"role": "user", "content": pergunta}]
+        )
+        return message.content[0].text
+    except FileNotFoundError:
+        return "⚠️ Knowledge base de café não encontrada"
+    except Exception as e:
+        return f"❌ Erro: {str(e)}"
+
 # ── Page config ────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Mateu Coffee Production",

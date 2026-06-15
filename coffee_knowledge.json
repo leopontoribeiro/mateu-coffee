@@ -1,0 +1,244 @@
+{
+"meta": {
+"versao": "1.0",
+"criado_em": "2026-06-15",
+"descricao": "Base de conhecimento para app de controle de extração de café. Inclui equipamentos, grãos, marcas, química, defeitos, fazendas e dados de barista.",
+"fontes": [
+"Pesquisa web (Amazon, Oster, fabricantes)",
+"Sites especializados: baristo.com.br, cfq.org.br, mokaclube.com.br",
+"Sites das marcas: cafeorfeu.com.br, coffeemais.com, cafelor.com.br",
+"Conhecimento técnico de barista (SCA)"
+]
+},
+
+"equipamentos": {
+"cafeteira": {
+"marca": "Oster",
+"modelo": "Xpert Perfect Brew BVSTEM7300-017 (127V) / BVSTEM7300-057 (220V)",
+"tipo": "Espresso semi-automática com moedor integrado",
+"especificacoes": {
+"potencia_127v": "1600W",
+"potencia_220v": "1380W",
+"capacidade_reservatorio": "2,8L (removível)",
+"pressao_bomba": "15 bar (bomba italiana)",
+"porta_filtro": "58mm (padrão profissional)",
+"capacidade_graos": "250g no funil",
+"niveis_moagem": 30,
+"sistema_aquecimento": "Thermoblock",
+"dimensoes_mm": "366 x 440 x 396 (LxAxP)",
+"acessorios_inclusos": [
+"Porta-filtro 58mm",
+"Prensador (tamper)",
+"Jarra para leite",
+"2 filtros simples (1 e 2 doses)",
+"2 filtros pressurizados",
+"Escova de limpeza",
+"Pino de limpeza"
+]
+},
+"recursos": {
+"pre_infusao": true,
+"controle_temperatura": true,
+"temporizador": true,
+"espumador_leite": "Jarra espumadora manual (panarello)",
+"moedor_integrado": true
+},
+"dicas_operacao": {
+"temperatura_agua_ideal_c": "90-96",
+"pre_aquecimento": "Sempre pré-aqueça o porta-filtro e a xícara antes da extração",
+"tamper_pressure": "Pressão leve a média no porta-filtro de 58mm",
+"limpeza": "Limpe o grupo e o porta-filtro após cada uso. Descalcifique a cada 1-2 meses dependendo da dureza da água local",
+"tempo_extracao_espresso": "25-30 segundos para 30ml de espresso",
+"dose_cafe_moido": "7g para espresso simples, 14g para duplo"
+}
+},
+"moedor": {
+"marca": "Starseeker",
+"modelo": "E55 Pro",
+"tipo": "Moedor elétrico de dose única, mó cônica",
+"especificacoes": {
+"diametro_mo_mm": 55,
+"material_mo": "Aço inoxidável com revestimento de Titânio",
+"niveis_moagem": "100 níveis visuais (stepless — ajuste infinito de 0.01mm)",
+"potencia_w": 72,
+"tensao": "110V - 240V (bivolt universal)",
+"capacidade": "Dose única (single dose)"
+},
+"configuracoes_por_metodo": {
+"espresso_fino": "Nível 8-15",
+"aeropress": "Nível 20-35",
+"moka": "Nível 15-25",
+"v60": "Nível 30-45",
+"chemex": "Nível 40-55",
+"prensa_francesa": "Nível 55-75",
+"cold_brew": "Nível 70-90"
+}
+}
+},
+
+"graos_e_variedades": {
+"arabica": {
+"nome_cientifico": "Coffea arabica",
+"origem": "Etiópia (Highlands)",
+"altitude_ideal_m": "800-2000",
+"cafeina_percent": "1.2-1.5",
+"caracteristicas": "Sabor refinado, aromático, acidez pronunciada, menor amargor, notas frutadas e florais"
+},
+"robusta": {
+"nome_cientifico": "Coffea canephora",
+"origem": "África Central (Congo)",
+"altitude_ideal_m": "0-800",
+"cafeina_percent": "2.2-2.7",
+"caracteristicas": "Sabor intenso, amargo, encorpado, menos acidez, crema mais densa"
+},
+"variedades_arabica": {
+"bourbon_amarelo": "Doçura alta, acidez acentuada, notas cítricas — ideal para V60 e Chemex",
+"catuai": "Corpo médio-alto, versátil para espresso e filtrado",
+"arara": "Chocolate 70%, caramelo, maracujá — edição limitada",
+"geisha": "A mais valorizada, notas de jasmim e bergamota, requer extração precisa",
+"mundo_novo": "Encorpado, chocolate, nozes — ótimo para espresso"
+}
+},
+
+"marcas": {
+"orfeu": {
+"descricao": "Referência em cafés especiais brasileiros",
+"fazenda": "Fazenda Sertãozinho — Sul de Minas",
+"linhas": {
+"classico": "Blend Bourbon Amarelo + Catuaí, torra média, doçura elevada",
+"bourbon_amarelo": "Monovarietal, torra média-clara, notas cítricas",
+"arara": "Edição limitada, chocolate 70%, maracujá"
+}
+},
+"coffee_mais": {
+"descricao": "Superespeciais acima de 84 pontos SCA",
+"linha_1953": "Nanolotes com 88+ pontos, rastreabilidade total"
+},
+"tres_coracoes": {
+"descricao": "Maior grupo cafeeiro do Brasil, custo-benefício alto",
+"linha_gourmet": "100% Arábica, Sul de Minas, torra clara a média-clara"
+}
+},
+
+"quimica_extracao": {
+"compostos_principais": {
+"acidos": "Acidez percebida, compostos voláteis degradados com torra escura",
+"acucares": "Reação Maillard gera aromas de caramelo e doçura",
+"lipidios": "Contribuem para corpo e sensação cremosa",
+"cafeina": "Arabica 1.2-1.5%, Robusta 2.2-2.7%",
+"compostos_volateis": "Responsáveis pelo aroma — dissipam após moagem"
+},
+"parametros_sca": {
+"razao_extracao_ideal_percent": "18-22",
+"tds_espresso_percent": "8-12",
+"tds_filtrado_percent": "1.2-1.5",
+"temperatura_agua_c": "90-96",
+"pressao_espresso_bar": "8-10"
+}
+},
+
+"torra": {
+"clara": "196-205°C, acidez alta, notas florais, sem amargor",
+"media_clara": "205-215°C, doçura elevada, corpo médio",
+"media": "215-225°C, equilíbrio, chocolate e caramelo — sweet spot",
+"media_escura": "225-230°C, amargor crescente, cacau",
+"escura": "230-240°C, amargor pronunciado, notas carbonizadas"
+},
+"descanso_pos_torra": {
+"espresso_dias": "5-14",
+"filtrado_dias": "3-7",
+"janela_ideal_dias": "7-28"
+},
+
+"metodos_extracao": {
+"espresso": {
+"dose_g": "7-9 (simples) / 14-18 (duplo)",
+"temperatura_agua_c": "90-96",
+"pressao_bar": 9,
+"tempo_s": "25-35",
+"na_oster": "Dose 7g, moagem E55 Pro nível 10-18, pré-aquecer porta-filtro"
+},
+"filtrado": {
+"razao_cafe_agua": "1:15 a 1:17",
+"temperatura_agua_c": "90-96",
+"tempo_total_s": "180-240"
+},
+"v60": {
+"dose_g": "15-20",
+"agua_ml": "250-300",
+"tempo_total_min": 3,
+"bloom_s": 30
+},
+"prensa_francesa": {
+"dose_g": "15",
+"agua_ml": "250",
+"tempo_imersao_min": 4
+},
+"aeropress": {
+"dose_g": "15-20",
+"agua_ml": "200-250",
+"tempo_total_s": "60-120"
+},
+"moka": {
+"descricao": "Cafeteira italiana, ~1.5 bar de vapor, pressão baixa",
+"dica": "Remover do fogo ao ouvir gorgolejar"
+},
+"cold_brew": {
+"dose_g": "100",
+"agua_ml": "1000",
+"tempo_h": "12-24"
+}
+},
+
+"defeitos_e_correcoes": {
+"underextraction": {
+"sinais": ["Azedo agressivo", "Raso", "Sem corpo", "Aguado"],
+"correcoes": ["Afinar a moagem", "Aumentar temperatura", "Aumentar tempo", "Aumentar dose"]
+},
+"overextraction": {
+"sinais": ["Amargor muito pronunciado", "Seco", "Adstringente"],
+"correcoes": ["Engrossar a moagem", "Reduzir temperatura", "Reduzir tempo", "Reduzir dose"]
+},
+"channeling": {
+"sinais": ["Jato desigual", "Gotas de um lado"],
+"correcoes": ["Distribuir café uniformemente", "Tamping nivelado", "Usar distribuidor (WDT)"]
+},
+"amargor_excessivo": {
+"causas": ["Overextraction", "Torra escura", "Temperatura alta"],
+"solucao": "Testar temperatura 88-90°C, engrossar moagem, usar água filtrada"
+}
+},
+
+"armazenamento": {
+"graos": {
+"recipiente": "Pote hermético com válvula unidirecional",
+"local": "Fresco, escuro, seco. Longe de fogão.",
+"temperatura_ideal_c": "15-25",
+"prazo_consumo": "Até 4 semanas após abertura (grãos), 2 semanas (moído)"
+}
+},
+
+"agua": {
+"tds_ideal_ppm": "75-150",
+"ph_ideal": "6.5-7.5",
+"descalcificacao_oster": "A cada 1-2 meses"
+},
+
+"cupping_avaliacao": {
+"criterios_sca": ["Fragrância/Aroma", "Sabor", "Finalização", "Acidez", "Corpo", "Equilíbrio", "Uniformidade", "Xícara limpa", "Doçura", "Impressão geral"],
+"escala": {
+"80_84": "Especial",
+"84_89": "Superespecial",
+"90_100": "Excepcional"
+}
+},
+
+"barista_conhecimento": {
+"funcoes_principais": ["Seleção de grãos", "Desenvolvimento de blends", "Calibração de moagem", "Extração com precisão", "Texturização de leite", "Manutenção de equipamentos"],
+"higiene": ["Limpar grupo após cada uso", "Descartar água parada", "Purgar vapor", "Lavar porta-filtro", "Descalcificar 1-2 meses", "Limpar mós 500-1000g"],
+"leite_texturizacao": {
+"temperatura_ideal_c": "60-65",
+"tipos": ["Microfoam (espuma densa, sedosa)", "Cappuccino (espuma mais seca)", "Flat white (leite mínimo)"]
+}
+}
+}
