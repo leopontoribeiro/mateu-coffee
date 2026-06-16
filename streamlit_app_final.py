@@ -2972,11 +2972,135 @@ def main():
 
     _auto_backup_check(st.session_state['user_id'])
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ",
+    tab_barista, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "  ✨ Barista Expert  ", "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ",
         "  Histórico  ", "  📖 Receitas  ", "  🫘 Cápsulas  ", "  🛡️ Backup  "])
 
     user_id = st.session_state['user_id']
+
+    # ── Tab Barista Expert ─────────────────────────────────────────────
+    with tab_barista:
+        st.markdown('<p class="section-label">✨ Barista Expert</p>', unsafe_allow_html=True)
+
+        # ── Seção superior: Café Melhor Avaliado + Promoções (2 colunas)
+        col_cafe, col_promo = st.columns(2, gap="large")
+
+        # Café com melhor avaliação
+        with col_cafe:
+            st.markdown('<p class="info-key" style="margin-bottom:0.5rem">Café Melhor Avaliado</p>', unsafe_allow_html=True)
+            best_coffee = _fetch("""
+                SELECT nome, torra, intensidade, classificacao, notas, regiao
+                FROM coffees
+                WHERE user_id = %s AND classificacao > 0
+                ORDER BY classificacao DESC
+                LIMIT 1
+            """, (user_id,), _v=_v())
+
+            if best_coffee:
+                bc = best_coffee[0]
+                st.markdown(f"""
+                <div style="background:var(--mc-orange-soft);border:1px solid var(--mc-orange);
+                border-radius:12px;padding:16px;margin:0">
+                    <p style="margin:0 0 8px;font-weight:700;color:var(--mc-orange);font-size:14px">{bc['nome']}</p>
+                    <p style="margin:0;color:var(--mc-text-2);font-size:12px">
+                    <strong>Torra:</strong> {bc['torra']} | <strong>Intensidade:</strong> {bc['intensidade']}/12
+                    </p>
+                    <p style="margin:6px 0 0;color:var(--mc-text-3);font-size:12px">{bc['regiao'] or '—'}</p>
+                    <p style="margin:8px 0 0;color:var(--mc-text);font-size:11px">{bc['notas'] or '(sem notas)'}</p>
+                    <p style="margin:8px 0 0;font-size:18px;color:var(--mc-orange)">{'⭐' * int(bc['classificacao'])}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    '<div style="text-align:center;padding:20px;color:var(--mc-text-3)">'
+                    '<p>Cadastre e avalie seus primeiros cafés</p>'
+                    '</div>', unsafe_allow_html=True)
+
+        # Promoções do dia / Destaques
+        with col_promo:
+            st.markdown('<p class="info-key" style="margin-bottom:0.5rem">Destaque do Dia</p>', unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background:linear-gradient(135deg, #E8722E 0%, #F08842 100%);
+            border-radius:12px;padding:16px;margin:0;color:#0A0A0A">
+                <p style="margin:0 0 8px;font-weight:700;font-size:14px">🎯 Dica Barista</p>
+                <p style="margin:0;font-size:12px;line-height:1.6">
+                Quando notar notas de acidez agressiva, experimente aumentar a temperatura
+                da água em 2°C ou afinar um pouco mais a moagem.
+                </p>
+                <p style="margin:12px 0 0;font-size:11px;opacity:0.9">💡 Use o chat abaixo para perguntas específicas</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
+
+        # ── Chat do Barista Expert
+        st.markdown('<p class="section-label">Chat com Barista Expert</p>', unsafe_allow_html=True)
+
+        # Inicializar session state para o chat
+        if "barista_messages" not in st.session_state:
+            st.session_state.barista_messages = []
+
+        # Container para mensagens
+        chat_container = st.container()
+
+        # Input do usuário
+        col_input, col_send = st.columns([0.9, 0.1], gap="small")
+        with col_input:
+            pergunta = st.text_input(
+                "Pergunta ao Barista Expert...",
+                placeholder="Ex: Como calibrar a moagem para espresso?",
+                key="barista_input"
+            )
+        with col_send:
+            send_btn = st.button("📨", use_container_width=True, key="barista_send")
+
+        # Processar resposta
+        if send_btn and pergunta.strip():
+            # Adicionar pergunta do usuário
+            st.session_state.barista_messages.append({"role": "user", "content": pergunta})
+
+            # Obter resposta do Barista Expert
+            with st.spinner("🤔 Barista Expert pensando..."):
+                resposta = ask_barista_expert(pergunta)
+                st.session_state.barista_messages.append({"role": "assistant", "content": resposta})
+
+            st.rerun()
+
+        # Renderizar histórico de mensagens
+        with chat_container:
+            if st.session_state.barista_messages:
+                for msg in st.session_state.barista_messages:
+                    if msg["role"] == "user":
+                        st.markdown(f"""
+                        <div style="display:flex;justify-content:flex-end;margin:8px 0">
+                            <div style="background:var(--mc-orange);color:#0A0A0A;
+                            border-radius:12px;border-bottom-right-radius:0;
+                            padding:12px 16px;max-width:70%;font-size:14px;line-height:1.5">
+                            {msg['content']}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div style="display:flex;justify-content:flex-start;margin:8px 0">
+                            <div style="background:var(--mc-surface);border:1px solid var(--mc-border);
+                            border-radius:12px;border-bottom-left-radius:0;
+                            padding:12px 16px;max-width:70%;font-size:14px;line-height:1.6;color:var(--mc-text)">
+                            {msg['content']}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    '<div style="text-align:center;padding:40px 20px;color:var(--mc-text-3)">'
+                    '<p style="font-size:14px">Faça uma pergunta sobre café, equipamentos, técnicas ou defeitos de extração...</p>'
+                    '</div>', unsafe_allow_html=True)
+
+        # Botão para limpar chat
+        if st.session_state.barista_messages:
+            if st.button("🔄 Novo Chat", use_container_width=True):
+                st.session_state.barista_messages = []
+                st.rerun()
 
     # ── Tab 1 · Cadastrar café ─────────────────────────────────────────
     with tab1:
