@@ -161,6 +161,7 @@ def _logo_b64() -> Optional[str]:
     return None
 
 def _show_logo() -> None:
+    # 🚀 BARISTA EXPERT LIVE - CACHE INVALIDATION v4
     b64 = _logo_b64()
     if b64:
         st.markdown(
