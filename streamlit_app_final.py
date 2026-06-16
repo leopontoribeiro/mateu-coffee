@@ -2982,6 +2982,7 @@ def main():
 
     # ── Tab Barista Expert ─────────────────────────────────────────────
     with tab_barista:
+        st.success("🚀 BARISTA EXPERT - NOVO SISTEMA AO VIVO!")
         st.markdown('<p class="section-label">✨ Barista Expert</p>', unsafe_allow_html=True)
 
         # ── Seção superior: Café Melhor Avaliado + Promoções (2 colunas)
