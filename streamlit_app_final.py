@@ -15,6 +15,7 @@ import anthropic
 from PIL import Image
 
 # ── Barista Expert AI ──────────────────────────────────────────────────
+# Integração de IA especializada em café com Claude API
 def ask_barista_expert(pergunta: str) -> str:
     """Pergunta ao Barista Expert usando Claude API com knowledge base."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
