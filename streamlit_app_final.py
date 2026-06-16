@@ -2973,8 +2973,9 @@ def main():
 
     _auto_backup_check(st.session_state['user_id'])
 
-    # 🚀 BARISTA EXPERT LIVE - BUILD TIMESTAMP: 2026-06-16 01:30 UTC
-    # This comment forces Render to rebuild (cache bust)
+    # 🚀 BARISTA EXPERT FULLY INTEGRATED - REBUILD v3
+    st.markdown("---")
+
     tab_barista, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "  ✨ Barista Expert  ", "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ",
         "  Histórico  ", "  📖 Receitas  ", "  🫘 Cápsulas  ", "  🛡️ Backup  "])
