@@ -2973,7 +2973,8 @@ def main():
 
     _auto_backup_check(st.session_state['user_id'])
 
-    # BARISTA EXPERT INTEGRATION v2 - LIVE NOW
+    # 🚀 BARISTA EXPERT LIVE - BUILD TIMESTAMP: 2026-06-16 01:30 UTC
+    # This comment forces Render to rebuild (cache bust)
     tab_barista, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "  ✨ Barista Expert  ", "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ",
         "  Histórico  ", "  📖 Receitas  ", "  🫘 Cápsulas  ", "  🛡️ Backup  "])
