@@ -1,87 +1,110 @@
--- Schema PostgreSQL para Mateu Coffee
--- Criado para suportar autenticação real e CRUD funcional
+-- Schema PostgreSQL — Mateu Coffee
+-- Documentação do schema real criado por _init_db() em streamlit_app_final.py
+-- NÃO executar manualmente — o app cria e migra automaticamente no startup.
 
--- Tabela de usuários
 CREATE TABLE IF NOT EXISTS usuarios (
-    id SERIAL PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    senha_hash VARCHAR(255) NOT NULL,
-    nome VARCHAR(255),
-    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id                     SERIAL PRIMARY KEY,
+    email                  TEXT UNIQUE NOT NULL,
+    senha_hash             TEXT NOT NULL,           -- bcrypt ($2b$...) ou legado SHA-256
+    criado_em              TIMESTAMP DEFAULT NOW(),
+    remember_token         TEXT,
+    remember_token_expires TIMESTAMP,
+    last_grinder           TEXT,
+    last_clicks            INTEGER DEFAULT 0
 );
 
--- Tabela de cafés
-CREATE TABLE IF NOT EXISTS cafes (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-    nome VARCHAR(255) NOT NULL,
-    origem VARCHAR(255),
-    tipo VARCHAR(100),
-    torrefacao VARCHAR(100),
-    preco_kg NUMERIC(10, 2),
-    estoque_gramas NUMERIC(10, 2) DEFAULT 0,
-    notas TEXT,
-    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS coffees (
+    id                SERIAL PRIMARY KEY,
+    user_id           INTEGER REFERENCES usuarios(id),
+    data_cadastro     DATE NOT NULL DEFAULT CURRENT_DATE,
+    nome              TEXT NOT NULL,
+    tipo              TEXT NOT NULL DEFAULT 'Grãos',       -- 'Grãos' | 'Moído'
+    torra             TEXT NOT NULL DEFAULT 'Média',       -- 'Clara' | 'Média' | 'Escura'
+    notas             TEXT DEFAULT '',
+    classificacao     INTEGER DEFAULT 0,                   -- 0–5 estrelas (0 = sem avaliação)
+    classificacao_cafe TEXT DEFAULT '',                    -- 'Especial (>80 pts)' | 'Gourmet' | ...
+    regiao            TEXT DEFAULT '',
+    data_torra        DATE,
+    tamanho_pacote    INTEGER DEFAULT 250,
+    foto_embalagem    TEXT,                                -- base64 JPEG comprimido
+    local_compra      TEXT DEFAULT '',
+    valor_compra      FLOAT DEFAULT 0,
+    data_compra       DATE,
+    intensidade       INTEGER DEFAULT 5,                   -- 1–12
+    created_at        TIMESTAMP DEFAULT NOW()
 );
 
--- Tabela de extrações
-CREATE TABLE IF NOT EXISTS extractions (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-    cafe_id INTEGER REFERENCES cafes(id) ON DELETE SET NULL,
-    data DATE NOT NULL,
-    gramas_cafe NUMERIC(10, 2) NOT NULL,
-    gramas_agua NUMERIC(10, 2),
-    tempo_segundos INTEGER,
-    temperatura NUMERIC(5, 2),
-    pressao NUMERIC(5, 2),
-    metodo VARCHAR(100),
-    notas TEXT,
-    aroma INTEGER DEFAULT 5,
-    acidez INTEGER DEFAULT 5,
-    corpo INTEGER DEFAULT 5,
-    sabor_notas TEXT,
-    nota_geral NUMERIC(3, 1) DEFAULT 5.0,
-    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS extracoes (
+    id                   SERIAL PRIMARY KEY,
+    user_id              INTEGER REFERENCES usuarios(id),
+    coffee_id            INTEGER REFERENCES coffees(id) ON DELETE CASCADE,
+    data                 DATE NOT NULL DEFAULT CURRENT_DATE,
+    data_hora_extracao   TIMESTAMP DEFAULT NOW(),
+    metodo               TEXT NOT NULL DEFAULT 'Espresso',
+    gramas               FLOAT NOT NULL DEFAULT 18,
+    agua_alvo            FLOAT NOT NULL DEFAULT 300,
+    tempo_extracao       INTEGER NOT NULL DEFAULT 150,
+    moedor               TEXT DEFAULT '',
+    clicks_moedor        INTEGER DEFAULT 0,
+    tds                  FLOAT DEFAULT 0,
+    temp_real            FLOAT,
+    pressao_real         FLOAT,
+    brew_ratio           FLOAT DEFAULT 0,
+    ey                   FLOAT DEFAULT 0,
+    fluxo                FLOAT DEFAULT 0,
+    foto_caneca          TEXT,
+    classificacao        INTEGER DEFAULT 0,
+    notas                TEXT DEFAULT '',
+    crema_stars          INTEGER DEFAULT 0,
+    corpo_stars          INTEGER DEFAULT 0,
+    equilibrio_stars     INTEGER DEFAULT 0,
+    acidez_stars         INTEGER DEFAULT 0,
+    amargor_stars        INTEGER DEFAULT 0,
+    presenca_boca_stars  INTEGER DEFAULT 0,
+    docura_stars         INTEGER DEFAULT 0,
+    nota_final_stars     INTEGER DEFAULT 0,
+    balanco_ideal        TEXT DEFAULT '',
+    created_at           TIMESTAMP DEFAULT NOW()
 );
 
--- Tabela de receitas compartilhadas
-CREATE TABLE IF NOT EXISTS shared_recipes (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-    cafe_nome VARCHAR(255) NOT NULL,
-    metodo VARCHAR(100) NOT NULL,
-    dose_gramas NUMERIC(10, 2),
-    agua_ml NUMERIC(10, 2),
-    nota INTEGER,
-    autor_anonimo BOOLEAN DEFAULT TRUE,
-    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS capsulas (
+    id                   SERIAL PRIMARY KEY,
+    user_id              INTEGER REFERENCES usuarios(id),
+    nome                 TEXT NOT NULL,
+    marca                TEXT DEFAULT '',
+    maquina              TEXT NOT NULL DEFAULT 'Nespresso',
+    intensidade          INTEGER DEFAULT 5,
+    quantidade           INTEGER DEFAULT 10,
+    aluminio             BOOLEAN DEFAULT FALSE,
+    volume_ml            INTEGER DEFAULT 40,
+    foto_embalagem       TEXT,
+    crema_stars          INTEGER DEFAULT 3,
+    corpo_stars          INTEGER DEFAULT 3,
+    equilibrio_stars     INTEGER DEFAULT 3,
+    acidez_stars         INTEGER DEFAULT 3,
+    amargor_stars        INTEGER DEFAULT 3,
+    presenca_boca_stars  INTEGER DEFAULT 3,
+    docura_stars         INTEGER DEFAULT 3,
+    nota_final_stars     INTEGER DEFAULT 3,
+    created_at           TIMESTAMP DEFAULT NOW()
 );
 
--- Índice para receitas
-CREATE INDEX IF NOT EXISTS idx_shared_recipes_user_id ON shared_recipes(user_id);
+CREATE TABLE IF NOT EXISTS backups (
+    id             SERIAL PRIMARY KEY,
+    user_id        INTEGER REFERENCES usuarios(id),
+    tipo           TEXT NOT NULL DEFAULT 'manual',   -- 'manual' | 'semanal' | 'pre-restore'
+    criado_em      TIMESTAMP DEFAULT NOW(),
+    notas          TEXT DEFAULT '',
+    coffees_data   JSONB DEFAULT '[]',
+    extracoes_data JSONB DEFAULT '[]',
+    capsulas_data  JSONB DEFAULT '[]',
+    git_hash       TEXT DEFAULT ''
+);
 
--- Índices para melhor performance
-CREATE INDEX IF NOT EXISTS idx_cafes_user_id ON cafes(user_id);
-CREATE INDEX IF NOT EXISTS idx_extractions_user_id ON extractions(user_id);
-CREATE INDEX IF NOT EXISTS idx_extractions_cafe_id ON extractions(cafe_id);
-CREATE INDEX IF NOT EXISTS idx_extractions_data ON extractions(data);
-
--- Triggers para atualizar atualizado_em
-CREATE OR REPLACE FUNCTION update_timestamp()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.atualizado_em = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS tr_usuarios_update ON usuarios;
-CREATE TRIGGER tr_usuarios_update BEFORE UPDATE ON usuarios
-    FOR EACH ROW EXECUTE FUNCTION update_timestamp();
-
-DROP TRIGGER IF EXISTS tr_cafes_update ON cafes;
-CREATE TRIGGER tr_cafes_update BEFORE UPDATE ON cafes
-    FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+CREATE INDEX IF NOT EXISTS idx_coffees_user_id   ON coffees(user_id);
+CREATE INDEX IF NOT EXISTS idx_extracoes_user_id ON extracoes(user_id);
+CREATE INDEX IF NOT EXISTS idx_extracoes_cafe_id ON extracoes(coffee_id);
+CREATE INDEX IF NOT EXISTS idx_extracoes_data    ON extracoes(data);
+CREATE INDEX IF NOT EXISTS idx_capsulas_user_id  ON capsulas(user_id);
+CREATE INDEX IF NOT EXISTS idx_backups_criado_em ON backups(criado_em DESC);
+CREATE INDEX IF NOT EXISTS idx_backups_user_id   ON backups(user_id);

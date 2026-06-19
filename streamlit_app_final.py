@@ -3,13 +3,18 @@ import streamlit.components.v1 as components
 import plotly.graph_objects as go
 import psycopg2
 import psycopg2.extras
+from psycopg2 import pool as pg_pool
 import base64
 import os
 import json
+import html as _html
+import contextlib
+import datetime as _dt
 from datetime import date, datetime, timedelta
 from io import BytesIO
 import hashlib
 import secrets
+import bcrypt
 from typing import Optional
 import anthropic
 from PIL import Image
@@ -41,10 +46,10 @@ Instruções:
 3. Dê dicas actionáveis que o usuário possa executar já
 4. Se não souber, admita e sugira experimentação
 5. Refira-se à knowledge base quando relevante
-6. Responda como um barista experiente explicando para outro café."""
+6. Responda como um barista experiente explicando para outro barista."""
 
         message = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-haiku-4-5-20251001",
             max_tokens=1024,
             system=system_prompt,
             messages=[{"role": "user", "content": pergunta}]
@@ -184,7 +189,7 @@ _load_mobile_css()
 
 # ── PWA Manifest (instalar como app no Android/iOS) ───────────────────
 st.markdown("""
-<link rel="manifest" href="data:application/json;charset=utf-8,%7B%22name%22%3A%22Mateu%20Coffee%22%2C%22short_name%22%3A%22Mateu%22%2C%22start_url%22%3A%22%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230A0A0A%22%2C%22theme_color%22%3A%22%23E8722E%22%2C%22orientation%22%3A%22portrait%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fi.imgur.com%2FyQkZ1.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
+<link rel="manifest" href="data:application/json;charset=utf-8,%7B%22name%22%3A%22Mateu%20Coffee%22%2C%22short_name%22%3A%22Mateu%22%2C%22start_url%22%3A%22%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230A0A0A%22%2C%22theme_color%22%3A%22%23E8722E%22%2C%22orientation%22%3A%22portrait%22%7D">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1278,74 +1283,67 @@ st.markdown("""
 
 # ── Database layer ─────────────────────────────────────────────────────
 @st.cache_resource
-def _get_conn() -> "psycopg2.extensions.connection":
-    # Prioridade 1: variável de ambiente DATABASE_URL (Railway, Render, Heroku)
+def _get_pool() -> pg_pool.ThreadedConnectionPool:
+    kwargs = dict(connect_timeout=10, sslmode="require")
     db_url = os.environ.get("DATABASE_URL")
     if db_url:
-        return psycopg2.connect(db_url, sslmode="require", connect_timeout=10)
-    # Prioridade 2: st.secrets (Streamlit Cloud)
+        return pg_pool.ThreadedConnectionPool(1, 10, db_url, **kwargs)
     try:
         s = st.secrets["connections"]["postgresql"]
-        return psycopg2.connect(
+        return pg_pool.ThreadedConnectionPool(
+            1, 10,
             host=s["host"], port=int(s["port"]), dbname=s["database"],
-            user=s["username"], password=s["password"],
-            sslmode="require", connect_timeout=10,
-        )
+            user=s["username"], password=s["password"], **kwargs)
     except Exception:
         pass
-    # Prioridade 3: variáveis de ambiente individuais
-    return psycopg2.connect(
+    return pg_pool.ThreadedConnectionPool(
+        1, 10,
         host=os.environ["DB_HOST"],
         port=int(os.environ.get("DB_PORT", "5432")),
         dbname=os.environ["DB_NAME"],
         user=os.environ["DB_USER"],
         password=os.environ["DB_PASSWORD"],
-        sslmode="require",
-        connect_timeout=10,
-    )
+        **kwargs)
 
-def _conn() -> "psycopg2.extensions.connection":
-    """Retorna conexão ativa. Reconecta automaticamente se a conexão
-    estiver fechada ou morta (desconexão server-side não detectada por c.closed)."""
-    c = _get_conn()
+@contextlib.contextmanager
+def _db():
+    """Pega uma conexão do pool e devolve ao finalizar."""
+    pool = _get_pool()
+    conn = pool.getconn()
     try:
-        # Ping leve — detecta conexões mortas que o servidor fechou
-        cur = c.cursor()
-        cur.execute("SELECT 1")
-        cur.close()
-        c.rollback()          # descarta transação implícita do ping
-    except Exception:
-        st.cache_resource.clear()
-        c = _get_conn()
-    return c
+        yield conn
+    finally:
+        try:
+            pool.putconn(conn)
+        except Exception:
+            pass
 
 def _run(query: str, params: tuple = ()) -> None:
-    c = _conn()
-    cur = c.cursor()
-    try:
-        cur.execute(query, params)
-        c.commit()
-    except Exception:
-        c.rollback()
-        raise
-    finally:
-        cur.close()
+    with _db() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(query, params)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
     _bump()
 
 def _bump() -> None:
     st.session_state["_v"] = st.session_state.get("_v", 0) + 1
-    _fetch.clear()  # invalida cache cross-session — evita dados obsoletos após F5
+    _fetch.clear()
 
 @st.cache_data(ttl=600, show_spinner=False)
 def _fetch(query: str, params: tuple = (), _v: int = 0) -> list:
-    c   = _conn()
-    cur = c.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    try:
-        cur.execute(query, params)
-        rows = cur.fetchall()
-    finally:
-        cur.close()
-    return rows
+    with _db() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            cur.execute(query, params)
+            return cur.fetchall()
+        finally:
+            cur.close()
 
 def _v() -> int:
     return st.session_state.get("_v", 0)
@@ -1355,18 +1353,6 @@ def _v() -> int:
 # Cookie no browser é o único jeito de manter sessão entre visitas.
 _COOKIE_NAME = "mc_remember"
 
-def _set_cookie_js(token: str, days: int = 30) -> None:
-    """Grava cookie via JS nativo (iframe same-origin) — sem libs externas."""
-    components.html(
-        f"<script>window.parent.document.cookie="
-        f"'{_COOKIE_NAME}={token}; max-age={days*86400}; path=/; SameSite=Lax';</script>",
-        height=0)
-
-def _clear_cookie_js() -> None:
-    components.html(
-        f"<script>window.parent.document.cookie="
-        f"'{_COOKIE_NAME}=; max-age=0; path=/';</script>", height=0)
-
 def _read_cookie() -> Optional[str]:
     """Lê o cookie enviado pelo browser na conexão (st.context, Streamlit 1.37+)."""
     try:
@@ -1374,29 +1360,43 @@ def _read_cookie() -> Optional[str]:
     except Exception:
         return None
 
-def _hash_senha(senha: str, salt: str = "") -> str:
-    """Hash simples com salt."""
-    if not salt:
-        salt = secrets.token_hex(8)
-    h = hashlib.sha256(f"{salt}{senha}".encode()).hexdigest()
-    return f"{salt}${h}"
+def _hash_senha(senha: str) -> str:
+    """Hash bcrypt — lento por design, resistente a brute-force."""
+    return bcrypt.hashpw(senha.encode(), bcrypt.gensalt()).decode()
 
 def _verify_senha(senha: str, hash_stored: str) -> bool:
-    """Verifica senha contra hash."""
-    salt = hash_stored.split("$")[0]
-    return _hash_senha(senha, salt) == hash_stored
+    """Verifica senha. Suporta bcrypt (novo) e SHA-256 legado (migração)."""
+    # Bcrypt começa com $2b$ ou $2a$
+    if hash_stored.startswith("$2"):
+        try:
+            return bcrypt.checkpw(senha.encode(), hash_stored.encode())
+        except Exception:
+            return False
+    # Legado SHA-256: formato "{salt}${hex}"
+    parts = hash_stored.split("$")
+    if len(parts) == 2:
+        salt, h = parts
+        return hashlib.sha256(f"{salt}{senha}".encode()).hexdigest() == h
+    return False
 
 class LoginResult:
     OK = "ok"
-    INVALID = "invalid"          # credenciais inválidas (esperado)
-    ERROR = "error"              # falha de infra (banco, rede)
+    INVALID = "invalid"
+    ERROR = "error"
+    RATE_LIMITED = "rate_limited"
+
+_MAX_LOGIN_ATTEMPTS = 5
+_LOGIN_WINDOW_SECS  = 600   # 10 minutos
 
 def _login(email: str, senha: str, remember: bool = False) -> str:
-    """Valida credenciais. Retorna LoginResult.{OK, INVALID, ERROR}.
+    """Valida credenciais. Retorna LoginResult.{OK, INVALID, ERROR, RATE_LIMITED}."""
+    # Rate limiting por sessão
+    now = datetime.now()
+    attempts = [t for t in st.session_state.get('_login_attempts', [])
+                if (now - t).total_seconds() < _LOGIN_WINDOW_SECS]
+    if len(attempts) >= _MAX_LOGIN_ATTEMPTS:
+        return LoginResult.RATE_LIMITED
 
-    Distingue credencial inválida (esperado) de erro de infra
-    para que o usuário não veja 'senha inválida' quando o banco caiu.
-    """
     try:
         result = _fetch(
             "SELECT id, email, senha_hash FROM usuarios WHERE LOWER(email)=LOWER(%s) LIMIT 1",
@@ -1406,13 +1406,26 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
         return LoginResult.ERROR
 
     if not result:
+        attempts.append(now)
+        st.session_state['_login_attempts'] = attempts
         return LoginResult.INVALID
     usuario = result[0]
     if not _verify_senha(senha, usuario['senha_hash']):
+        attempts.append(now)
+        st.session_state['_login_attempts'] = attempts
         return LoginResult.INVALID
+
+    # Migração silenciosa: re-hash SHA-256 legado → bcrypt
+    if not usuario['senha_hash'].startswith("$2"):
+        try:
+            _run("UPDATE usuarios SET senha_hash=%s WHERE id=%s",
+                 (_hash_senha(senha), usuario['id']))
+        except Exception:
+            pass
 
     st.session_state['user_id'] = usuario['id']
     st.session_state['user_email'] = usuario['email']
+    st.session_state.pop('_login_attempts', None)
 
     if remember:
         try:
@@ -1499,186 +1512,186 @@ def _logout() -> None:
 def _init_db() -> None:
     if st.session_state.get("_db_ready"):
         return
-    conn = _conn()
-    cur  = conn.cursor()
-    try:
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS usuarios (
-                id SERIAL PRIMARY KEY,
-                email TEXT UNIQUE NOT NULL,
-                senha_hash TEXT NOT NULL,
-                criado_em TIMESTAMP DEFAULT NOW(),
-                remember_token TEXT,
-                remember_token_expires TIMESTAMP
-            );
-        """)
-        # Migrations para tabela existente (compatível com schemas antigos)
-        cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token TEXT;")
-        cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token_expires TIMESTAMP;")
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS coffees (
-                id SERIAL PRIMARY KEY, data_cadastro DATE NOT NULL DEFAULT CURRENT_DATE,
-                nome TEXT NOT NULL, tipo TEXT NOT NULL DEFAULT 'Grãos',
-                torra TEXT NOT NULL DEFAULT 'Média', notas TEXT DEFAULT '',
-                classificacao INTEGER DEFAULT 0, fazenda TEXT DEFAULT '',
-                regiao TEXT DEFAULT '', data_torra DATE,
-                tamanho_pacote INTEGER DEFAULT 250, foto_embalagem TEXT,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-            CREATE TABLE IF NOT EXISTS extracoes (
-                id SERIAL PRIMARY KEY,
-                coffee_id INTEGER REFERENCES coffees(id) ON DELETE CASCADE,
-                data DATE NOT NULL DEFAULT CURRENT_DATE,
-                metodo TEXT NOT NULL DEFAULT 'Espresso',
-                gramas FLOAT NOT NULL DEFAULT 18, moedor TEXT DEFAULT '',
-                clicks_moedor INTEGER DEFAULT 0, agua_alvo FLOAT NOT NULL DEFAULT 300,
-                tds FLOAT DEFAULT 0, tempo_extracao INTEGER NOT NULL DEFAULT 150,
-                brew_ratio FLOAT DEFAULT 0, ey FLOAT DEFAULT 0, fluxo FLOAT DEFAULT 0,
-                foto_caneca TEXT, classificacao INTEGER DEFAULT 0,
-                notas TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW()
-            );
-        """)
-        # Migração incremental — adiciona colunas novas sem recriar a tabela
-        cur.execute("""
-            ALTER TABLE coffees
-                ADD COLUMN IF NOT EXISTS local_compra      TEXT  DEFAULT '',
-                ADD COLUMN IF NOT EXISTS valor_compra      FLOAT DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS data_compra       DATE,
-                ADD COLUMN IF NOT EXISTS classificacao_cafe TEXT DEFAULT '',
-                ADD COLUMN IF NOT EXISTS intensidade       INTEGER DEFAULT 5;
-        """)
-        # Tabela de cápsulas
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS capsulas (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES usuarios(id),
-                nome TEXT NOT NULL,
-                marca TEXT DEFAULT '',
-                maquina TEXT NOT NULL DEFAULT 'Nespresso',
-                intensidade INTEGER DEFAULT 5,
-                quantidade INTEGER DEFAULT 10,
-                aluminio BOOLEAN DEFAULT FALSE,
-                volume_ml INTEGER DEFAULT 40,
-                foto_embalagem TEXT,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-            CREATE INDEX IF NOT EXISTS idx_capsulas_user_id ON capsulas(user_id);
-        """)
-        cur.execute("""
-            ALTER TABLE capsulas
-                ADD COLUMN IF NOT EXISTS crema_stars         INTEGER DEFAULT 3,
-                ADD COLUMN IF NOT EXISTS corpo_stars         INTEGER DEFAULT 3,
-                ADD COLUMN IF NOT EXISTS equilibrio_stars    INTEGER DEFAULT 3,
-                ADD COLUMN IF NOT EXISTS acidez_stars        INTEGER DEFAULT 3,
-                ADD COLUMN IF NOT EXISTS amargor_stars       INTEGER DEFAULT 3,
-                ADD COLUMN IF NOT EXISTS presenca_boca_stars INTEGER DEFAULT 3,
-                ADD COLUMN IF NOT EXISTS docura_stars        INTEGER DEFAULT 3,
-                ADD COLUMN IF NOT EXISTS nota_final_stars    INTEGER DEFAULT 3;
-        """)
-        cur.execute("""
-            ALTER TABLE usuarios
-                ADD COLUMN IF NOT EXISTS last_grinder TEXT,
-                ADD COLUMN IF NOT EXISTS last_clicks INTEGER DEFAULT 0;
-        """)
-        cur.execute("""
-            ALTER TABLE extracoes
-                ADD COLUMN IF NOT EXISTS crema_stars INTEGER DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS corpo_stars INTEGER DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS equilibrio_stars INTEGER DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS acidez_stars INTEGER DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS amargor_stars INTEGER DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS presenca_boca_stars INTEGER DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS docura_stars INTEGER DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS nota_final_stars INTEGER DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS balanco_ideal TEXT DEFAULT '',
-                ADD COLUMN IF NOT EXISTS data_hora_extracao TIMESTAMP DEFAULT NOW();
-        """)
+    with _db() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS usuarios (
+                    id SERIAL PRIMARY KEY,
+                    email TEXT UNIQUE NOT NULL,
+                    senha_hash TEXT NOT NULL,
+                    criado_em TIMESTAMP DEFAULT NOW(),
+                    remember_token TEXT,
+                    remember_token_expires TIMESTAMP
+                );
+            """)
+            cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token TEXT;")
+            cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS remember_token_expires TIMESTAMP;")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS coffees (
+                    id SERIAL PRIMARY KEY, data_cadastro DATE NOT NULL DEFAULT CURRENT_DATE,
+                    nome TEXT NOT NULL, tipo TEXT NOT NULL DEFAULT 'Grãos',
+                    torra TEXT NOT NULL DEFAULT 'Média', notas TEXT DEFAULT '',
+                    classificacao INTEGER DEFAULT 0, fazenda TEXT DEFAULT '',
+                    regiao TEXT DEFAULT '', data_torra DATE,
+                    tamanho_pacote INTEGER DEFAULT 250, foto_embalagem TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+                CREATE TABLE IF NOT EXISTS extracoes (
+                    id SERIAL PRIMARY KEY,
+                    coffee_id INTEGER REFERENCES coffees(id) ON DELETE CASCADE,
+                    data DATE NOT NULL DEFAULT CURRENT_DATE,
+                    metodo TEXT NOT NULL DEFAULT 'Espresso',
+                    gramas FLOAT NOT NULL DEFAULT 18, moedor TEXT DEFAULT '',
+                    clicks_moedor INTEGER DEFAULT 0, agua_alvo FLOAT NOT NULL DEFAULT 300,
+                    tds FLOAT DEFAULT 0, tempo_extracao INTEGER NOT NULL DEFAULT 150,
+                    brew_ratio FLOAT DEFAULT 0, ey FLOAT DEFAULT 0, fluxo FLOAT DEFAULT 0,
+                    foto_caneca TEXT, classificacao INTEGER DEFAULT 0,
+                    notas TEXT DEFAULT '', created_at TIMESTAMP DEFAULT NOW()
+                );
+            """)
+            cur.execute("""
+                ALTER TABLE coffees
+                    ADD COLUMN IF NOT EXISTS local_compra      TEXT  DEFAULT '',
+                    ADD COLUMN IF NOT EXISTS valor_compra      FLOAT DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS data_compra       DATE,
+                    ADD COLUMN IF NOT EXISTS classificacao_cafe TEXT DEFAULT '',
+                    ADD COLUMN IF NOT EXISTS intensidade       INTEGER DEFAULT 5;
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS capsulas (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES usuarios(id),
+                    nome TEXT NOT NULL,
+                    marca TEXT DEFAULT '',
+                    maquina TEXT NOT NULL DEFAULT 'Nespresso',
+                    intensidade INTEGER DEFAULT 5,
+                    quantidade INTEGER DEFAULT 10,
+                    aluminio BOOLEAN DEFAULT FALSE,
+                    volume_ml INTEGER DEFAULT 40,
+                    foto_embalagem TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_capsulas_user_id ON capsulas(user_id);
+            """)
+            cur.execute("""
+                ALTER TABLE capsulas
+                    ADD COLUMN IF NOT EXISTS crema_stars         INTEGER DEFAULT 3,
+                    ADD COLUMN IF NOT EXISTS corpo_stars         INTEGER DEFAULT 3,
+                    ADD COLUMN IF NOT EXISTS equilibrio_stars    INTEGER DEFAULT 3,
+                    ADD COLUMN IF NOT EXISTS acidez_stars        INTEGER DEFAULT 3,
+                    ADD COLUMN IF NOT EXISTS amargor_stars       INTEGER DEFAULT 3,
+                    ADD COLUMN IF NOT EXISTS presenca_boca_stars INTEGER DEFAULT 3,
+                    ADD COLUMN IF NOT EXISTS docura_stars        INTEGER DEFAULT 3,
+                    ADD COLUMN IF NOT EXISTS nota_final_stars    INTEGER DEFAULT 3;
+            """)
+            cur.execute("""
+                ALTER TABLE usuarios
+                    ADD COLUMN IF NOT EXISTS last_grinder TEXT,
+                    ADD COLUMN IF NOT EXISTS last_clicks INTEGER DEFAULT 0;
+            """)
+            cur.execute("""
+                ALTER TABLE extracoes
+                    ADD COLUMN IF NOT EXISTS crema_stars INTEGER DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS corpo_stars INTEGER DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS equilibrio_stars INTEGER DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS acidez_stars INTEGER DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS amargor_stars INTEGER DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS presenca_boca_stars INTEGER DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS docura_stars INTEGER DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS nota_final_stars INTEGER DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS balanco_ideal TEXT DEFAULT '',
+                    ADD COLUMN IF NOT EXISTS data_hora_extracao TIMESTAMP DEFAULT NOW();
+            """)
+            cur.execute("""
+                ALTER TABLE coffees    ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES usuarios(id);
+                ALTER TABLE extracoes  ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES usuarios(id);
+                CREATE INDEX IF NOT EXISTS idx_coffees_user_id   ON coffees(user_id);
+                CREATE INDEX IF NOT EXISTS idx_extracoes_user_id ON extracoes(user_id);
+            """)
+            cur.execute("SELECT COUNT(*) FROM usuarios")
+            if cur.fetchone()[0] == 1:
+                cur.execute("SELECT id FROM usuarios LIMIT 1")
+                sole_user = cur.fetchone()[0]
+                cur.execute("UPDATE coffees   SET user_id=%s WHERE user_id IS NULL", (sole_user,))
+                cur.execute("UPDATE extracoes SET user_id=%s WHERE user_id IS NULL", (sole_user,))
 
-        # ── P3: Multi-tenancy — atribui cafés/extrações ao seu dono ──
-        cur.execute("""
-            ALTER TABLE coffees    ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES usuarios(id);
-            ALTER TABLE extracoes  ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES usuarios(id);
-            CREATE INDEX IF NOT EXISTS idx_coffees_user_id   ON coffees(user_id);
-            CREATE INDEX IF NOT EXISTS idx_extracoes_user_id ON extracoes(user_id);
-        """)
-        # Backfill seguro: só atribui registros órfãos se houver exatamente 1 usuário
-        # (cenário single-user retroativo — sem ambiguidade)
-        cur.execute("SELECT COUNT(*) FROM usuarios")
-        if cur.fetchone()[0] == 1:
-            cur.execute("SELECT id FROM usuarios LIMIT 1")
-            sole_user = cur.fetchone()[0]
-            cur.execute("UPDATE coffees   SET user_id=%s WHERE user_id IS NULL", (sole_user,))
-            cur.execute("UPDATE extracoes SET user_id=%s WHERE user_id IS NULL", (sole_user,))
+            cur.execute("""
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name='usuarios' AND column_name='remember_token_created')
+                       AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                       WHERE table_name='usuarios' AND column_name='remember_token_expires')
+                    THEN
+                        ALTER TABLE usuarios RENAME COLUMN remember_token_created TO remember_token_expires;
+                    END IF;
+                END $$;
+            """)
+            cur.execute("""
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name='extracoes' AND column_name='doçura_stars')
+                       AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                                       WHERE table_name='extracoes' AND column_name='docura_stars')
+                    THEN
+                        ALTER TABLE extracoes RENAME COLUMN "doçura_stars" TO docura_stars;
+                    END IF;
+                END $$;
+            """)
+            cur.execute("""
+                ALTER TABLE extracoes
+                    ADD COLUMN IF NOT EXISTS temp_real    FLOAT DEFAULT NULL,
+                    ADD COLUMN IF NOT EXISTS pressao_real FLOAT DEFAULT NULL;
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS backups (
+                    id             SERIAL PRIMARY KEY,
+                    user_id        INTEGER REFERENCES usuarios(id),
+                    tipo           TEXT NOT NULL DEFAULT 'manual',
+                    criado_em      TIMESTAMP DEFAULT NOW(),
+                    notas          TEXT DEFAULT '',
+                    coffees_data   JSONB DEFAULT '[]',
+                    extracoes_data JSONB DEFAULT '[]',
+                    capsulas_data  JSONB DEFAULT '[]',
+                    git_hash       TEXT DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_backups_criado_em ON backups(criado_em DESC);
+            """)
+            # Migração: adiciona user_id em backups antigos
+            cur.execute("ALTER TABLE backups ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES usuarios(id);")
+            # Remove coluna app_code (não usada — evita armazenar código-fonte no banco)
+            cur.execute("""
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name='backups' AND column_name='app_code')
+                    THEN ALTER TABLE backups DROP COLUMN app_code; END IF;
+                    IF EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_name='backups' AND column_name='usuarios_data')
+                    THEN ALTER TABLE backups DROP COLUMN usuarios_data; END IF;
+                END $$;
+            """)
 
-        # ── P4: rename remember_token_created → remember_token_expires (semântica correta) ──
-        cur.execute("""
-            DO $$
-            BEGIN
-                IF EXISTS (SELECT 1 FROM information_schema.columns
-                           WHERE table_name='usuarios' AND column_name='remember_token_created')
-                   AND NOT EXISTS (SELECT 1 FROM information_schema.columns
-                                   WHERE table_name='usuarios' AND column_name='remember_token_expires')
-                THEN
-                    ALTER TABLE usuarios RENAME COLUMN remember_token_created TO remember_token_expires;
-                END IF;
-            END $$;
-        """)
-
-        # ── P5: rename doçura_stars → docura_stars (encoding-safe) ──
-        cur.execute("""
-            DO $$
-            BEGIN
-                IF EXISTS (SELECT 1 FROM information_schema.columns
-                           WHERE table_name='extracoes' AND column_name='doçura_stars')
-                   AND NOT EXISTS (SELECT 1 FROM information_schema.columns
-                                   WHERE table_name='extracoes' AND column_name='docura_stars')
-                THEN
-                    ALTER TABLE extracoes RENAME COLUMN "doçura_stars" TO docura_stars;
-                END IF;
-            END $$;
-        """)
-
-        # ── P6: campos reais espelhando Motor Barista ──
-        cur.execute("""
-            ALTER TABLE extracoes
-                ADD COLUMN IF NOT EXISTS temp_real    FLOAT DEFAULT NULL,
-                ADD COLUMN IF NOT EXISTS pressao_real FLOAT DEFAULT NULL;
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS backups (
-                id           SERIAL PRIMARY KEY,
-                tipo         TEXT NOT NULL DEFAULT 'manual',
-                criado_em    TIMESTAMP DEFAULT NOW(),
-                notas        TEXT DEFAULT '',
-                coffees_data JSONB DEFAULT '[]',
-                extracoes_data JSONB DEFAULT '[]',
-                capsulas_data  JSONB DEFAULT '[]',
-                usuarios_data  JSONB DEFAULT '[]',
-                app_code     TEXT DEFAULT '',
-                git_hash     TEXT DEFAULT ''
-            );
-            CREATE INDEX IF NOT EXISTS idx_backups_criado_em ON backups(criado_em DESC);
-        """)
-
-        conn.commit()
-        st.session_state["_db_ready"] = True
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        cur.close()
+            conn.commit()
+            st.session_state["_db_ready"] = True
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
 
 # ── Backup ─────────────────────────────────────────────────────────────
-import json as _json
-import os as _os
-
-def _backup_criar(tipo: str = "manual", notas: str = "") -> bool:
-    """Cria snapshot completo dos dados + código do app."""
+def _backup_criar(tipo: str = "manual", notas: str = "", user_id: Optional[int] = None) -> bool:
+    """Snapshot dos dados do usuário (sem código-fonte)."""
+    uid = user_id or st.session_state.get('user_id')
+    if not uid:
+        return False
     try:
-        coffees    = _fetch("SELECT * FROM coffees", _v=_v())
-        extracoes  = _fetch("SELECT * FROM extracoes", _v=_v())
-        capsulas   = _fetch("SELECT * FROM capsulas", _v=_v())
-        usuarios   = _fetch("SELECT id, email, nome, criado_em FROM usuarios", _v=_v())
+        coffees   = _fetch("SELECT * FROM coffees   WHERE user_id=%s", (uid,), _v=_v())
+        extracoes = _fetch("SELECT * FROM extracoes WHERE user_id=%s", (uid,), _v=_v())
+        capsulas  = _fetch("SELECT * FROM capsulas  WHERE user_id=%s", (uid,), _v=_v())
 
         def _rows_to_json(rows):
             out = []
@@ -1687,102 +1700,98 @@ def _backup_criar(tipo: str = "manual", notas: str = "") -> bool:
                 for k, val in d.items():
                     if hasattr(val, 'isoformat'):
                         d[k] = val.isoformat()
-                    elif val is None:
-                        d[k] = None
                 out.append(d)
-            return _json.dumps(out, ensure_ascii=False)
-
-        app_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "streamlit_app_final.py")
-        try:
-            with open(app_path, "r", encoding="utf-8") as f:
-                app_code = f.read()
-        except Exception:
-            app_code = ""
+            return json.dumps(out, ensure_ascii=False)
 
         try:
             import subprocess
             git_hash = subprocess.check_output(
                 ["git", "rev-parse", "--short", "HEAD"],
-                cwd=_os.path.dirname(app_path), stderr=subprocess.DEVNULL
+                cwd=os.path.dirname(os.path.abspath(__file__)),
+                stderr=subprocess.DEVNULL
             ).decode().strip()
         except Exception:
             git_hash = ""
 
         _run("""INSERT INTO backups
-                    (tipo, notas, coffees_data, extracoes_data, capsulas_data, usuarios_data, app_code, git_hash)
-                VALUES (%s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s)""",
-             (tipo, notas,
+                    (user_id, tipo, notas, coffees_data, extracoes_data, capsulas_data, git_hash)
+                VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s)""",
+             (uid, tipo, notas,
               _rows_to_json(coffees), _rows_to_json(extracoes),
-              _rows_to_json(capsulas), _rows_to_json(usuarios),
-              app_code, git_hash))
+              _rows_to_json(capsulas), git_hash))
         return True
     except Exception as e:
         st.error(f"Erro ao criar backup: {e}")
         return False
 
 
-def _backup_listar() -> list:
+def _backup_listar(user_id: int) -> list:
     return _fetch("""SELECT id, tipo, criado_em, notas, git_hash,
                             jsonb_array_length(coffees_data)   AS n_cafes,
                             jsonb_array_length(extracoes_data) AS n_extracoes,
                             jsonb_array_length(capsulas_data)  AS n_capsulas
-                     FROM backups ORDER BY criado_em DESC LIMIT 30""", _v=_v())
+                     FROM backups WHERE user_id=%s
+                     ORDER BY criado_em DESC LIMIT 30""", (user_id,), _v=_v())
 
 
-def _backup_restaurar_dados(backup_id: int) -> bool:
-    """Restaura apenas os DADOS (tabelas coffees, extracoes, capsulas) do backup.
-    Cria um backup 'pre-restore' automaticamente antes de alterar qualquer coisa."""
+def _backup_restaurar_dados(backup_id: int, user_id: int) -> bool:
+    """Restaura dados do backup para o usuário dono. Não afeta outros usuários."""
     try:
-        rows = _fetch("SELECT coffees_data, extracoes_data, capsulas_data FROM backups WHERE id=%s",
-                      (backup_id,), _v=_v())
+        rows = _fetch(
+            "SELECT coffees_data, extracoes_data, capsulas_data FROM backups WHERE id=%s AND user_id=%s",
+            (backup_id, user_id), _v=_v())
         if not rows:
-            st.error("Backup não encontrado.")
+            st.error("Backup não encontrado ou não pertence a esta conta.")
             return False
 
-        _backup_criar("pre-restore", f"Auto-backup antes de restaurar backup #{backup_id}")
+        _backup_criar("pre-restore", f"Auto-backup antes de restaurar #{backup_id}", user_id)
 
         b = rows[0]
-        coffees   = _json.loads(b["coffees_data"])
-        extracoes = _json.loads(b["extracoes_data"])
-        capsulas  = _json.loads(b["capsulas_data"])
+        coffees   = json.loads(b["coffees_data"])
+        extracoes = json.loads(b["extracoes_data"])
+        capsulas  = json.loads(b["capsulas_data"])
 
-        conn = _conn()
-        cur  = conn.cursor()
-        try:
-            cur.execute("DELETE FROM extracoes")
-            cur.execute("DELETE FROM capsulas")
-            cur.execute("DELETE FROM coffees")
+        with _db() as conn:
+            cur = conn.cursor()
+            try:
+                # Apaga apenas os registros do usuário atual
+                cur.execute("DELETE FROM extracoes WHERE user_id=%s", (user_id,))
+                cur.execute("DELETE FROM capsulas  WHERE user_id=%s", (user_id,))
+                cur.execute("DELETE FROM coffees   WHERE user_id=%s", (user_id,))
 
-            for c in coffees:
-                cols = [k for k in c if c[k] is not None or k in ("id",)]
-                placeholders = ", ".join(["%s"] * len(cols))
-                col_str = ", ".join(cols)
-                vals = [c[k] for k in cols]
-                cur.execute(f"INSERT INTO coffees ({col_str}) VALUES ({placeholders}) ON CONFLICT (id) DO NOTHING", vals)
+                for c in coffees:
+                    c["user_id"] = user_id
+                    cols = list(c.keys())
+                    ph   = ", ".join(["%s"] * len(cols))
+                    cur.execute(
+                        f"INSERT INTO coffees ({', '.join(cols)}) VALUES ({ph}) ON CONFLICT (id) DO NOTHING",
+                        [c[k] for k in cols])
 
-            for e in extracoes:
-                cols = [k for k in e]
-                placeholders = ", ".join(["%s"] * len(cols))
-                col_str = ", ".join(cols)
-                vals = [e[k] for k in cols]
-                cur.execute(f"INSERT INTO extracoes ({col_str}) VALUES ({placeholders}) ON CONFLICT (id) DO NOTHING", vals)
+                for e in extracoes:
+                    e["user_id"] = user_id
+                    cols = list(e.keys())
+                    ph   = ", ".join(["%s"] * len(cols))
+                    cur.execute(
+                        f"INSERT INTO extracoes ({', '.join(cols)}) VALUES ({ph}) ON CONFLICT (id) DO NOTHING",
+                        [e[k] for k in cols])
 
-            for cap in capsulas:
-                cols = [k for k in cap]
-                placeholders = ", ".join(["%s"] * len(cols))
-                col_str = ", ".join(cols)
-                vals = [cap[k] for k in cols]
-                cur.execute(f"INSERT INTO capsulas ({col_str}) VALUES ({placeholders}) ON CONFLICT (id) DO NOTHING", vals)
+                for cap in capsulas:
+                    cap["user_id"] = user_id
+                    cols = list(cap.keys())
+                    ph   = ", ".join(["%s"] * len(cols))
+                    cur.execute(
+                        f"INSERT INTO capsulas ({', '.join(cols)}) VALUES ({ph}) ON CONFLICT (id) DO NOTHING",
+                        [cap[k] for k in cols])
 
-            conn.commit()
-            _bump()
-            return True
-        except Exception as e:
-            conn.rollback()
-            st.error(f"Erro ao restaurar dados: {e}")
-            return False
-        finally:
-            cur.close()
+                conn.commit()
+                _bump()
+                return True
+            except Exception as e:
+                conn.rollback()
+                st.error(f"Erro ao restaurar dados: {e}")
+                return False
+            finally:
+                cur.close()
     except Exception as e:
         st.error(f"Erro ao restaurar: {e}")
         return False
@@ -1794,11 +1803,12 @@ def _auto_backup_check(user_id: int) -> None:
         return
     st.session_state["_auto_backup_done"] = True
     try:
-        rows = _fetch("SELECT criado_em FROM backups WHERE tipo='semanal' ORDER BY criado_em DESC LIMIT 1", _v=_v())
-        import datetime as _dt
+        rows = _fetch(
+            "SELECT criado_em FROM backups WHERE tipo='semanal' AND user_id=%s ORDER BY criado_em DESC LIMIT 1",
+            (user_id,), _v=_v())
         now = _dt.datetime.utcnow()
         if not rows or (now - rows[0]["criado_em"]).days >= 7:
-            _backup_criar("semanal", "Backup automático semanal")
+            _backup_criar("semanal", "Backup automático semanal", user_id)
     except Exception:
         pass
 
@@ -1923,7 +1933,7 @@ def _comentario_motor_barista(coffee_info: dict, params: dict) -> str:
             "Responda em português. Máximo 70 palavras."
         )
         resp = client.messages.create(
-            model="claude-haiku-4-5", max_tokens=180,
+            model="claude-haiku-4-5-20251001", max_tokens=180,
             messages=[{"role": "user", "content": prompt}])
         return resp.content[0].text.strip()
     except Exception:
@@ -1970,7 +1980,7 @@ Seja técnico, direto e acessível. Use linguagem de barista treinando alguém.
 Responda em português brasileiro. Entre 250 e 380 palavras."""
 
     resp = client.messages.create(
-        model="claude-opus-4-5", max_tokens=700,
+        model="claude-sonnet-4-6", max_tokens=700,
         messages=[{"role": "user", "content": prompt}])
     return resp.content[0].text.strip()
 
@@ -1994,10 +2004,6 @@ def _wordmark_html(size: str = "hero", with_tag: bool = True) -> str:
         f'  {tag}'
         f'</div>'
     )
-
-def _wordmark(size: str = "hero", with_tag: bool = True) -> None:
-    """Atalho que renderiza o wordmark direto via st.markdown."""
-    st.markdown(_wordmark_html(size, with_tag), unsafe_allow_html=True)
 
 # ── Componentes de UX reutilizáveis ────────────────────────────────────
 
@@ -2114,12 +2120,6 @@ def _render_recipe(r: dict) -> None:
     st.markdown(
         f'<p class="mc-recipe-source">📖 Receita-referência: {r["fonte"]}</p>',
         unsafe_allow_html=True)
-
-def _pill_when(d) -> str:
-    """Pill HTML de data relativa para usar em headers."""
-    text = _relative_date(d)
-    cls = "mc-when today" if text == "Hoje" else "mc-when"
-    return f'<span class="{cls}">📅 {text}</span>'
 
 # Classificação oficial do café (substitui o campo Fazenda na UI)
 CLASSIFICACOES_CAFE = [
@@ -2890,6 +2890,8 @@ def main():
                         if outcome == LoginResult.OK:
                             st.toast("Login realizado", icon="✅")
                             st.rerun()
+                        elif outcome == LoginResult.RATE_LIMITED:
+                            st.error("Muitas tentativas. Aguarde 10 minutos antes de tentar novamente.")
                         elif outcome == LoginResult.INVALID:
                             st.error("E-mail ou senha incorretos. Verifique e tente de novo.")
                         else:
@@ -2985,7 +2987,6 @@ def main():
 
     # ── Tab Barista Expert ─────────────────────────────────────────────
     with tab_barista:
-        st.success("🚀 BARISTA EXPERT - NOVO SISTEMA AO VIVO!")
         st.markdown('<p class="section-label">✨ Barista Expert</p>', unsafe_allow_html=True)
 
         # ── Seção superior: Café Melhor Avaliado + Promoções (2 colunas)
@@ -3022,17 +3023,34 @@ def main():
                     '<p>Cadastre e avalie seus primeiros cafés</p>'
                     '</div>', unsafe_allow_html=True)
 
-        # Promoções do dia / Destaques
+        # Destaque do Dia — rotativo (1 dica por dia)
+        _DICAS_BARISTA = [
+            ("Acidez agressiva?", "Aumente a temperatura da água em 2°C ou afine a moagem. Temperaturas baixas subextraem compostos doces."),
+            ("Café amargo?", "Abra a moagem 1–2 cliques ou reduza a temperatura em 2°C. Superextração dissolve compostos amargos pesados."),
+            ("Crema rala ou ausente?", "Verifique a frescura do grão (ideal: 5–21 dias pós-torra) e a pressão da bomba (alvo: 9 bar)."),
+            ("Fluxo rápido demais?", "Afine a moagem. Cada clique faz diferença — mude 1 clique por vez e registre o resultado."),
+            ("Brew ratio correto?", "Espresso clássico: 1:2 (18g → 36g em 25–30s). Pour over: 1:15 a 1:16. Registre cada variação."),
+            ("Degaseificação?", "Grãos muito frescos (< 5 dias pós-torra) liberam CO₂ em excesso e criam barreira à extração. Espere."),
+            ("Água importa?", "Água filtrada (TDS 75–150 ppm) extraí melhor. Água muito mole sub-extraí; muito dura, super-extraí."),
+            ("EY ideal?", "Extraction Yield entre 18–22% é a janela de ouro. Abaixo = ácido e raso. Acima = amargo e adstringente."),
+            ("Temperatura real?", "Cada grau conta: grãos de torra clara pedem 94–96°C; torra escura, 88–92°C para não queimar."),
+            ("Consistência primeiro?", "Antes de mudar dois parâmetros, mude um só. Anote o resultado. Só assim você sabe o que causou o quê."),
+            ("Moagem e tempo?", "Moagem mais fina = mais resistência = fluxo mais lento = mais extração. Afine para aumentar corpo."),
+            ("French Press limpa?", "Técnica Hoffmann: moagem média (não grossa), 9 min de espera, sem mexer, decante o fundo. Xícara límpida."),
+            ("V60 desnivelado?", "Após o bloom, gire suavemente o V60 (Rao Swirl) para nivelar a cama e garantir extração uniforme."),
+            ("AeroPress versátil?", "No método invertido, você controla 100% o tempo de imersão antes de pressionar. Experimente 1:30 a 2:30."),
+            ("Chemex com filtro grosso?", "O filtro bonded da Chemex é 3× mais espesso que o V60 — retem óleos e cria xícara excepcionalmente limpa."),
+        ]
+        _dica_idx = _today_local().toordinal() % len(_DICAS_BARISTA)
+        _dica_titulo, _dica_texto = _DICAS_BARISTA[_dica_idx]
+
         with col_promo:
-            st.markdown('<p class="info-key" style="margin-bottom:0.5rem">Destaque do Dia</p>', unsafe_allow_html=True)
-            st.markdown("""
+            st.markdown('<p class="info-key" style="margin-bottom:0.5rem">Dica do Dia</p>', unsafe_allow_html=True)
+            st.markdown(f"""
             <div style="background:linear-gradient(135deg, #E8722E 0%, #F08842 100%);
             border-radius:12px;padding:16px;margin:0;color:#0A0A0A">
-                <p style="margin:0 0 8px;font-weight:700;font-size:14px">🎯 Dica Barista</p>
-                <p style="margin:0;font-size:12px;line-height:1.6">
-                Quando notar notas de acidez agressiva, experimente aumentar a temperatura
-                da água em 2°C ou afinar um pouco mais a moagem.
-                </p>
+                <p style="margin:0 0 8px;font-weight:700;font-size:14px">🎯 {_html.escape(_dica_titulo)}</p>
+                <p style="margin:0;font-size:12px;line-height:1.6">{_html.escape(_dica_texto)}</p>
                 <p style="margin:12px 0 0;font-size:11px;opacity:0.9">💡 Use o chat abaixo para perguntas específicas</p>
             </div>
             """, unsafe_allow_html=True)
@@ -3077,25 +3095,23 @@ def main():
             if st.session_state.barista_messages:
                 for msg in st.session_state.barista_messages:
                     if msg["role"] == "user":
-                        st.markdown(f"""
-                        <div style="display:flex;justify-content:flex-end;margin:8px 0">
-                            <div style="background:var(--mc-orange);color:#0A0A0A;
-                            border-radius:12px;border-bottom-right-radius:0;
-                            padding:12px 16px;max-width:70%;font-size:14px;line-height:1.5">
-                            {msg['content']}
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        st.markdown(
+                            f'<div style="display:flex;justify-content:flex-end;margin:8px 0">'
+                            f'<div style="background:var(--mc-orange);color:#0A0A0A;'
+                            f'border-radius:12px;border-bottom-right-radius:0;'
+                            f'padding:12px 16px;max-width:70%;font-size:14px;line-height:1.5">'
+                            f'{_html.escape(msg["content"])}'
+                            f'</div></div>',
+                            unsafe_allow_html=True)
                     else:
-                        st.markdown(f"""
-                        <div style="display:flex;justify-content:flex-start;margin:8px 0">
-                            <div style="background:var(--mc-surface);border:1px solid var(--mc-border);
-                            border-radius:12px;border-bottom-left-radius:0;
-                            padding:12px 16px;max-width:70%;font-size:14px;line-height:1.6;color:var(--mc-text)">
-                            {msg['content']}
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        st.markdown(
+                            f'<div style="display:flex;justify-content:flex-start;margin:8px 0">'
+                            f'<div style="background:var(--mc-surface);border:1px solid var(--mc-border);'
+                            f'border-radius:12px;border-bottom-left-radius:0;'
+                            f'padding:12px 16px;max-width:70%;font-size:14px;line-height:1.6;color:var(--mc-text)">'
+                            f'{_html.escape(msg["content"])}'
+                            f'</div></div>',
+                            unsafe_allow_html=True)
             else:
                 st.markdown(
                     '<div style="text-align:center;padding:40px 20px;color:var(--mc-text-3)">'
@@ -3152,7 +3168,7 @@ def main():
                                horizontal=True)
             notas   = st.text_area("Notas de Sabor / Torra", key="inp_notas",
                                    placeholder="Ex: Blueberry, chocolate, floral...", height=108)
-            class_c = st.slider("Classificação", 1, 5, 3, key="class_cafe")
+            class_c = st.slider("Classificação (0 = sem avaliação)", 0, 5, 0, key="class_cafe")
             foto_emb = st.file_uploader("Foto da Embalagem", type=["jpg","jpeg","png"],
                                         key="foto_emb")
             foto_emb_b64 = _b64(foto_emb) if foto_emb else None
@@ -3363,6 +3379,17 @@ def main():
                 .replace('value="92"', f'value="{params["temp"]}"')
                 .replace('value="9"',  f'value="{params["pressure"]}"'))
             components.html(motor_html, height=660, scrolling=False)
+
+            # Botão para propagar sugestão do Motor Barista → campos reais abaixo
+            if st.button("↩ Redefinir campos com sugestão do Motor Barista",
+                         key="btn_reset_to_motor", help="Preenche os campos abaixo com os valores sugeridos para este grão"):
+                st.session_state["ext_gramas"] = round(float(params["dose"])  * multiplier, 1)
+                st.session_state["ext_agua"]   = round(float(params["yield"]) * multiplier, 1)
+                st.session_state["ext_tempo"]  = int(params["time"])
+                st.session_state["ext_temp"]   = float(params["temp"])
+                st.session_state["ext_press"]  = float(params["pressure"])
+                st.session_state["_ext_seed"]  = None  # força reseed
+                st.rerun()
 
             # ═════════════════════════════════════════════════════════════
             # 2) PARÂMETROS DE EXTRAÇÃO (REALIDADE) + RADAR REAL
@@ -3802,12 +3829,15 @@ def main():
                                 _fkey = f"_foto_done_{e['id']}"
                                 if nova_foto:
                                     if not st.session_state.get(_fkey):
-                                        _run(
-                                            "UPDATE extracoes SET foto_caneca=%s WHERE id=%s AND user_id=%s",
-                                            (_b64(nova_foto), e["id"], user_id)
-                                        )
-                                        st.session_state[_fkey] = True
-                                        st.toast("Foto adicionada", icon="📸")
+                                        _img(_b64(nova_foto), w=100)
+                                        if st.button("📸 Confirmar foto", key=f"save_foto_{e['id']}"):
+                                            _run(
+                                                "UPDATE extracoes SET foto_caneca=%s WHERE id=%s AND user_id=%s",
+                                                (_b64(nova_foto), e["id"], user_id)
+                                            )
+                                            st.session_state[_fkey] = True
+                                            st.toast("Foto adicionada", icon="📸")
+                                            st.rerun()
                                 else:
                                     st.session_state.pop(_fkey, None)
 
@@ -3863,19 +3893,29 @@ def main():
                                 st.markdown("**Editar Extração**")
                                 ed_col1, ed_col2 = st.columns(2)
                                 with ed_col1:
-                                    ed_gramas = st.number_input("Dose (g)", value=e['gramas'], key=f"tab3_ed_g_{e['id']}")
-                                    ed_agua = st.number_input("Água (g)", value=e['agua_alvo'], key=f"tab3_ed_a_{e['id']}")
-                                    ed_tempo = st.number_input("Tempo (s)", value=e['tempo_extracao'], key=f"tab3_ed_t_{e['id']}")
+                                    ed_gramas = st.number_input("Dose (g)", value=float(e['gramas']), key=f"tab3_ed_g_{e['id']}")
+                                    ed_agua   = st.number_input("Água (g)", value=float(e['agua_alvo']), key=f"tab3_ed_a_{e['id']}")
+                                    ed_tempo  = st.number_input("Tempo (s)", value=int(e['tempo_extracao']), key=f"tab3_ed_t_{e['id']}")
+                                    ed_tds    = st.number_input("TDS (%)", value=float(e['tds'] or 0), step=0.01, key=f"tab3_ed_tds_{e['id']}")
                                 with ed_col2:
-                                    ed_class = st.slider("Classificação", 1, 5,
-                                                         e['classificacao'] or 3,
-                                                         key=f"tab3_ed_c_{e['id']}")
-                                    ed_notas = st.text_area("Comentários", value=e['notas'] or "", key=f"tab3_ed_n_{e['id']}", height=80)
+                                    ed_moedor = st.text_input("Moedor", value=e['moedor'] or "", key=f"tab3_ed_m_{e['id']}")
+                                    ed_clicks = st.number_input("Clicks", value=int(e['clicks_moedor'] or 0), key=f"tab3_ed_cl_{e['id']}")
+                                    ed_temp   = st.number_input("Temperatura (°C)", value=float(e.get('temp_real') or 0), step=0.5, key=f"tab3_ed_tp_{e['id']}")
+                                    ed_press  = st.number_input("Pressão (bar)", value=float(e.get('pressao_real') or 0), step=0.5, key=f"tab3_ed_pr_{e['id']}")
+                                ed_notas = st.text_area("Comentários", value=e['notas'] or "", key=f"tab3_ed_n_{e['id']}", height=80)
 
                                 if st.button("💾 Salvar Edição", key=f"tab3_save_e_{e['id']}", use_container_width=True):
                                     _run(
-                                        "UPDATE extracoes SET gramas=%s, agua_alvo=%s, tempo_extracao=%s, classificacao=%s, notas=%s WHERE id=%s AND user_id=%s",
-                                        (ed_gramas, ed_agua, ed_tempo, ed_class, ed_notas, e['id'], user_id)
+                                        """UPDATE extracoes SET
+                                            gramas=%s, agua_alvo=%s, tempo_extracao=%s,
+                                            tds=%s, moedor=%s, clicks_moedor=%s,
+                                            temp_real=%s, pressao_real=%s, notas=%s
+                                            WHERE id=%s AND user_id=%s""",
+                                        (ed_gramas, ed_agua, ed_tempo, ed_tds,
+                                         ed_moedor or None, ed_clicks,
+                                         ed_temp if ed_temp > 0 else None,
+                                         ed_press if ed_press > 0 else None,
+                                         ed_notas, e['id'], user_id)
                                     )
                                     st.toast("Extração atualizada", icon="✅")
                                     st.session_state[f"edit_ext_{e['id']}"] = False
@@ -3913,11 +3953,27 @@ def main():
                    "e editar quando quiser.",
                    hint="Comece em 'Nova Extração'")
         else:
-            # Mostra contagem como subheader
+            # ── Filtros ──────────────────────────────────────────────────
+            _nomes_cafe = sorted({r["cafe_nome"] for r in rows})
+            _metodos_hist = sorted({r["metodo"] for r in rows})
+            filt_col1, filt_col2, filt_col3 = st.columns(3, gap="medium")
+            with filt_col1:
+                filt_cafe = st.multiselect("Café", _nomes_cafe,
+                                           default=_nomes_cafe, key="h_filt_cafe")
+            with filt_col2:
+                filt_metodo = st.multiselect("Método", _metodos_hist,
+                                             default=_metodos_hist, key="h_filt_metodo")
+            with filt_col3:
+                filt_nota = st.slider("Nota mínima", 0, 5, 0, key="h_filt_nota",
+                                      help="0 = mostrar todas")
+            rows = [r for r in rows
+                    if r["cafe_nome"] in filt_cafe
+                    and r["metodo"] in filt_metodo
+                    and (filt_nota == 0 or (r.get("nota_final_stars") or 0) >= filt_nota)]
+
             st.markdown(
                 f'<p style="color:#8A8278;font-size:12px;margin:-0.5rem 0 1rem;'
-                f'font-weight:600">{len(rows)} extrações registradas — exibindo '
-                f'as 200 mais recentes</p>',
+                f'font-weight:600">{len(rows)} extração(ões) — máximo 200 mais recentes</p>',
                 unsafe_allow_html=True)
 
             for r in rows:
@@ -4415,7 +4471,7 @@ def main():
                                          placeholder="Ex: antes de apagar cafés antigos")
             if st.button("💾 Criar backup", type="primary", key="bk_criar"):
                 with st.spinner("Criando backup…"):
-                    ok = _backup_criar("manual", notas_backup)
+                    ok = _backup_criar("manual", notas_backup, user_id)
                 if ok:
                     st.success("Backup criado com sucesso!", icon="✅")
                     st.rerun()
@@ -4423,16 +4479,15 @@ def main():
         st.markdown("---")
 
         # ── Lista de backups ─────────────────────────────────────────
-        backups = _backup_listar()
+        backups = _backup_listar(user_id)
         if not backups:
             st.info("Nenhum backup encontrado. Crie o primeiro backup acima.")
         else:
             st.markdown(f"**{len(backups)} backup(s) disponíveis** (máx. 30 exibidos)")
-            import datetime as _dt2
             for bk in backups:
                 criado = bk["criado_em"]
                 if isinstance(criado, str):
-                    criado = _dt2.datetime.fromisoformat(criado)
+                    criado = _dt.datetime.fromisoformat(criado)
                 data_fmt = criado.strftime("%d/%m/%Y %H:%M")
                 tipo_icon = {"manual": "🔵", "semanal": "🟢", "pre-restore": "🟡"}.get(bk["tipo"], "⚪")
                 titulo = f"{tipo_icon} **{data_fmt}** — {bk['tipo'].upper()}"
@@ -4457,7 +4512,7 @@ def main():
                                          key=f"bk_restore_ok_{bk['id']}",
                                          use_container_width=True):
                                 with st.spinner("Restaurando dados…"):
-                                    ok = _backup_restaurar_dados(bk["id"])
+                                    ok = _backup_restaurar_dados(bk["id"], user_id)
                                 st.session_state.pop(f"confirm_restore_{bk['id']}", None)
                                 if ok:
                                     st.success("Dados restaurados com sucesso!", icon="✅")
