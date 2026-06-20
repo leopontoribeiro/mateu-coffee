@@ -1282,7 +1282,14 @@ def _get_conn() -> "psycopg2.extensions.connection":
     # Prioridade 1: variável de ambiente DATABASE_URL (Railway, Render, Heroku)
     db_url = os.environ.get("DATABASE_URL")
     if db_url:
-        return psycopg2.connect(db_url, sslmode="require", connect_timeout=10)
+        # Normalise postgres:// → postgresql:// (SQLAlchemy compat)
+        if db_url.startswith("postgres://"):
+            db_url = "postgresql://" + db_url[len("postgres://"):]
+        # Garante sslmode=require se não estiver na URL
+        if "sslmode" not in db_url:
+            sep = "&" if "?" in db_url else "?"
+            db_url = f"{db_url}{sep}sslmode=require"
+        return psycopg2.connect(db_url, connect_timeout=10)
     # Prioridade 2: st.secrets (Streamlit Cloud)
     try:
         s = st.secrets["connections"]["postgresql"]
@@ -2830,7 +2837,18 @@ def _about_dialog():
 
 # ── Main ───────────────────────────────────────────────────────────────
 def main():
-    _init_db()
+    try:
+        _init_db()
+    except Exception as _db_err:
+        st.error(
+            "⚠️ **Banco de dados temporariamente indisponível.** "
+            "Verifique se a variável `DATABASE_URL` está configurada corretamente "
+            "no painel do Render e se o banco de dados está acessível. "
+            "Recarregue a página em alguns instantes."
+        )
+        with st.expander("Detalhes do erro (para diagnóstico)"):
+            st.code(str(_db_err))
+        st.stop()
 
     # Slot fixo de cookie: SEMPRE renderizado (mesma posição na árvore de
     # elementos em todos os runs). Se aparecesse/sumisse condicionalmente,
