@@ -21,14 +21,13 @@ from PIL import Image
 
 # ── Barista Expert AI ──────────────────────────────────────────────────
 # Integração de IA especializada em café com Claude API
-def ask_barista_expert(pergunta: str) -> str:
-    """Pergunta ao Barista Expert usando Claude API com knowledge base."""
+def ask_barista_expert(pergunta: str, history: list | None = None) -> str:
+    """Pergunta ao Barista Expert usando Claude API com knowledge base e histórico."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         return "⚠️ Variável ANTHROPIC_API_KEY não configurada"
 
     try:
-        # Carregar knowledge base
         with open("coffee_knowledge.json", "r", encoding="utf-8") as f:
             kb = json.load(f)
         kb_text = json.dumps(kb, indent=2, ensure_ascii=False)
@@ -48,11 +47,17 @@ Instruções:
 5. Refira-se à knowledge base quando relevante
 6. Responda como um barista experiente explicando para outro barista."""
 
+        messages = []
+        if history:
+            for m in history[-10:]:  # até 10 mensagens de contexto
+                messages.append({"role": m["role"], "content": m["content"]})
+        messages.append({"role": "user", "content": pergunta})
+
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1024,
             system=system_prompt,
-            messages=[{"role": "user", "content": pergunta}]
+            messages=messages
         )
         return message.content[0].text
     except FileNotFoundError:
@@ -111,43 +116,57 @@ def _load_logo(max_width: int = 380) -> bool:
         return False
 
 def _show_daily_consumption() -> None:
-    """Widget de consumo: hoje + semana + média + total — apenas do usuário logado."""
+    """Widget de consumo: xícaras hoje + semana + custo estimado + total."""
     hoje = _today_local()
     user_id = st.session_state.get('user_id')
 
     stats = _fetch("""
         SELECT
-          COALESCE(SUM(CASE WHEN data = %s THEN gramas ELSE 0 END), 0) AS hoje_g,
-          COALESCE(SUM(CASE WHEN data >= %s THEN gramas ELSE 0 END), 0) AS semana_g,
-          COUNT(CASE WHEN data >= %s THEN 1 END)                       AS semana_n,
-          COUNT(*)                                                     AS total_n
+          COALESCE(COUNT(CASE WHEN data = %s THEN 1 END), 0)              AS hoje_n,
+          COALESCE(SUM(CASE WHEN data = %s THEN gramas ELSE 0 END), 0)    AS hoje_g,
+          COALESCE(COUNT(CASE WHEN data >= %s THEN 1 END), 0)             AS semana_n,
+          COALESCE(SUM(CASE WHEN data >= %s THEN gramas ELSE 0 END), 0)   AS semana_g,
+          COUNT(*)                                                         AS total_n,
+          COALESCE(SUM(gramas), 0)                                         AS total_g
         FROM extracoes WHERE user_id = %s
-    """, (hoje, hoje - timedelta(days=6), hoje - timedelta(days=6), user_id), _v=_v())
+    """, (hoje, hoje, hoje - timedelta(days=6), hoje - timedelta(days=6), user_id), _v=_v())
 
-    s = stats[0] if stats else {"hoje_g": 0, "semana_g": 0, "semana_n": 0, "total_n": 0}
-    media_dia = (s["semana_g"] / 7) if s["semana_g"] else 0
+    cost_info = _fetch("""
+        SELECT c.valor_compra, c.tamanho_pacote, e.gramas
+        FROM extracoes e JOIN coffees c ON c.id = e.coffee_id
+        WHERE e.data = %s AND e.user_id = %s AND c.valor_compra > 0 AND c.tamanho_pacote > 0
+    """, (hoje, user_id), _v=_v())
+
+    s = stats[0] if stats else {"hoje_n": 0, "hoje_g": 0, "semana_n": 0, "semana_g": 0, "total_n": 0, "total_g": 0}
+    custo_hoje = sum(
+        (r["valor_compra"] / r["tamanho_pacote"]) * r["gramas"]
+        for r in cost_info if r["valor_compra"] and r["tamanho_pacote"]
+    )
+    custo_str = f"R$ {custo_hoje:.2f}" if custo_hoje > 0 else "—"
+    media_semana = (int(s["semana_n"]) / 7) if s["semana_n"] else 0
+    hoje_n = int(s["hoje_n"])
 
     st.markdown(
         f'<div class="mc-consumo">'
         f'  <div class="mc-consumo-cell">'
         f'    <p class="mc-consumo-label">Hoje</p>'
-        f'    <p class="mc-consumo-value accent">{s["hoje_g"]:.0f}<span style="font-size:13px;font-weight:600">g</span></p>'
-        f'    <p class="mc-consumo-sub">{hoje.strftime("%d/%m/%Y")}</p>'
+        f'    <p class="mc-consumo-value accent">{hoje_n}</p>'
+        f'    <p class="mc-consumo-sub">{"xícara" if hoje_n == 1 else "xícaras"} · {s["hoje_g"]:.0f}g</p>'
         f'  </div>'
         f'  <div class="mc-consumo-cell">'
         f'    <p class="mc-consumo-label">Esta Semana</p>'
-        f'    <p class="mc-consumo-value">{s["semana_g"]:.0f}<span style="font-size:13px;font-weight:600">g</span></p>'
-        f'    <p class="mc-consumo-sub">{s["semana_n"]} extraç{"ões" if s["semana_n"] != 1 else "ão"}</p>'
+        f'    <p class="mc-consumo-value">{int(s["semana_n"])}</p>'
+        f'    <p class="mc-consumo-sub">{s["semana_g"]:.0f}g · {media_semana:.1f}/dia</p>'
         f'  </div>'
         f'  <div class="mc-consumo-cell">'
-        f'    <p class="mc-consumo-label">Média/dia</p>'
-        f'    <p class="mc-consumo-value">{media_dia:.0f}<span style="font-size:13px;font-weight:600">g</span></p>'
-        f'    <p class="mc-consumo-sub">últimos 7 dias</p>'
+        f'    <p class="mc-consumo-label">Custo Hoje</p>'
+        f'    <p class="mc-consumo-value" style="font-size:15px">{custo_str}</p>'
+        f'    <p class="mc-consumo-sub">estimado p/ cafés com valor</p>'
         f'  </div>'
         f'  <div class="mc-consumo-cell">'
         f'    <p class="mc-consumo-label">Total Histórico</p>'
-        f'    <p class="mc-consumo-value">{s["total_n"]}</p>'
-        f'    <p class="mc-consumo-sub">extrações registradas</p>'
+        f'    <p class="mc-consumo-value">{int(s["total_n"])}</p>'
+        f'    <p class="mc-consumo-sub">{s["total_g"]:.0f}g consumidos</p>'
         f'  </div>'
         f'</div>',
         unsafe_allow_html=True)
@@ -1661,6 +1680,16 @@ def _init_db() -> None:
             """)
             # Migração: adiciona user_id em backups antigos
             cur.execute("ALTER TABLE backups ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES usuarios(id);")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS barista_chats (
+                    id        SERIAL PRIMARY KEY,
+                    user_id   INTEGER REFERENCES usuarios(id),
+                    role      TEXT NOT NULL,
+                    content   TEXT NOT NULL,
+                    criado_em TIMESTAMP DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_barista_chats_user ON barista_chats(user_id, criado_em);
+            """)
             # Remove coluna app_code (não usada — evita armazenar código-fonte no banco)
             cur.execute("""
                 DO $$
@@ -1759,9 +1788,26 @@ def _backup_restaurar_dados(backup_id: int, user_id: int) -> bool:
                 cur.execute("DELETE FROM capsulas  WHERE user_id=%s", (user_id,))
                 cur.execute("DELETE FROM coffees   WHERE user_id=%s", (user_id,))
 
+                # Whitelists — previne SQL injection via colunas arbitrárias no JSON
+                _OK_COFFEE = {'id','data_cadastro','nome','tipo','torra','notas',
+                    'classificacao','classificacao_cafe','fazenda','regiao',
+                    'data_torra','tamanho_pacote','foto_embalagem','created_at',
+                    'local_compra','valor_compra','data_compra','intensidade','user_id'}
+                _OK_EXTRA  = {'id','coffee_id','data','metodo','gramas','moedor',
+                    'clicks_moedor','agua_alvo','tds','tempo_extracao','brew_ratio',
+                    'ey','fluxo','foto_caneca','classificacao','notas','created_at',
+                    'crema_stars','corpo_stars','equilibrio_stars','acidez_stars',
+                    'amargor_stars','presenca_boca_stars','docura_stars',
+                    'nota_final_stars','balanco_ideal','data_hora_extracao',
+                    'user_id','temp_real','pressao_real'}
+                _OK_CAP    = {'id','user_id','nome','marca','maquina','intensidade',
+                    'quantidade','aluminio','volume_ml','foto_embalagem','created_at',
+                    'crema_stars','corpo_stars','equilibrio_stars','acidez_stars',
+                    'amargor_stars','presenca_boca_stars','docura_stars','nota_final_stars'}
+
                 for c in coffees:
                     c["user_id"] = user_id
-                    cols = list(c.keys())
+                    cols = [k for k in c.keys() if k in _OK_COFFEE]
                     ph   = ", ".join(["%s"] * len(cols))
                     cur.execute(
                         f"INSERT INTO coffees ({', '.join(cols)}) VALUES ({ph}) ON CONFLICT (id) DO NOTHING",
@@ -1769,7 +1815,7 @@ def _backup_restaurar_dados(backup_id: int, user_id: int) -> bool:
 
                 for e in extracoes:
                     e["user_id"] = user_id
-                    cols = list(e.keys())
+                    cols = [k for k in e.keys() if k in _OK_EXTRA]
                     ph   = ", ".join(["%s"] * len(cols))
                     cur.execute(
                         f"INSERT INTO extracoes ({', '.join(cols)}) VALUES ({ph}) ON CONFLICT (id) DO NOTHING",
@@ -1777,7 +1823,7 @@ def _backup_restaurar_dados(backup_id: int, user_id: int) -> bool:
 
                 for cap in capsulas:
                     cap["user_id"] = user_id
-                    cols = list(cap.keys())
+                    cols = [k for k in cap.keys() if k in _OK_CAP]
                     ph   = ", ".join(["%s"] * len(cols))
                     cur.execute(
                         f"INSERT INTO capsulas ({', '.join(cols)}) VALUES ({ph}) ON CONFLICT (id) DO NOTHING",
@@ -1796,6 +1842,24 @@ def _backup_restaurar_dados(backup_id: int, user_id: int) -> bool:
         st.error(f"Erro ao restaurar: {e}")
         return False
 
+
+def _chat_carregar(user_id: int) -> list:
+    """Carrega até 60 mensagens mais recentes do chat do Barista Expert."""
+    rows = _fetch(
+        "SELECT role, content FROM barista_chats WHERE user_id=%s ORDER BY criado_em ASC LIMIT 60",
+        (user_id,), _v=0)
+    return [{"role": r["role"], "content": r["content"]} for r in rows]
+
+def _chat_salvar(user_id: int, role: str, content: str) -> None:
+    """Salva uma mensagem e mantém no máximo 60 por usuário (FIFO)."""
+    _run("INSERT INTO barista_chats (user_id, role, content) VALUES (%s,%s,%s)",
+         (user_id, role, content))
+    _run("""DELETE FROM barista_chats WHERE user_id=%s AND id NOT IN (
+              SELECT id FROM barista_chats WHERE user_id=%s ORDER BY criado_em DESC LIMIT 60)""",
+         (user_id, user_id))
+
+def _chat_limpar(user_id: int) -> None:
+    _run("DELETE FROM barista_chats WHERE user_id=%s", (user_id,))
 
 def _auto_backup_check(user_id: int) -> None:
     """Cria backup semanal automático se o último foi há mais de 7 dias."""
@@ -2120,6 +2184,37 @@ def _render_recipe(r: dict) -> None:
     st.markdown(
         f'<p class="mc-recipe-source">📖 Receita-referência: {r["fonte"]}</p>',
         unsafe_allow_html=True)
+
+    # Botão para aplicar receita na aba Nova Extração
+    _dose_match = None
+    _yield_match = None
+    _tempo_match = None
+    _moagem_match = None
+    try:
+        _ratio_parts = r.get("ratio", "").replace(" ", "").split(":")
+        if len(_ratio_parts) == 2:
+            _dose_match  = float(_ratio_parts[0]) if _ratio_parts[0].replace(".","").isdigit() else None
+            _yield_match = float(_ratio_parts[1]) if _ratio_parts[1].replace(".","").isdigit() else None
+    except Exception:
+        pass
+    _moagem_match = r.get("moagem", "")
+    _tempo_str = r.get("tempo", "")
+    try:
+        _tempo_match = int(_tempo_str.split("–")[0].replace("s","").replace(" ",""))
+    except Exception:
+        _tempo_match = None
+
+    if st.button(f"⚡ Usar esta receita na Nova Extração",
+                 key=f"use_recipe_{r['nome'].replace(' ','_')}",
+                 use_container_width=True, type="primary"):
+        st.session_state["_recipe_applied"] = {
+            "nome":    r["nome"],
+            "dose":    _dose_match,
+            "yield":   _yield_match,
+            "tempo":   _tempo_match,
+            "moagem":  _moagem_match,
+        }
+        st.success("✓ Receita aplicada! Vá para ⚡ Nova Extração.")
 
 # Classificação oficial do café (substitui o campo Fazenda na UI)
 CLASSIFICACOES_CAFE = [
@@ -2763,6 +2858,54 @@ sim();
 </body>
 </html>"""
 
+# ── Cronômetro de extração ─────────────────────────────────────────────
+_TIMER_HTML = """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<style>
+  :root{--bg:#0A0A0A;--card:#141414;--text:#F5EDE8;--accent:#E8722E;--border:#2A2A2A;--muted:#8A8278;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;background:var(--bg);padding:10px 0 0}
+  .wrap{display:flex;align-items:center;gap:16px;background:var(--card);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:12px;padding:12px 18px;flex-wrap:wrap}
+  .disp{font-size:40px;font-weight:800;color:var(--text);letter-spacing:-0.03em;font-variant-numeric:tabular-nums;min-width:110px}
+  .disp.run{color:var(--accent)}
+  .btns{display:flex;gap:8px;flex-wrap:wrap}
+  button{background:#1C1C1C;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-weight:600;padding:9px 16px;cursor:pointer;transition:all .15s;white-space:nowrap}
+  button:hover{background:#242424;border-color:#3A3A3A}
+  .btn-go{background:var(--accent);border-color:var(--accent);color:#0A0A0A}
+  .btn-go:hover{background:#F08842}
+  .laps{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .lap{background:#1C1C1C;border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:11px;color:var(--muted);font-weight:600}
+  .note{font-size:11px;color:var(--muted);margin-top:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="disp" class="disp">0:00.0</div>
+  <div style="flex:1">
+    <div class="btns">
+      <button class="btn-go" id="btn" onclick="toggle()">▶ Iniciar</button>
+      <button onclick="lap()">⚑ Lap</button>
+      <button onclick="reset()">↺ Zerar</button>
+    </div>
+    <div class="laps" id="laps"></div>
+    <div class="note" id="note">Pressione ▶ quando começar a extração</div>
+  </div>
+</div>
+<script>
+let ms=0,iv=null,laps=[];
+function fmt(ms){const s=Math.floor(ms/1000),m=Math.floor(s/60);return m+':'+(s%60).toString().padStart(2,'0')+'.'+Math.floor((ms%1000)/100);}
+function toggle(){
+  if(iv){clearInterval(iv);iv=null;document.getElementById('btn').textContent='▶ Continuar';document.getElementById('disp').className='disp';document.getElementById('note').textContent='Pausado — '+fmt(ms);}
+  else{const t=Date.now()-ms;iv=setInterval(()=>{ms=Date.now()-t;document.getElementById('disp').textContent=fmt(ms);},50);document.getElementById('btn').textContent='⏸ Pausar';document.getElementById('disp').className='disp run';document.getElementById('note').textContent='Cronômetro rodando...';}
+}
+function lap(){laps.push(fmt(ms));const el=document.getElementById('laps');el.innerHTML=laps.map((l,i)=>`<span class="lap">#${i+1} ${l}</span>`).join('');}
+function reset(){clearInterval(iv);iv=null;ms=0;laps=[];document.getElementById('disp').textContent='0:00.0';document.getElementById('disp').className='disp';document.getElementById('btn').textContent='▶ Iniciar';document.getElementById('laps').innerHTML='';document.getElementById('note').textContent='Pressione ▶ quando começar a extração';}
+</script>
+</body>
+</html>"""
+
 # ── Vision · leitura de embalagem ──────────────────────────────────────
 def _analisar_embalagem(b64_img: str) -> dict:
     # Prioriza env var (Render/Railway/Heroku) — st.secrets lança FileNotFoundError
@@ -2976,12 +3119,11 @@ def main():
 
     _auto_backup_check(st.session_state['user_id'])
 
-    # 🚀 BARISTA EXPERT FULLY INTEGRATED - REBUILD v3
     st.markdown("---")
 
-    tab_barista, tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "  ✨ Barista Expert  ", "  Novo Café  ", "  Nova Extração  ", "  Meus Cafés  ",
-        "  Histórico  ", "  📖 Receitas  ", "  🫘 Cápsulas  ", "  🛡️ Backup  "])
+    tab2, tab3, tab4, tab1, tab_barista, tab5, tab6, tab7 = st.tabs([
+        "  ⚡ Nova Extração  ", "  Meus Cafés  ", "  📅 Histórico  ", "  Novo Café  ",
+        "  ✨ Barista Expert  ", "  📖 Receitas  ", "  🫘 Cápsulas  ", "  🛡️ Backup  "])
 
     user_id = st.session_state['user_id']
 
@@ -3060,11 +3202,10 @@ def main():
         # ── Chat do Barista Expert
         st.markdown('<p class="section-label">Chat com Barista Expert</p>', unsafe_allow_html=True)
 
-        # Inicializar session state para o chat
-        if "barista_messages" not in st.session_state:
-            st.session_state.barista_messages = []
+        # Carregar histórico persistido do DB
+        _chat_msgs = _chat_carregar(user_id)
 
-        # Container para mensagens
+        # Container para mensagens (renderizado antes do input)
         chat_container = st.container()
 
         # Input do usuário
@@ -3080,20 +3221,16 @@ def main():
 
         # Processar resposta
         if send_btn and pergunta.strip():
-            # Adicionar pergunta do usuário
-            st.session_state.barista_messages.append({"role": "user", "content": pergunta})
-
-            # Obter resposta do Barista Expert
+            _chat_salvar(user_id, "user", pergunta)
             with st.spinner("🤔 Barista Expert pensando..."):
-                resposta = ask_barista_expert(pergunta)
-                st.session_state.barista_messages.append({"role": "assistant", "content": resposta})
-
+                resposta = ask_barista_expert(pergunta, history=_chat_msgs)
+            _chat_salvar(user_id, "assistant", resposta)
             st.rerun()
 
         # Renderizar histórico de mensagens
         with chat_container:
-            if st.session_state.barista_messages:
-                for msg in st.session_state.barista_messages:
+            if _chat_msgs:
+                for msg in _chat_msgs:
                     if msg["role"] == "user":
                         st.markdown(
                             f'<div style="display:flex;justify-content:flex-end;margin:8px 0">'
@@ -3119,9 +3256,9 @@ def main():
                     '</div>', unsafe_allow_html=True)
 
         # Botão para limpar chat
-        if st.session_state.barista_messages:
+        if _chat_msgs:
             if st.button("🔄 Novo Chat", use_container_width=True):
-                st.session_state.barista_messages = []
+                _chat_limpar(user_id)
                 st.rerun()
 
     # ── Tab 1 · Cadastrar café ─────────────────────────────────────────
@@ -3226,10 +3363,21 @@ def main():
 
     # ── Tab 2 · Nova extração ──────────────────────────────────────────
     with tab2:
+        # Modo Rápido / Completo
+        _quick = st.toggle("⚡ Modo Rápido", value=False,
+                           help="Modo simplificado: apenas os campos essenciais para registrar rápido")
         st.markdown('<p class="section-label">Registrar Extração</p>', unsafe_allow_html=True)
 
+        # Receita aplicada a partir da aba Receitas
+        if st.session_state.get("_recipe_applied"):
+            _rap = st.session_state["_recipe_applied"]
+            st.info(
+                f"📖 Receita **{_rap['nome']}** aplicada — "
+                f"dose {_rap['dose']}g · yield {_rap['yield']}g · {_rap['tempo']} · moagem {_rap['moagem']}",
+                icon="✅")
+
         user_id = st.session_state.get('user_id')
-        cafes = _fetch("SELECT id, nome, torra FROM coffees WHERE user_id=%s ORDER BY nome",
+        cafes = _fetch("SELECT id, nome, torra, data_torra FROM coffees WHERE user_id=%s ORDER BY nome",
                        (user_id,), _v=_v())
         if not cafes:
             _empty("☕", "Cadastre seu primeiro café",
@@ -3237,357 +3385,403 @@ def main():
                    "um café cadastrado na sua biblioteca.",
                    hint="Vá em 'Novo Café' acima")
         else:
-            cafe_map = {f"{c['nome']}  ·  {c['torra']}": c['id'] for c in cafes}
-            sel    = st.selectbox("Café", list(cafe_map.keys()))
-            cid    = cafe_map[sel]
+            cafe_map_full = {f"{c['nome']}  ·  {c['torra']}": c for c in cafes}
+            sel    = st.selectbox("Café", list(cafe_map_full.keys()))
+            _cafe_obj = cafe_map_full[sel]
+            cid    = _cafe_obj['id']
+
+            # Indicador de frescura pós-torra — exibido inline
+            if _cafe_obj.get('data_torra'):
+                _dias_torra = (_today_local() - _cafe_obj['data_torra']).days
+                if _dias_torra < 0:
+                    pass
+                elif _dias_torra <= 4:
+                    st.warning(f"💨 Este grão está há {_dias_torra}d pós-torra — ainda degaseificando. Ideal após o 5º dia.", icon="⏳")
+                elif _dias_torra <= 21:
+                    st.success(f"✨ Janela ideal! {_dias_torra} dias pós-torra — pico de sabor e aroma.", icon="☕")
+                elif _dias_torra <= 45:
+                    st.info(f"👍 {_dias_torra} dias pós-torra — ainda bom, aromas começando a decair.", icon="📅")
+                else:
+                    st.warning(f"⏳ {_dias_torra} dias pós-torra — priorize consumir logo.", icon="⚠️")
+
             metodo = st.selectbox("Método de Preparo", METODOS)
 
-            # Guia de ratio por método — referência rápida de entusiasta
-            _RATIO_GUIDE = {
-                "Espresso":     "1:2 (18g → 36g) · 25–32s · moagem fina",
-                "Pour Over":    "1:15–1:16 · 2:30–3:30 · moagem média-fina",
-                "Coado":        "1:15 (ex: 20g → 300g) · moagem média",
-                "French Press": "1:14 · 4 min de imersão · moagem grossa",
-                "Aeropress":    "1:13–1:16 · 1:30–2:30 · versátil",
-                "Chemex":       "1:16 · 3:30–4:30 · moagem média-grossa",
-                "Moka Pot":     "1:10 · fogo baixo · moagem fina-média",
-                "Cold Brew":    "1:8 concentrado · 12–18h · moagem grossa",
-            }
-            _hint = next((v for k, v in _RATIO_GUIDE.items() if k.lower() in metodo.lower()), None)
-            st.caption(f"📐 Referência {metodo}: {_hint}" if _hint else "")
+            # ── MODO RÁPIDO ───────────────────────────────────────────
+            if _quick:
+                _rq_col1, _rq_col2 = st.columns(2, gap="large")
+                with _rq_col1:
+                    _rq_dose   = st.number_input("Dose (g)", 1.0, 160.0, 18.0, 0.1, key="rq_dose")
+                    _rq_yield  = st.number_input("Yield / Xícara (g)", 5.0, 2000.0, 36.0, 1.0, key="rq_yield")
+                    _rq_tempo  = st.number_input("Tempo (s)", 1, 600, 28, 1, key="rq_tempo")
+                with _rq_col2:
+                    _rq_nota   = st.slider("Nota Final", 1, 5, 3, key="rq_nota")
+                    _rq_notas  = st.text_area("Impressões rápidas", height=72, key="rq_notas_txt",
+                                              placeholder="Acidez, doçura, corpo...")
+                st.markdown('<p style="font-size:11px;color:#8A8278">Moedor, TDS, temperatura e avaliação detalhada ficam zerados no modo rápido. Use o modo completo para registros completos.</p>', unsafe_allow_html=True)
 
-            # Última receita deste café — o coração do dial-in
-            _last = _fetch("""SELECT gramas, agua_alvo, tempo_extracao, clicks_moedor,
-                                     moedor, temp_real, nota_final_stars, ey, data
-                              FROM extracoes WHERE coffee_id=%s AND metodo=%s
-                              ORDER BY data DESC, created_at DESC LIMIT 1""",
-                           (cid, metodo), _v=_v())
-            _last_html = ""
-            if _last:
-                lx = _last[0]
-                _ln = int(lx.get('nota_final_stars') or 0)
-                _ley = float(lx.get('ey') or 0)
-                _last_html = (
-                    f'<div style="background:var(--mc-surface-2);border:1px solid var(--mc-border);'
-                    f'border-left:3px solid var(--mc-orange);border-radius:0 10px 10px 0;'
-                    f'padding:10px 14px;margin:4px 0 8px;font-size:13px;line-height:1.7;color:var(--mc-text)">'
+                # Cronômetro compacto
+                components.html(_TIMER_HTML, height=80, scrolling=False)
+
+                if st.button("✓ REGISTRAR (Rápido)", type="primary", use_container_width=True, key="btn_rq_save"):
+                    _rq_m = CoffeeEngine.calc(_rq_dose, _rq_yield, None, _rq_tempo)
+                    _run("""INSERT INTO extracoes
+                        (coffee_id,data,metodo,gramas,agua_alvo,tempo_extracao,brew_ratio,
+                         ey,fluxo,nota_final_stars,classificacao,notas,user_id,data_hora_extracao)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        (cid, _today_local(), metodo, _rq_dose, _rq_yield, _rq_tempo,
+                         _rq_m.get("ratio", 0), 0, _rq_m.get("fluxo", 0),
+                         _rq_nota, _rq_nota, _rq_notas, user_id, _now_local()))
+                    st.toast("☕ Extração registrada (modo rápido)", icon="⚡")
+                    st.session_state.pop("_recipe_applied", None)
+                    st.rerun()
+
+            if not _quick:
+                # Guia de ratio por método — referência rápida de entusiasta
+                _RATIO_GUIDE = {
+                    "Espresso":     "1:2 (18g → 36g) · 25–32s · moagem fina",
+                    "Pour Over":    "1:15–1:16 · 2:30–3:30 · moagem média-fina",
+                    "Coado":        "1:15 (ex: 20g → 300g) · moagem média",
+                    "French Press": "1:14 · 4 min de imersão · moagem grossa",
+                    "Aeropress":    "1:13–1:16 · 1:30–2:30 · versátil",
+                    "Chemex":       "1:16 · 3:30–4:30 · moagem média-grossa",
+                    "Moka Pot":     "1:10 · fogo baixo · moagem fina-média",
+                    "Cold Brew":    "1:8 concentrado · 12–18h · moagem grossa",
+                }
+                _hint = next((v for k, v in _RATIO_GUIDE.items() if k.lower() in metodo.lower()), None)
+                st.caption(f"📐 Referência {metodo}: {_hint}" if _hint else "")
+    
+                # Última receita deste café — o coração do dial-in
+                _last = _fetch("""SELECT gramas, agua_alvo, tempo_extracao, clicks_moedor,
+                                         moedor, temp_real, nota_final_stars, ey, data
+                                  FROM extracoes WHERE coffee_id=%s AND metodo=%s
+                                  ORDER BY data DESC, created_at DESC LIMIT 1""",
+                               (cid, metodo), _v=_v())
+                _last_html = ""
+                if _last:
+                    lx = _last[0]
+                    _ln = int(lx.get('nota_final_stars') or 0)
+                    _ley = float(lx.get('ey') or 0)
+                    _last_html = (
+                        f'<div style="background:var(--mc-surface-2);border:1px solid var(--mc-border);'
+                        f'border-left:3px solid var(--mc-orange);border-radius:0 10px 10px 0;'
+                        f'padding:10px 14px;margin:4px 0 8px;font-size:13px;line-height:1.7;color:var(--mc-text)">'
+                        f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange);'
+                        f'text-transform:uppercase;letter-spacing:.1em">🔁 Última receita ({metodo})</span><br>'
+                        f"<b>{float(lx['gramas'] or 0):.1f}g → {float(lx['agua_alvo'] or 0):.0f}g</b> · "
+                        f"{int(lx['tempo_extracao'] or 0)}s · "
+                        f"{int(lx['clicks_moedor'] or 0)} clicks ({lx['moedor'] or '—'}) · "
+                        f"{float(lx['temp_real'] or 0):.0f}°C"
+                        + (f" · EY {_ley:.1f}%" if _ley > 0 else "")
+                        + (f" · {_stars(_ln)}" if _ln else "")
+                        + f"<br><span style='color:var(--mc-text-3);font-size:12px'>"
+                        f"{lx['data'].strftime('%d/%m/%Y')} — use como ponto de partida e ajuste 1 variável por vez</span>"
+                        f'</div>')
+                # Elemento sempre presente — estrutura estável
+                st.markdown(_last_html, unsafe_allow_html=True)
+    
+                xicaras = st.radio("Número de Xícaras", [1, 2], horizontal=True, key="config_xicaras")
+                multiplier = 1 if xicaras == 1 else 2
+    
+                # Parâmetros do Motor Barista (calculados cedo — usados como defaults nos dois lados)
+                cafe_info = _fetch("SELECT tipo, torra FROM coffees WHERE id=%s AND user_id=%s LIMIT 1",
+                                  (cid, user_id), _v=_v())
+                params = _motor_barista_params(
+                    cafe_info[0]["torra"] if cafe_info else "Média",
+                    cafe_info[0]["tipo"]  if cafe_info else "Grãos")
+    
+                # ─────────────────────────────────────────────────────────────
+                # SETUP DA SESSÃO — Moedor · Clicks · Data · Hora (no topo)
+                # ─────────────────────────────────────────────────────────────
+                st.markdown(
+                    '<div style="background:var(--mc-surface);border:1px solid var(--mc-border);'
+                    'border-radius:12px;padding:1.25rem 1.5rem 1rem;margin:0.75rem 0 1.75rem">'
+                    '<p class="section-label" style="margin-bottom:1rem">Setup da Sessão</p>',
+                    unsafe_allow_html=True)
+    
+                # Grinder persistence: invalida cache junto com _v() para refletir updates
+                last_grinder, last_clicks = "", 0
+                if user_id:
+                    ginfo = _fetch("SELECT last_grinder, last_clicks FROM usuarios WHERE id=%s",
+                                  (user_id,), _v=_v())
+                    if ginfo and ginfo[0]['last_grinder']:
+                        last_grinder = ginfo[0]['last_grinder']
+                        last_clicks  = ginfo[0]['last_clicks'] or 0
+    
+                sc1, sc2 = st.columns([2, 1], gap="medium")
+                with sc1:
+                    # Moedor: selectbox com opções pré-definidas + Outros
+                    _moedor_opts = _MOEDORES
+                    _default_idx = (_moedor_opts.index(last_grinder)
+                                    if last_grinder in _moedor_opts else len(_moedor_opts) - 1)
+                    _moedor_sel = st.selectbox("Moedor", _moedor_opts,
+                                               index=_default_idx, key="sel_moedor")
+                    if _moedor_sel == "Outros":
+                        moedor = st.text_input("Qual moedor?",
+                                               value=last_grinder if last_grinder not in _moedor_opts else "",
+                                               placeholder="Ex: Wilfa Uniform, Fellow Ode...",
+                                               key="inp_moedor_custom")
+                    else:
+                        moedor = _moedor_sel
+                with sc2:
+                    clicks = st.number_input("Clicks", 0, 200, last_clicks, 1,
+                                             help="Pré-preenchido com o último valor",
+                                             key="inp_clicks")
+                st.caption("🕐 Data e hora são registradas automaticamente no momento do registro.")
+                st.markdown('</div>', unsafe_allow_html=True)
+    
+                # ═════════════════════════════════════════════════════════════
+                # 1) MOTOR BARISTA
+                # ═════════════════════════════════════════════════════════════
+                _step(1, "Motor Barista",
+                      "Analise primeiro a melhor extração para este grão. "
+                      "Os parâmetros se ajustam à torra e ao tipo do café selecionado.")
+    
+                # Receita sugerida — o melhor uso deste grão, antes de extrair
+                _rs = params
+                st.markdown(
+                    f'<div style="background:var(--mc-orange-soft);border:1px solid var(--mc-orange);'
+                    f'border-radius:12px;padding:14px 18px;margin:0 0 1rem">'
                     f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange);'
-                    f'text-transform:uppercase;letter-spacing:.1em">🔁 Última receita ({metodo})</span><br>'
-                    f"<b>{float(lx['gramas'] or 0):.1f}g → {float(lx['agua_alvo'] or 0):.0f}g</b> · "
-                    f"{int(lx['tempo_extracao'] or 0)}s · "
-                    f"{int(lx['clicks_moedor'] or 0)} clicks ({lx['moedor'] or '—'}) · "
-                    f"{float(lx['temp_real'] or 0):.0f}°C"
-                    + (f" · EY {_ley:.1f}%" if _ley > 0 else "")
-                    + (f" · {_stars(_ln)}" if _ln else "")
-                    + f"<br><span style='color:var(--mc-text-3);font-size:12px'>"
-                    f"{lx['data'].strftime('%d/%m/%Y')} — use como ponto de partida e ajuste 1 variável por vez</span>"
-                    f'</div>')
-            # Elemento sempre presente — estrutura estável
-            st.markdown(_last_html, unsafe_allow_html=True)
-
-            xicaras = st.radio("Número de Xícaras", [1, 2], horizontal=True, key="config_xicaras")
-            multiplier = 1 if xicaras == 1 else 2
-
-            # Parâmetros do Motor Barista (calculados cedo — usados como defaults nos dois lados)
-            cafe_info = _fetch("SELECT tipo, torra FROM coffees WHERE id=%s AND user_id=%s LIMIT 1",
-                              (cid, user_id), _v=_v())
-            params = _motor_barista_params(
-                cafe_info[0]["torra"] if cafe_info else "Média",
-                cafe_info[0]["tipo"]  if cafe_info else "Grãos")
-
-            # ─────────────────────────────────────────────────────────────
-            # SETUP DA SESSÃO — Moedor · Clicks · Data · Hora (no topo)
-            # ─────────────────────────────────────────────────────────────
-            st.markdown(
-                '<div style="background:var(--mc-surface);border:1px solid var(--mc-border);'
-                'border-radius:12px;padding:1.25rem 1.5rem 1rem;margin:0.75rem 0 1.75rem">'
-                '<p class="section-label" style="margin-bottom:1rem">Setup da Sessão</p>',
-                unsafe_allow_html=True)
-
-            # Grinder persistence: invalida cache junto com _v() para refletir updates
-            last_grinder, last_clicks = "", 0
-            if user_id:
-                ginfo = _fetch("SELECT last_grinder, last_clicks FROM usuarios WHERE id=%s",
-                              (user_id,), _v=_v())
-                if ginfo and ginfo[0]['last_grinder']:
-                    last_grinder = ginfo[0]['last_grinder']
-                    last_clicks  = ginfo[0]['last_clicks'] or 0
-
-            sc1, sc2 = st.columns([2, 1], gap="medium")
-            with sc1:
-                # Moedor: selectbox com opções pré-definidas + Outros
-                _moedor_opts = _MOEDORES
-                _default_idx = (_moedor_opts.index(last_grinder)
-                                if last_grinder in _moedor_opts else len(_moedor_opts) - 1)
-                _moedor_sel = st.selectbox("Moedor", _moedor_opts,
-                                           index=_default_idx, key="sel_moedor")
-                if _moedor_sel == "Outros":
-                    moedor = st.text_input("Qual moedor?",
-                                           value=last_grinder if last_grinder not in _moedor_opts else "",
-                                           placeholder="Ex: Wilfa Uniform, Fellow Ode...",
-                                           key="inp_moedor_custom")
-                else:
-                    moedor = _moedor_sel
-            with sc2:
-                clicks = st.number_input("Clicks", 0, 200, last_clicks, 1,
-                                         help="Pré-preenchido com o último valor",
-                                         key="inp_clicks")
-            st.caption("🕐 Data e hora são registradas automaticamente no momento do registro.")
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            # ═════════════════════════════════════════════════════════════
-            # 1) MOTOR BARISTA
-            # ═════════════════════════════════════════════════════════════
-            _step(1, "Motor Barista",
-                  "Analise primeiro a melhor extração para este grão. "
-                  "Os parâmetros se ajustam à torra e ao tipo do café selecionado.")
-
-            # Receita sugerida — o melhor uso deste grão, antes de extrair
-            _rs = params
-            st.markdown(
-                f'<div style="background:var(--mc-orange-soft);border:1px solid var(--mc-orange);'
-                f'border-radius:12px;padding:14px 18px;margin:0 0 1rem">'
-                f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange);'
-                f'text-transform:uppercase;letter-spacing:.1em">🎯 Receita sugerida para este grão</span>'
-                f'<div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:8px;font-size:14px;'
-                f'color:var(--mc-text)">'
-                f'<span><b>{_rs["dose"]}g</b> dose</span>'
-                f'<span><b>{_rs["yield"]}g</b> yield (1:{_rs["yield"]/_rs["dose"]:.1f})</span>'
-                f'<span><b>{_rs["time"]}s</b> tempo</span>'
-                f'<span><b>{_rs["temp"]}°C</b> água</span>'
-                f'<span><b>{_rs["pressure"]} bar</b> pressão</span>'
-                f'</div>'
-                + (
-                    f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
-                    f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
-                    f'☕☕ <b>Ajuste para 2 xícaras:</b> dose <b>{_rs["dose"]*2:.1f}g</b> · '
-                    f'yield total <b>{_rs["yield"]*2:.0f}g</b> dividido em '
-                    f'<b>{_rs["yield"]:.0f}g por xícara</b> — mesmo ratio (1:{_rs["yield"]/_rs["dose"]:.1f}) '
-                    f'e mesma concentração, tempo alvo {_rs["time"]}s.</div>'
-                    if xicaras == 2 else
-                    f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
-                    f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
-                    f'☕ <b>1 xícara:</b> volume integral de <b>{_rs["yield"]}g</b> na xícara — '
-                    f'máxima concentração e corpo.</div>'
-                  )
-                + '</div>', unsafe_allow_html=True)
-
-            motor_html = (_MOTOR_BARISTA_HTML
-                .replace('value="18"', f'value="{params["dose"]}"')
-                .replace('value="36"', f'value="{params["yield"]}"')
-                .replace('value="28"', f'value="{params["time"]}"')
-                .replace('value="92"', f'value="{params["temp"]}"')
-                .replace('value="9"',  f'value="{params["pressure"]}"'))
-            components.html(motor_html, height=660, scrolling=False)
-
-            # Botão para propagar sugestão do Motor Barista → campos reais abaixo
-            if st.button("↩ Redefinir campos com sugestão do Motor Barista",
-                         key="btn_reset_to_motor", help="Preenche os campos abaixo com os valores sugeridos para este grão"):
-                st.session_state["ext_gramas"] = round(float(params["dose"])  * multiplier, 1)
-                st.session_state["ext_agua"]   = round(float(params["yield"]) * multiplier, 1)
-                st.session_state["ext_tempo"]  = int(params["time"])
-                st.session_state["ext_temp"]   = float(params["temp"])
-                st.session_state["ext_press"]  = float(params["pressure"])
-                st.session_state["_ext_seed"]  = None  # força reseed
-                st.rerun()
-
-            # ═════════════════════════════════════════════════════════════
-            # 2) PARÂMETROS DE EXTRAÇÃO (REALIDADE) + RADAR REAL
-            #    Espelha exatamente os 5 campos do Motor Barista + TDS
-            # ═════════════════════════════════════════════════════════════
-            _step(2, "Parâmetros de Extração",
-                  "Registre o que aconteceu de verdade — espelha os campos do Motor Barista.")
-
-            col_params, col_radar_real = st.columns([1.2, 1], gap="large")
-            with col_params:
-                # Widgets com key fixa: identidade estável entre reruns (evita
-                # que as abas voltem para a 1ª ao trocar xícaras/café).
-                # Os defaults são semeados via session_state quando café ou
-                # nº de xícaras mudam.
-                _seed_sig = (cid, multiplier)
-                if st.session_state.get("_ext_seed") != _seed_sig:
-                    st.session_state["_ext_seed"]  = _seed_sig
+                    f'text-transform:uppercase;letter-spacing:.1em">🎯 Receita sugerida para este grão</span>'
+                    f'<div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:8px;font-size:14px;'
+                    f'color:var(--mc-text)">'
+                    f'<span><b>{_rs["dose"]}g</b> dose</span>'
+                    f'<span><b>{_rs["yield"]}g</b> yield (1:{_rs["yield"]/_rs["dose"]:.1f})</span>'
+                    f'<span><b>{_rs["time"]}s</b> tempo</span>'
+                    f'<span><b>{_rs["temp"]}°C</b> água</span>'
+                    f'<span><b>{_rs["pressure"]} bar</b> pressão</span>'
+                    f'</div>'
+                    + (
+                        f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
+                        f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
+                        f'☕☕ <b>Ajuste para 2 xícaras:</b> dose <b>{_rs["dose"]*2:.1f}g</b> · '
+                        f'yield total <b>{_rs["yield"]*2:.0f}g</b> dividido em '
+                        f'<b>{_rs["yield"]:.0f}g por xícara</b> — mesmo ratio (1:{_rs["yield"]/_rs["dose"]:.1f}) '
+                        f'e mesma concentração, tempo alvo {_rs["time"]}s.</div>'
+                        if xicaras == 2 else
+                        f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
+                        f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
+                        f'☕ <b>1 xícara:</b> volume integral de <b>{_rs["yield"]}g</b> na xícara — '
+                        f'máxima concentração e corpo.</div>'
+                      )
+                    + '</div>', unsafe_allow_html=True)
+    
+                motor_html = (_MOTOR_BARISTA_HTML
+                    .replace('value="18"', f'value="{params["dose"]}"')
+                    .replace('value="36"', f'value="{params["yield"]}"')
+                    .replace('value="28"', f'value="{params["time"]}"')
+                    .replace('value="92"', f'value="{params["temp"]}"')
+                    .replace('value="9"',  f'value="{params["pressure"]}"'))
+                components.html(motor_html, height=660, scrolling=False)
+    
+                # Botão para propagar sugestão do Motor Barista → campos reais abaixo
+                if st.button("↩ Redefinir campos com sugestão do Motor Barista",
+                             key="btn_reset_to_motor", help="Preenche os campos abaixo com os valores sugeridos para este grão"):
                     st.session_state["ext_gramas"] = round(float(params["dose"])  * multiplier, 1)
                     st.session_state["ext_agua"]   = round(float(params["yield"]) * multiplier, 1)
                     st.session_state["ext_tempo"]  = int(params["time"])
                     st.session_state["ext_temp"]   = float(params["temp"])
                     st.session_state["ext_press"]  = float(params["pressure"])
-                    st.session_state.setdefault("ext_tds", 0.0)
-
-                gramas       = st.number_input("Dose Real (g)", 1.0, 160.0,
-                                               step=0.1, key="ext_gramas",
-                                               help="Peso do pó medido na balança")
-                agua         = st.number_input("Yield / Volumetria na Xícara (g)", 5.0, 2000.0,
-                                               step=1.0, key="ext_agua",
-                                               help="Quantidade real que entrou na xícara (espresso: ~18-50g)")
-                tempo        = st.number_input("Tempo Real (s)", 1, 600, step=1, key="ext_tempo")
-                temp_real    = st.number_input("Temperatura Real (°C)", 60.0, 100.0,
-                                               step=0.5, key="ext_temp")
-                pressao_real = st.number_input("Pressão Real (bar)", 1.0, 20.0,
-                                               step=0.5, key="ext_press")
-                tds          = st.number_input("TDS Medido (%)", 0.0, 5.0,
-                                               step=0.01, key="ext_tds",
-                                               help="Opcional — refratômetro. Deixe 0 se não usar.")
-
-            with col_radar_real:
-                m_real  = CoffeeEngine.calc(gramas, agua, tds if tds > 0 else None, tempo)
-                ey_real = m_real.get("ey", 0.0)
-                st.markdown(
-                    '<p style="font-size:11px;font-weight:700;color:var(--mc-orange);'
-                    'letter-spacing:0.12em;text-transform:uppercase;margin-bottom:0.25rem">'
-                    'Perfil Sensorial — Extração Real</p>',
-                    unsafe_allow_html=True)
-                st.plotly_chart(_radar(CoffeeEngine.sensory(ey_real)),
-                                use_container_width=True, config={'displayModeBar': False})
-                foto_can = st.file_uploader("Foto da Caneca",
-                                            type=["jpg","jpeg","png"],
-                                            key="foto_can")
-                if foto_can:
-                    _img(_b64(foto_can), w=200)
-
-            notas_e = st.text_area("Notas da Extração",
-                                   placeholder="Impressões sobre a extração...",
-                                   height=90, key="notas_ext")
-
-            # ═════════════════════════════════════════════════════════════
-            # 3) DIAGNÓSTICO DA EXTRAÇÃO — delta Motor Barista vs Realidade
-            # ═════════════════════════════════════════════════════════════
-            _step(3, "Diagnóstico da Extração",
-                  "Delta entre o que você planejou (Motor Barista) e o que aconteceu de verdade.")
-
-            with st.expander("Ver diagnóstico completo", expanded=True):
-                # Estrutura FIXA de elementos: sempre 4 métricas iguais e um
-                # único markdown de diagnóstico. Se a quantidade de elementos
-                # variasse entre reruns, o Streamlit remontaria as abas e
-                # voltaria para a 1ª (bug clássico do st.tabs).
-                mc1, mc2, mc3, mc4 = st.columns(4)
-                mc1.metric("Brew Ratio",  m_real.get("ratio_text", "—"))
-                mc2.metric("Fluxo Médio", f"{m_real.get('fluxo',0):.2f} g/s")
-                mc3.metric("Tempo",       f"{tempo}s")
-                mc4.metric("Dose",        f"{gramas:.1f}g")
-
-                diagnosticos = []
-
-                dt_tempo = tempo - params["time"]
-                if abs(dt_tempo) >= 4:
-                    dir_t   = "rápida" if dt_tempo < 0 else "lenta"
-                    sugest  = "afine a moagem (mais fino)" if dt_tempo < 0 else "abra a moagem (mais grosso)"
-                    diagnosticos.append(
-                        f"⏱ <b>Fluxo {dir_t}:</b> você planejou {params['time']}s, "
-                        f"mas extraiu em {tempo}s. Sugestão: {sugest}.")
-
-                dt_yield = agua - params["yield"] * multiplier
-                if abs(dt_yield) >= 5:
-                    dir_y = "abaixo" if dt_yield < 0 else "acima"
-                    diagnosticos.append(
-                        f"💧 <b>Yield {dir_y} da meta:</b> planejou "
-                        f"{params['yield']*multiplier:.0f}g, real {agua:.0f}g "
-                        f"(Δ {dt_yield:+.0f}g).")
-
-                dt_temp = temp_real - params["temp"]
-                if abs(dt_temp) >= 1.5:
-                    dir_tmp = "abaixo" if dt_temp < 0 else "acima"
-                    diagnosticos.append(
-                        f"🌡 <b>Temperatura {dir_tmp} do target:</b> planejou "
-                        f"{params['temp']}°C, real {temp_real:.1f}°C (Δ {dt_temp:+.1f}°C).")
-
-                dt_press = pressao_real - params["pressure"]
-                if abs(dt_press) >= 0.8:
-                    dir_p = "abaixo" if dt_press < 0 else "acima"
-                    diagnosticos.append(
-                        f"📊 <b>Pressão {dir_p} do target:</b> planejou "
-                        f"{params['pressure']:.1f} bar, real {pressao_real:.1f} bar "
-                        f"(Δ {dt_press:+.1f} bar).")
-
-                if ey_real > 0:
-                    if ey_real < CoffeeEngine.EY_LOW:
+                    st.session_state["_ext_seed"]  = None  # força reseed
+                    st.rerun()
+    
+                # ═════════════════════════════════════════════════════════════
+                # 2) PARÂMETROS DE EXTRAÇÃO (REALIDADE) + RADAR REAL
+                #    Espelha exatamente os 5 campos do Motor Barista + TDS
+                # ═════════════════════════════════════════════════════════════
+                _step(2, "Parâmetros de Extração",
+                      "Registre o que aconteceu de verdade — espelha os campos do Motor Barista.")
+    
+                col_params, col_radar_real = st.columns([1.2, 1], gap="large")
+                with col_params:
+                    # Widgets com key fixa: identidade estável entre reruns (evita
+                    # que as abas voltem para a 1ª ao trocar xícaras/café).
+                    # Os defaults são semeados via session_state quando café ou
+                    # nº de xícaras mudam.
+                    _seed_sig = (cid, multiplier)
+                    if st.session_state.get("_ext_seed") != _seed_sig:
+                        st.session_state["_ext_seed"]  = _seed_sig
+                        st.session_state["ext_gramas"] = round(float(params["dose"])  * multiplier, 1)
+                        st.session_state["ext_agua"]   = round(float(params["yield"]) * multiplier, 1)
+                        st.session_state["ext_tempo"]  = int(params["time"])
+                        st.session_state["ext_temp"]   = float(params["temp"])
+                        st.session_state["ext_press"]  = float(params["pressure"])
+                        st.session_state.setdefault("ext_tds", 0.0)
+    
+                    gramas       = st.number_input("Dose Real (g)", 1.0, 160.0,
+                                                   step=0.1, key="ext_gramas",
+                                                   help="Peso do pó medido na balança")
+                    agua         = st.number_input("Yield / Volumetria na Xícara (g)", 5.0, 2000.0,
+                                                   step=1.0, key="ext_agua",
+                                                   help="Quantidade real que entrou na xícara (espresso: ~18-50g)")
+                    tempo        = st.number_input("Tempo Real (s)", 1, 600, step=1, key="ext_tempo")
+                    temp_real    = st.number_input("Temperatura Real (°C)", 60.0, 100.0,
+                                                   step=0.5, key="ext_temp")
+                    pressao_real = st.number_input("Pressão Real (bar)", 1.0, 20.0,
+                                                   step=0.5, key="ext_press")
+                    tds          = st.number_input("TDS Medido (%)", 0.0, 5.0,
+                                                   step=0.01, key="ext_tds",
+                                                   help="Opcional — refratômetro. Deixe 0 se não usar.")
+    
+                with col_radar_real:
+                    m_real  = CoffeeEngine.calc(gramas, agua, tds if tds > 0 else None, tempo)
+                    ey_real = m_real.get("ey", 0.0)
+                    st.markdown(
+                        '<p style="font-size:11px;font-weight:700;color:var(--mc-orange);'
+                        'letter-spacing:0.12em;text-transform:uppercase;margin-bottom:0.25rem">'
+                        'Perfil Sensorial — Extração Real</p>',
+                        unsafe_allow_html=True)
+                    st.plotly_chart(_radar(CoffeeEngine.sensory(ey_real)),
+                                    use_container_width=True, config={'displayModeBar': False})
+                    foto_can = st.file_uploader("Foto da Caneca",
+                                                type=["jpg","jpeg","png"],
+                                                key="foto_can")
+                    if foto_can:
+                        _img(_b64(foto_can), w=200)
+    
+                notas_e = st.text_area("Notas da Extração",
+                                       placeholder="Impressões sobre a extração...",
+                                       height=90, key="notas_ext")
+    
+                # ═════════════════════════════════════════════════════════════
+                # 3) DIAGNÓSTICO DA EXTRAÇÃO — delta Motor Barista vs Realidade
+                # ═════════════════════════════════════════════════════════════
+                _step(3, "Diagnóstico da Extração",
+                      "Delta entre o que você planejou (Motor Barista) e o que aconteceu de verdade.")
+    
+                with st.expander("Ver diagnóstico completo", expanded=True):
+                    # Estrutura FIXA de elementos: sempre 4 métricas iguais e um
+                    # único markdown de diagnóstico. Se a quantidade de elementos
+                    # variasse entre reruns, o Streamlit remontaria as abas e
+                    # voltaria para a 1ª (bug clássico do st.tabs).
+                    mc1, mc2, mc3, mc4 = st.columns(4)
+                    mc1.metric("Brew Ratio",  m_real.get("ratio_text", "—"))
+                    mc2.metric("Fluxo Médio", f"{m_real.get('fluxo',0):.2f} g/s")
+                    mc3.metric("Tempo",       f"{tempo}s")
+                    mc4.metric("Dose",        f"{gramas:.1f}g")
+    
+                    diagnosticos = []
+    
+                    dt_tempo = tempo - params["time"]
+                    if abs(dt_tempo) >= 4:
+                        dir_t   = "rápida" if dt_tempo < 0 else "lenta"
+                        sugest  = "afine a moagem (mais fino)" if dt_tempo < 0 else "abra a moagem (mais grosso)"
                         diagnosticos.append(
-                            f"⚡ <b>Sub-extração ({ey_real:.1f}%):</b> sabor raso e ácido — "
-                            "experimente moagem mais fina ou tempo maior.")
-                    elif ey_real > CoffeeEngine.EY_HIGH:
+                            f"⏱ <b>Fluxo {dir_t}:</b> você planejou {params['time']}s, "
+                            f"mas extraiu em {tempo}s. Sugestão: {sugest}.")
+    
+                    dt_yield = agua - params["yield"] * multiplier
+                    if abs(dt_yield) >= 5:
+                        dir_y = "abaixo" if dt_yield < 0 else "acima"
                         diagnosticos.append(
-                            f"⚡ <b>Super-extração ({ey_real:.1f}%):</b> amargor e adstringência — "
-                            "experimente moagem mais grossa ou tempo menor.")
-                    else:
+                            f"💧 <b>Yield {dir_y} da meta:</b> planejou "
+                            f"{params['yield']*multiplier:.0f}g, real {agua:.0f}g "
+                            f"(Δ {dt_yield:+.0f}g).")
+    
+                    dt_temp = temp_real - params["temp"]
+                    if abs(dt_temp) >= 1.5:
+                        dir_tmp = "abaixo" if dt_temp < 0 else "acima"
                         diagnosticos.append(
-                            f"✅ <b>EY dentro da janela de ouro ({ey_real:.1f}%)</b> — extração equilibrada.")
-
-                if ey_real > 0:
-                    diagnosticos.append(
-                        f"🧪 <b>Extraction Yield: {ey_real:.2f}%</b> — {m_real.get('status','')}.")
-
-                if not diagnosticos:
-                    diagnosticos = ["✅ <b>Extração alinhada com o plano</b> — "
-                                    "todos os parâmetros dentro da meta."]
-                # Um único elemento markdown, sempre presente
-                _diag_html = "".join(
-                    f'<div style="background:var(--mc-surface-2);border-left:3px solid '
-                    f'var(--mc-orange);padding:10px 14px;border-radius:0 8px 8px 0;'
-                    f'margin:6px 0;font-size:13px;line-height:1.6;color:var(--mc-text)">'
-                    f'{d}</div>' for d in diagnosticos)
-                st.markdown(f'<div style="margin-top:1rem">{_diag_html}</div>',
-                            unsafe_allow_html=True)
-
-            # ═════════════════════════════════════════════════════════════
-            # 4) CLASSIFICAÇÃO SENSORIAL
-            # ═════════════════════════════════════════════════════════════
-            _step(4, "Classificação sensorial",
-                  "Avalie cada dimensão de 1 a 5 estrelas. A Nota Final é o destaque do registro.")
-
-            # Barras de progresso 1–5 (arraste para avaliar)
-            col_s1, col_s2, col_s3, col_s4 = st.columns(4, gap="large")
-            with col_s1:
-                crema_stars = st.slider("Crema", 1, 5, 3, key="crema_stars")
-            with col_s2:
-                corpo_stars = st.slider("Corpo", 1, 5, 3, key="corpo_stars")
-            with col_s3:
-                equilibrio_stars = st.slider("Equilíbrio", 1, 5, 3, key="equilibrio_stars")
-            with col_s4:
-                acidez_stars = st.slider("Acidez", 1, 5, 3, key="acidez_stars")
-
-            col_s5, col_s6, col_s7, col_s8 = st.columns(4, gap="large")
-            with col_s5:
-                amargor_stars = st.slider("Amargor", 1, 5, 3, key="amargor_stars")
-            with col_s6:
-                presenca_boca_stars = st.slider("Presença na Boca", 1, 5, 3, key="presenca_stars")
-            with col_s7:
-                docura_stars = st.slider("Doçura", 1, 5, 3, key="docura_stars")
-            with col_s8:
-                nota_final_stars = st.slider("Nota Final", 1, 5, 3, key="nota_final_stars")
-
-            balanco_ideal = st.text_input("Balanço Perfeito (do diagnóstico)",
-                                         placeholder="Ex: Crema 4, Corpo 4, Equilíbrio 5...",
-                                         key="balanco_ideal")
-
-            # ═════════════════════════════════════════════════════════════
-            # 5) REGISTRAR
-            # ═════════════════════════════════════════════════════════════
-            _step(5, "Registrar extração",
-                  "Salve esta extração no seu histórico para acompanhar a evolução.")
-            if st.button("✓ REGISTRAR EXTRAÇÃO", type="primary", use_container_width=True):
-                data_hora = _now_local()
-                data_ext  = data_hora.date()
-                _run("""INSERT INTO extracoes
-                    (coffee_id,data,metodo,gramas,moedor,clicks_moedor,agua_alvo,tds,
-                     tempo_extracao,brew_ratio,ey,fluxo,foto_caneca,classificacao,notas,
-                     crema_stars,corpo_stars,equilibrio_stars,acidez_stars,amargor_stars,
-                     presenca_boca_stars,docura_stars,nota_final_stars,balanco_ideal,
-                     data_hora_extracao,user_id,temp_real,pressao_real)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                    (cid, data_ext, metodo, gramas, moedor, clicks, agua, tds, tempo,
-                     m_real.get("ratio",0), ey_real, m_real.get("fluxo",0),
-                     _b64(foto_can) if foto_can else None, nota_final_stars, notas_e,
-                     crema_stars, corpo_stars, equilibrio_stars, acidez_stars, amargor_stars,
-                     presenca_boca_stars, docura_stars, nota_final_stars, balanco_ideal,
-                     data_hora, user_id, temp_real, pressao_real))
-                if user_id and moedor:
-                    _run("UPDATE usuarios SET last_grinder=%s, last_clicks=%s WHERE id=%s",
-                         (moedor, clicks, user_id))
-                # Limpa hora para próxima extração usar hora atual
-                st.session_state.pop("hora_ext", None)
-                st.toast("✓ Extração registrada com sucesso", icon="☕")
-                st.balloons()
-                st.rerun()
+                            f"🌡 <b>Temperatura {dir_tmp} do target:</b> planejou "
+                            f"{params['temp']}°C, real {temp_real:.1f}°C (Δ {dt_temp:+.1f}°C).")
+    
+                    dt_press = pressao_real - params["pressure"]
+                    if abs(dt_press) >= 0.8:
+                        dir_p = "abaixo" if dt_press < 0 else "acima"
+                        diagnosticos.append(
+                            f"📊 <b>Pressão {dir_p} do target:</b> planejou "
+                            f"{params['pressure']:.1f} bar, real {pressao_real:.1f} bar "
+                            f"(Δ {dt_press:+.1f} bar).")
+    
+                    if ey_real > 0:
+                        if ey_real < CoffeeEngine.EY_LOW:
+                            diagnosticos.append(
+                                f"⚡ <b>Sub-extração ({ey_real:.1f}%):</b> sabor raso e ácido — "
+                                "experimente moagem mais fina ou tempo maior.")
+                        elif ey_real > CoffeeEngine.EY_HIGH:
+                            diagnosticos.append(
+                                f"⚡ <b>Super-extração ({ey_real:.1f}%):</b> amargor e adstringência — "
+                                "experimente moagem mais grossa ou tempo menor.")
+                        else:
+                            diagnosticos.append(
+                                f"✅ <b>EY dentro da janela de ouro ({ey_real:.1f}%)</b> — extração equilibrada.")
+    
+                    if ey_real > 0:
+                        diagnosticos.append(
+                            f"🧪 <b>Extraction Yield: {ey_real:.2f}%</b> — {m_real.get('status','')}.")
+    
+                    if not diagnosticos:
+                        diagnosticos = ["✅ <b>Extração alinhada com o plano</b> — "
+                                        "todos os parâmetros dentro da meta."]
+                    # Um único elemento markdown, sempre presente
+                    _diag_html = "".join(
+                        f'<div style="background:var(--mc-surface-2);border-left:3px solid '
+                        f'var(--mc-orange);padding:10px 14px;border-radius:0 8px 8px 0;'
+                        f'margin:6px 0;font-size:13px;line-height:1.6;color:var(--mc-text)">'
+                        f'{d}</div>' for d in diagnosticos)
+                    st.markdown(f'<div style="margin-top:1rem">{_diag_html}</div>',
+                                unsafe_allow_html=True)
+    
+                # ═════════════════════════════════════════════════════════════
+                # 4) CLASSIFICAÇÃO SENSORIAL
+                # ═════════════════════════════════════════════════════════════
+                _step(4, "Classificação sensorial",
+                      "Avalie cada dimensão de 1 a 5 estrelas. A Nota Final é o destaque do registro.")
+    
+                # Barras de progresso 1–5 (arraste para avaliar)
+                col_s1, col_s2, col_s3, col_s4 = st.columns(4, gap="large")
+                with col_s1:
+                    crema_stars = st.slider("Crema", 1, 5, 3, key="crema_stars")
+                with col_s2:
+                    corpo_stars = st.slider("Corpo", 1, 5, 3, key="corpo_stars")
+                with col_s3:
+                    equilibrio_stars = st.slider("Equilíbrio", 1, 5, 3, key="equilibrio_stars")
+                with col_s4:
+                    acidez_stars = st.slider("Acidez", 1, 5, 3, key="acidez_stars")
+    
+                col_s5, col_s6, col_s7, col_s8 = st.columns(4, gap="large")
+                with col_s5:
+                    amargor_stars = st.slider("Amargor", 1, 5, 3, key="amargor_stars")
+                with col_s6:
+                    presenca_boca_stars = st.slider("Presença na Boca", 1, 5, 3, key="presenca_stars")
+                with col_s7:
+                    docura_stars = st.slider("Doçura", 1, 5, 3, key="docura_stars")
+                with col_s8:
+                    nota_final_stars = st.slider("Nota Final", 1, 5, 3, key="nota_final_stars")
+    
+                balanco_ideal = st.text_input("Balanço Perfeito (do diagnóstico)",
+                                             placeholder="Ex: Crema 4, Corpo 4, Equilíbrio 5...",
+                                             key="balanco_ideal")
+    
+                # ═════════════════════════════════════════════════════════════
+                # 5) REGISTRAR
+                # ═════════════════════════════════════════════════════════════
+                _step(5, "Registrar extração",
+                      "Salve esta extração no seu histórico para acompanhar a evolução.")
+                if st.button("✓ REGISTRAR EXTRAÇÃO", type="primary", use_container_width=True):
+                    data_hora = _now_local()
+                    data_ext  = data_hora.date()
+                    _run("""INSERT INTO extracoes
+                        (coffee_id,data,metodo,gramas,moedor,clicks_moedor,agua_alvo,tds,
+                         tempo_extracao,brew_ratio,ey,fluxo,foto_caneca,classificacao,notas,
+                         crema_stars,corpo_stars,equilibrio_stars,acidez_stars,amargor_stars,
+                         presenca_boca_stars,docura_stars,nota_final_stars,balanco_ideal,
+                         data_hora_extracao,user_id,temp_real,pressao_real)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        (cid, data_ext, metodo, gramas, moedor, clicks, agua, tds, tempo,
+                         m_real.get("ratio",0), ey_real, m_real.get("fluxo",0),
+                         _b64(foto_can) if foto_can else None, nota_final_stars, notas_e,
+                         crema_stars, corpo_stars, equilibrio_stars, acidez_stars, amargor_stars,
+                         presenca_boca_stars, docura_stars, nota_final_stars, balanco_ideal,
+                         data_hora, user_id, temp_real, pressao_real))
+                    if user_id and moedor:
+                        _run("UPDATE usuarios SET last_grinder=%s, last_clicks=%s WHERE id=%s",
+                             (moedor, clicks, user_id))
+                    # Limpa hora para próxima extração usar hora atual
+                    st.session_state.pop("hora_ext", None)
+                    st.toast("✓ Extração registrada com sucesso", icon="☕")
+                    st.balloons()
+                    st.rerun()
 
     # ── Tab 3 · Meus cafés ────────────────────────────────────────────
     with tab3:
@@ -3616,7 +3810,29 @@ def main():
                    "extrações e acompanhar a evolução do seu paladar.",
                    hint="Comece em 'Novo Café'")
         else:
-            for c in cafes:
+            # ── Filtros Meus Cafés ────────────────────────────────────────
+            _tc1, _tc2, _tc3 = st.columns([2, 1, 1], gap="medium")
+            with _tc1:
+                _search_cafe = st.text_input("🔍 Buscar café",
+                                             placeholder="Nome, região...",
+                                             key="tc_search")
+            with _tc2:
+                _torras_disp = ["Todas"] + sorted({c["torra"] for c in cafes if c.get("torra")})
+                _filt_torra = st.selectbox("Torra", _torras_disp, key="tc_torra")
+            with _tc3:
+                _tipos_disp = ["Todos"] + sorted({c["tipo"] for c in cafes if c.get("tipo")})
+                _filt_tipo = st.selectbox("Tipo", _tipos_disp, key="tc_tipo")
+            _cafes_filtrados = [
+                c for c in cafes
+                if (_search_cafe.lower() in (c["nome"] or "").lower()
+                    or _search_cafe.lower() in (c.get("regiao") or "").lower())
+                and (_filt_torra == "Todas" or c.get("torra") == _filt_torra)
+                and (_filt_tipo == "Todos"  or c.get("tipo")  == _filt_tipo)
+            ]
+            if not _cafes_filtrados:
+                st.info("Nenhum café encontrado com esses filtros.")
+
+            for c in _cafes_filtrados:
                 with st.expander(f"{c['nome']}  ·  {c['torra']}  ·  {_stars(c['classificacao'] or 0)}"):
                     ca, cb, cc = st.columns([1, 2.2, 1.4], gap="large")
                     with ca:
@@ -3666,6 +3882,15 @@ def main():
                             lbl = (f"Comprado em {c['data_compra'].strftime('%d/%m/%Y')}"
                                    if c.get("data_compra") else "Valor Pago")
                             st.metric(lbl, f"R$ {c['valor_compra']:.2f}")
+                            # Custo por xícara baseado na dose média das extrações
+                            _cexts = extracts_by_coffee.get(c["id"], [])
+                            _avg_dose = (sum(float(e["gramas"] or 0) for e in _cexts) / len(_cexts)
+                                         if _cexts else None)
+                            if _avg_dose and c.get("tamanho_pacote") and float(c["tamanho_pacote"]) > 0:
+                                _custo_xic = (float(c["valor_compra"])
+                                              / float(c["tamanho_pacote"]) * _avg_dose)
+                                st.metric("Custo/Xícara", f"R$ {_custo_xic:.2f}",
+                                          help=f"R${c['valor_compra']:.2f} ÷ {c['tamanho_pacote']}g × {_avg_dose:.1f}g/dose")
                         if c["avg_ey"]:   st.metric("EY Médio",   f"{c['avg_ey']:.1f}%")
                         if c["avg_nota"]: st.metric("Nota Média", _stars(round(c["avg_nota"])))
 
@@ -3975,6 +4200,52 @@ def main():
                 f'<p style="color:#8A8278;font-size:12px;margin:-0.5rem 0 1rem;'
                 f'font-weight:600">{len(rows)} extração(ões) — máximo 200 mais recentes</p>',
                 unsafe_allow_html=True)
+
+            # ── Gráfico de evolução EY ────────────────────────────────────
+            _ey_rows = [r for r in rows if r.get("ey") and float(r["ey"]) > 0]
+            if len(_ey_rows) >= 2:
+                with st.expander("📈 Evolução do Extraction Yield (EY)", expanded=False):
+                    _fig_ey = go.Figure()
+                    _ey_by_cafe = {}
+                    for _r in sorted(_ey_rows, key=lambda x: x["data"]):
+                        _ey_by_cafe.setdefault(_r["cafe_nome"], {"x": [], "y": []})
+                        _ey_by_cafe[_r["cafe_nome"]]["x"].append(str(_r["data"]))
+                        _ey_by_cafe[_r["cafe_nome"]]["y"].append(float(_r["ey"]))
+                    _colors = ["#D97732","#A0A0A0","#707070","#E8A060","#C0C0C0"]
+                    for _ci, (_cname, _cdata) in enumerate(_ey_by_cafe.items()):
+                        _fig_ey.add_trace(go.Scatter(
+                            x=_cdata["x"], y=_cdata["y"],
+                            mode="lines+markers", name=_cname,
+                            line=dict(color=_colors[_ci % len(_colors)], width=2),
+                            marker=dict(size=6)))
+                    _fig_ey.add_hrect(y0=18, y1=22, fillcolor="#D97732",
+                                      opacity=0.08, line_width=0,
+                                      annotation_text="Janela ideal 18–22%",
+                                      annotation_position="top left",
+                                      annotation_font_size=11)
+                    _fig_ey.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="#C8C0B8", height=280, margin=dict(l=0,r=0,t=10,b=0),
+                        legend=dict(font_size=11, bgcolor="rgba(0,0,0,0)"),
+                        xaxis=dict(showgrid=False, tickfont_size=10),
+                        yaxis=dict(gridcolor="#2A2420", ticksuffix="%", tickfont_size=10))
+                    st.plotly_chart(_fig_ey, use_container_width=True,
+                                    config={"displayModeBar": False})
+
+            # ── Exportar CSV ──────────────────────────────────────────────
+            if rows:
+                import csv, io as _io
+                _csv_buf = _io.StringIO()
+                _csv_fields = ["data","cafe_nome","metodo","gramas","agua_alvo",
+                                "tempo_extracao","tds","ey","brew_ratio","nota_final_stars",
+                                "moedor","clicks_moedor","temp_real","pressao_real","notas"]
+                _writer = csv.DictWriter(_csv_buf, fieldnames=_csv_fields, extrasaction="ignore")
+                _writer.writeheader()
+                _writer.writerows(rows)
+                st.download_button(
+                    "⬇️ Exportar CSV", data=_csv_buf.getvalue(),
+                    file_name="historico_extracoes.csv", mime="text/csv",
+                    use_container_width=True)
 
             for r in rows:
                 # Monta header com data relativa + classificações
@@ -4296,6 +4567,10 @@ def main():
                    "Cadastre suas cápsulas acima para acompanhar o estoque e as preferências.",
                    hint="Preencha o formulário acima")
         else:
+            _low_stock = [c for c in caps if int(c.get("quantidade") or 0) <= 3]
+            if _low_stock:
+                _low_names = ", ".join(c["nome"] for c in _low_stock)
+                st.warning(f"⚠️ Estoque baixo: **{_low_names}**")
             st.markdown(
                 f'<p style="color:#8A8278;font-size:12px;margin:-0.5rem 0 1rem;'
                 f'font-weight:600">{len(caps)} cápsula{"s" if len(caps) != 1 else ""} cadastrada{"s" if len(caps) != 1 else ""}</p>',
@@ -4323,7 +4598,25 @@ def main():
                             c_info = _irow("Marca", cap['marca']) + c_info
                         st.markdown(c_info, unsafe_allow_html=True)
                     with cc3:
-                        st.metric("Estoque", f"{cap['quantidade']} un.")
+                        _qtd_atual = int(cap.get("quantidade") or 0)
+                        if _qtd_atual <= 3 and _qtd_atual > 0:
+                            st.warning(f"⚠️ Estoque baixo: {_qtd_atual} un.")
+                        elif _qtd_atual == 0:
+                            st.error("❌ Sem estoque")
+                        else:
+                            st.metric("Estoque", f"{_qtd_atual} un.")
+                        # Usar cápsulas — decremento rápido de estoque
+                        _use_n = st.number_input("Usar", min_value=1, max_value=max(1, _qtd_atual),
+                                                 value=1, step=1,
+                                                 key=f"use_cap_n_{cap['id']}",
+                                                 label_visibility="visible")
+                        if st.button("☕ Registrar uso", key=f"use_cap_btn_{cap['id']}",
+                                     disabled=_qtd_atual == 0):
+                            _nova_qtd = max(0, _qtd_atual - _use_n)
+                            _run("UPDATE capsulas SET quantidade=%s WHERE id=%s AND user_id=%s",
+                                 (_nova_qtd, cap["id"], user_id))
+                            st.toast(f"✓ {_use_n} cápsula(s) usada(s). Estoque: {_nova_qtd}")
+                            st.rerun()
                         if cap.get("nota_final_stars"):
                             st.metric("Nota Final", _stars(cap["nota_final_stars"]))
                         st.markdown(
