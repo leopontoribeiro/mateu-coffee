@@ -258,6 +258,31 @@ st.markdown("""
         --mc-info: #5BB0E8;
     }
 
+    /* ─── Light Mode — classe aplicada pelo toggle ────────────────── */
+    .mc-light {
+        --mc-bg: #FAF7F4;
+        --mc-surface: #FFFFFF;
+        --mc-surface-2: #F2EDE8;
+        --mc-surface-3: #EAE4DE;
+        --mc-border: #E0D8D0;
+        --mc-border-strong: #C8BEB4;
+        --mc-orange: #C8541A;
+        --mc-orange-hover: #D96420;
+        --mc-orange-soft: #FDE8D8;
+        --mc-orange-glow: rgba(200, 84, 26, 0.14);
+        --mc-text: #1A1208;
+        --mc-text-2: #4A3C30;
+        --mc-text-3: #7A6A5A;
+        --mc-text-muted: #A89880;
+        --mc-success: #2E7D4A;
+        --mc-error: #C0392B;
+        --mc-warning: #C07000;
+        --mc-info: #1A6EA8;
+    }
+    .mc-light .stApp { background-color: var(--mc-bg) !important; color: var(--mc-text) !important; }
+    .mc-light [data-testid="stSidebar"] { background-color: var(--mc-surface) !important; }
+    .mc-light [data-testid="stHeader"]  { background-color: var(--mc-bg) !important; }
+
     /* ─── Tipografia base ─────────────────────────────────────────── */
     html, body, [class*="css"], .stApp, div, p, span, label,
     h1, h2, h3, h4, h5, h6, button, input, textarea, select {
@@ -1411,12 +1436,22 @@ _LOGIN_WINDOW_SECS  = 600   # 10 minutos
 
 def _login(email: str, senha: str, remember: bool = False) -> str:
     """Valida credenciais. Retorna LoginResult.{OK, INVALID, ERROR, RATE_LIMITED}."""
-    # Rate limiting por sessão
-    now = datetime.now()
+    # Rate limiting — primeiro no DB (cross-tab/browser), depois session_state como backup rápido
+    now = _now_local()
     attempts = [t for t in st.session_state.get('_login_attempts', [])
                 if (now - t).total_seconds() < _LOGIN_WINDOW_SECS]
     if len(attempts) >= _MAX_LOGIN_ATTEMPTS:
         return LoginResult.RATE_LIMITED
+    # Verifica também no DB (resiste a múltiplas abas e novos browsers)
+    try:
+        _db_attempts = _fetch("""
+            SELECT COUNT(*) AS n FROM login_attempts
+            WHERE email=LOWER(%s) AND attempted_at > NOW() - INTERVAL '10 minutes'
+        """, (email.strip(),), _v=0)
+        if _db_attempts and int(_db_attempts[0]['n']) >= _MAX_LOGIN_ATTEMPTS:
+            return LoginResult.RATE_LIMITED
+    except Exception:
+        pass  # tabela ainda não existe — degradação graciosa
 
     try:
         result = _fetch(
@@ -1429,11 +1464,21 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
     if not result:
         attempts.append(now)
         st.session_state['_login_attempts'] = attempts
+        try:
+            _run("INSERT INTO login_attempts (email, attempted_at) VALUES (LOWER(%s), NOW())",
+                 (email.strip(),))
+        except Exception:
+            pass
         return LoginResult.INVALID
     usuario = result[0]
     if not _verify_senha(senha, usuario['senha_hash']):
         attempts.append(now)
         st.session_state['_login_attempts'] = attempts
+        try:
+            _run("INSERT INTO login_attempts (email, attempted_at) VALUES (LOWER(%s), NOW())",
+                 (email.strip(),))
+        except Exception:
+            pass
         return LoginResult.INVALID
 
     # Migração silenciosa: re-hash SHA-256 legado → bcrypt
@@ -1451,7 +1496,7 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
     if remember:
         try:
             token = secrets.token_urlsafe(32)
-            expira = datetime.now() + timedelta(days=30)
+            expira = _now_local() + timedelta(days=30)
             _run(
                 "UPDATE usuarios SET remember_token=%s, remember_token_expires=%s WHERE id=%s",
                 (token, expira, usuario['id'])
@@ -1501,7 +1546,7 @@ def _check_remember_token() -> bool:
             return False
         usuario = result[0]
         expiry = usuario['remember_token_expires']
-        if expiry and expiry < datetime.now():
+        if expiry and expiry < _now_local():
             st.session_state['_token_checked'] = True
             return False
         # Login restaurado com sucesso
@@ -1703,6 +1748,14 @@ def _init_db() -> None:
                                WHERE table_name='backups' AND column_name='usuarios_data')
                     THEN ALTER TABLE backups DROP COLUMN usuarios_data; END IF;
                 END $$;
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS login_attempts (
+                    id           SERIAL PRIMARY KEY,
+                    email        TEXT NOT NULL,
+                    attempted_at TIMESTAMP DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_login_attempts_email ON login_attempts(email, attempted_at DESC);
             """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS grinder_profiles (
@@ -3208,7 +3261,10 @@ def main():
     user_email_display = st.session_state.get('user_email', '')
     initial = (user_email_display[:1] or "?").upper()
 
-    col_brand, col_user, col_logout = st.columns([0.65, 0.25, 0.10], gap="small")
+    # Toggle Dark/Light mode — persiste na sessão
+    _light_mode = st.session_state.get('_light_mode', False)
+
+    col_brand, col_user, col_theme, col_logout = st.columns([0.60, 0.25, 0.07, 0.08], gap="small")
     with col_brand:
         # Marca oficial — usa o PNG real do logo (cacheado em base64)
         logo_b64 = _logo_b64()
@@ -3235,11 +3291,24 @@ def main():
             f'<span>{user_email_display}</span>'
             f'</div>',
             unsafe_allow_html=True)
+    with col_theme:
+        _theme_label = "☀️" if _light_mode else "🌙"
+        if st.button(_theme_label, use_container_width=True, key="btn_theme",
+                     help="Alternar entre modo escuro e claro"):
+            st.session_state['_light_mode'] = not _light_mode
+            st.rerun()
     with col_logout:
         if st.button("Sair", use_container_width=True, key="btn_logout",
                      help="Sair da conta"):
             _logout()
             st.rerun()
+
+    # Aplica classe light mode no body via JS
+    if _light_mode:
+        st.markdown(
+            '<script>document.body.classList.add("mc-light");</script>'
+            '<style>body, .stApp, .block-container { background-color: #FAF7F4 !important; }</style>',
+            unsafe_allow_html=True)
 
     # Widget de consumo (hoje · semana · média · total)
     _show_daily_consumption()
@@ -4371,6 +4440,24 @@ def main():
                    "e editar quando quiser.",
                    hint="Comece em 'Nova Extração'")
         else:
+            # ── Métricas Agregadas ────────────────────────────────────────
+            _ey_vals = [float(r["ey"]) for r in rows if r.get("ey") and float(r["ey"]) > 0]
+            _nota_vals = [int(r["nota_final_stars"]) for r in rows if r.get("nota_final_stars") and int(r["nota_final_stars"]) > 0]
+            _dose_vals = [float(r["gramas"]) for r in rows if r.get("gramas")]
+            _metodos_count = {}
+            for r in rows:
+                _metodos_count[r["metodo"]] = _metodos_count.get(r["metodo"], 0) + 1
+            _top_metodo = max(_metodos_count, key=_metodos_count.get) if _metodos_count else "—"
+            _mh1, _mh2, _mh3, _mh4 = st.columns(4, gap="medium")
+            _mh1.metric("Total de Extrações", len(rows))
+            _mh2.metric("EY Médio", f"{sum(_ey_vals)/len(_ey_vals):.1f}%" if _ey_vals else "—",
+                        help="Média do Extraction Yield das extrações com refratômetro")
+            _mh3.metric("Nota Média", f"{sum(_nota_vals)/len(_nota_vals):.1f}/5" if _nota_vals else "—",
+                        help="Média das notas finais registradas")
+            _mh4.metric("Método Favorito", _top_metodo,
+                        help=f"{_metodos_count.get(_top_metodo, 0)} extrações")
+            st.markdown("")
+
             # ── Filtros ──────────────────────────────────────────────────
             _nomes_cafe = sorted({r["cafe_nome"] for r in rows})
             _metodos_hist = sorted({r["metodo"] for r in rows})
@@ -4494,10 +4581,31 @@ def main():
                         st.markdown(f"**Balanço Perfeito:** {r['balanco_ideal']}")
 
                     st.markdown("")
-                    col_edit, col_del = st.columns([1, 1])
+                    col_edit, col_share, col_del = st.columns([1, 1, 1])
                     with col_edit:
                         if st.button("✏️ Editar", key=f"tab4_edit_e_{r['id']}"):
                             st.session_state[f"editing_e_{r['id']}"] = True
+                    with col_share:
+                        _share_key = f"_share_{r['id']}"
+                        if st.button("📋 Compartilhar", key=f"tab4_share_{r['id']}"):
+                            st.session_state[_share_key] = not st.session_state.get(_share_key, False)
+                        if st.session_state.get(_share_key):
+                            _ey_line = f"EY: {float(r['ey']):.1f}%  " if r.get("ey") and float(r["ey"]) > 0 else ""
+                            _nota_line = f"Nota: {r.get('nota_final_stars') or 0}/5  " if r.get("nota_final_stars") else ""
+                            _notas_line = f"\nNotas: {r['notas']}" if r.get("notas") else ""
+                            _share_text = (
+                                f"☕ {r['cafe_nome']} — {r['metodo']}\n"
+                                f"📅 {r['data'].strftime('%d/%m/%Y')}\n"
+                                f"Dose: {float(r['gramas']):.1f}g → Yield: {float(r['agua_alvo']):.0f}g"
+                                f"  (1:{float(r['agua_alvo'])/float(r['gramas']):.1f})\n"
+                                f"Tempo: {int(r['tempo_extracao'])}s  "
+                                f"Moagem: {int(r['clicks_moedor'] or 0)} clicks ({r['moedor'] or '—'})  "
+                                f"{_ey_line}{_nota_line}"
+                                f"{_notas_line}\n"
+                                f"#MateúCoffee #CaféEspecial #Barista"
+                            )
+                            st.text_area("📋 Copie e compartilhe:", value=_share_text,
+                                         height=160, key=f"share_txt_{r['id']}")
                     with col_del:
                         if st.button("🗑️ Remover", key=f"tab4_del_e_{r['id']}"):
                             st.session_state[f"confirm_del_e4_{r['id']}"] = True
