@@ -16,52 +16,65 @@ import hashlib
 import secrets
 import bcrypt
 from typing import Optional
-import anthropic
+import google.generativeai as genai
+import requests as _requests
+from urllib.parse import urlencode
 from PIL import Image
+import io as _io_mod
+import base64 as _b64mod
+
+# ── Gemini helper ──────────────────────────────────────────────────────
+def _get_gemini_key() -> str:
+    key = os.environ.get("GOOGLE_API_KEY", "")
+    if not key:
+        try:
+            key = st.secrets.get("GOOGLE_API_KEY", "") or ""
+        except Exception:
+            key = ""
+    return key
+
+def _gemini(model_name: str = "gemini-2.0-flash"):
+    key = _get_gemini_key()
+    if not key:
+        raise ValueError("GOOGLE_API_KEY não configurada")
+    genai.configure(api_key=key)
+    return genai.GenerativeModel(model_name)
 
 # ── Barista Expert AI ──────────────────────────────────────────────────
-# Integração de IA especializada em café com Claude API
 def ask_barista_expert(pergunta: str, history: list | None = None) -> str:
-    """Pergunta ao Barista Expert usando Claude API com knowledge base e histórico."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        return "⚠️ Variável ANTHROPIC_API_KEY não configurada"
-
+    """Pergunta ao Barista Expert usando Gemini com knowledge base e histórico."""
     try:
         with open("coffee_knowledge.json", "r", encoding="utf-8") as f:
             kb = json.load(f)
         kb_text = json.dumps(kb, indent=2, ensure_ascii=False)
-
-        client = anthropic.Anthropic(api_key=api_key)
-
-        system_prompt = f"""Você é um Barista Expert — especialista em café com 15+ anos de experiência.
-
-Use a seguinte base de conhecimento:
-{kb_text}
-
-Instruções:
-1. Responda em português brasileiro, prático e direto
-2. Use especificações exatas da knowledge base
-3. Dê dicas actionáveis que o usuário possa executar já
-4. Se não souber, admita e sugira experimentação
-5. Refira-se à knowledge base quando relevante
-6. Responda como um barista experiente explicando para outro barista."""
-
-        messages = []
-        if history:
-            for m in history[-10:]:  # até 10 mensagens de contexto
-                messages.append({"role": m["role"], "content": m["content"]})
-        messages.append({"role": "user", "content": pergunta})
-
-        message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
-            system=system_prompt,
-            messages=messages
-        )
-        return message.content[0].text
     except FileNotFoundError:
-        return "⚠️ Knowledge base de café não encontrada"
+        kb_text = ""
+
+    system_prompt = (
+        "Você é um Barista Expert — especialista em café com 15+ anos de experiência.\n\n"
+        + (f"Base de conhecimento:\n{kb_text}\n\n" if kb_text else "")
+        + "Instruções:\n"
+        "1. Responda em português brasileiro, prático e direto\n"
+        "2. Dê dicas actionáveis que o usuário possa executar já\n"
+        "3. Responda como um barista experiente explicando para outro barista."
+    )
+
+    try:
+        model = _gemini("gemini-2.0-flash")
+        # Constrói histórico no formato Gemini
+        chat_history = []
+        if history:
+            for m in history[-10:]:
+                role = "user" if m["role"] == "user" else "model"
+                chat_history.append({"role": role, "parts": [m["content"]]})
+        model_with_sys = genai.GenerativeModel(
+            "gemini-2.0-flash",
+            system_instruction=system_prompt
+        )
+        genai.configure(api_key=_get_gemini_key())
+        chat = model_with_sys.start_chat(history=chat_history)
+        resp = chat.send_message(pergunta)
+        return resp.text
     except Exception as e:
         return f"❌ Erro: {str(e)}"
 
@@ -1434,6 +1447,72 @@ class LoginResult:
 _MAX_LOGIN_ATTEMPTS = 5
 _LOGIN_WINDOW_SECS  = 600   # 10 minutos
 
+# ── Google OAuth ────────────────────────────────────────────────────────
+_GOOGLE_AUTH_URL   = "https://accounts.google.com/o/oauth2/v2/auth"
+_GOOGLE_TOKEN_URL  = "https://oauth2.googleapis.com/token"
+_GOOGLE_USERINFO   = "https://www.googleapis.com/oauth2/v2/userinfo"
+_GOOGLE_SCOPES     = "openid email profile"
+
+def _google_redirect_uri() -> str:
+    return os.environ.get("GOOGLE_REDIRECT_URI", "https://mateucoffee.souleandroribeiro.com.br")
+
+def _google_auth_url() -> str:
+    client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+    if not client_id:
+        return ""
+    params = urlencode({
+        "client_id":     client_id,
+        "redirect_uri":  _google_redirect_uri(),
+        "response_type": "code",
+        "scope":         _GOOGLE_SCOPES,
+        "access_type":   "online",
+        "prompt":        "select_account",
+    })
+    return f"{_GOOGLE_AUTH_URL}?{params}"
+
+def _login_google(code: str) -> str:
+    """Troca o authorization code por tokens, busca o email e faz login/cadastro."""
+    client_id     = os.environ.get("GOOGLE_CLIENT_ID", "")
+    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+    if not client_id or not client_secret:
+        return LoginResult.ERROR
+    try:
+        tok = _requests.post(_GOOGLE_TOKEN_URL, data={
+            "code":          code,
+            "client_id":     client_id,
+            "client_secret": client_secret,
+            "redirect_uri":  _google_redirect_uri(),
+            "grant_type":    "authorization_code",
+        }, timeout=10).json()
+        access_token = tok.get("access_token")
+        if not access_token:
+            return LoginResult.ERROR
+
+        info = _requests.get(_GOOGLE_USERINFO,
+                             headers={"Authorization": f"Bearer {access_token}"},
+                             timeout=10).json()
+        email     = (info.get("email") or "").lower().strip()
+        google_id = str(info.get("id") or "")
+        if not email:
+            return LoginResult.ERROR
+
+        existing = _fetch("SELECT id FROM usuarios WHERE LOWER(email)=LOWER(%s) LIMIT 1",
+                          (email,), _v=0)
+        if existing:
+            uid = existing[0]["id"]
+            _run("UPDATE usuarios SET google_id=%s WHERE id=%s", (google_id, uid))
+        else:
+            _run("INSERT INTO usuarios (email, senha_hash, google_id) VALUES (%s, %s, %s)",
+                 (email, "", google_id))
+            uid = _fetch("SELECT id FROM usuarios WHERE LOWER(email)=LOWER(%s) LIMIT 1",
+                         (email,), _v=0)[0]["id"]
+
+        st.session_state['user_id']    = uid
+        st.session_state['user_email'] = email
+        return LoginResult.OK
+    except Exception as e:
+        return LoginResult.ERROR
+
 def _login(email: str, senha: str, remember: bool = False) -> str:
     """Valida credenciais. Retorna LoginResult.{OK, INVALID, ERROR, RATE_LIMITED}."""
     # Rate limiting — primeiro no DB (cross-tab/browser), depois session_state como backup rápido
@@ -1749,6 +1828,7 @@ def _init_db() -> None:
                     THEN ALTER TABLE backups DROP COLUMN usuarios_data; END IF;
                 END $$;
             """)
+            cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS google_id TEXT;")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS login_attempts (
                     id           SERIAL PRIMARY KEY,
@@ -2037,22 +2117,14 @@ _MOEDORES = ["Starseeker e55Pro", "Acoplado Oster", "Comandante",
 # ── IA helpers ─────────────────────────────────────────────────────────
 
 def _get_api_key() -> str:
-    """Lê ANTHROPIC_API_KEY de env (Render) ou secrets (Streamlit Cloud)."""
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not key:
-        try:
-            key = st.secrets.get("ANTHROPIC_API_KEY", "") or ""
-        except Exception:
-            key = ""
-    return key
+    """Lê GOOGLE_API_KEY de env ou secrets."""
+    return _get_gemini_key()
 
 def _comentario_motor_barista(coffee_info: dict, params: dict) -> str:
     """Gera comentário curto sobre o que esperar deste café com estes parâmetros."""
-    api_key = _get_api_key()
-    if not api_key:
+    if not _get_gemini_key():
         return ""
     try:
-        client = anthropic.Anthropic(api_key=api_key)
         prompt = (
             "Você é um barista sênior. Em 2–3 frases curtas e diretas, "
             "descreva o que esperar na xícara com este café e estes parâmetros. "
@@ -2066,20 +2138,14 @@ def _comentario_motor_barista(coffee_info: dict, params: dict) -> str:
             f"{params['time']}s | {params['temp']}°C | {params['pressure']} bar\n\n"
             "Responda em português. Máximo 70 palavras."
         )
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=180,
-            messages=[{"role": "user", "content": prompt}])
-        return resp.content[0].text.strip()
+        resp = _gemini("gemini-2.0-flash").generate_content(prompt)
+        return resp.text.strip()
     except Exception:
         return ""
 
 def _diagnostico_barista_ia(coffee_info: dict, params: dict,
                              real: dict, m_real: dict) -> str:
     """Análise minuciosa como barista sênior — variáveis, resultados e dicas."""
-    api_key = _get_api_key()
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY não configurada no Render.")
-    client = anthropic.Anthropic(api_key=api_key)
     prompt = f"""Você é um barista sênior com 15 anos de experiência em cafés especiais.
 
 Analise esta extração de forma minuciosa como se estivesse treinando um barista.
@@ -2105,18 +2171,15 @@ TDS: {f"{real['tds']}% (medido)" if real['tds'] > 0 else 'não medido'}
 - Status: {m_real.get('status','?')}
 
 Faça uma análise cobrindo:
-1. Como as características deste café (torra, origem, notas) afetam o perfil esperado e como os parâmetros planejados foram adequados para ele
+1. Como as características deste café (torra, origem, notas) afetam o perfil esperado
 2. O que os desvios entre planejado vs real revelam sobre a moagem e a máquina
 3. O que o EY e o fluxo indicam sobre sub/super-extração ou equilíbrio
-4. Dicas práticas e específicas para a PRÓXIMA extração (moagem, temperatura, tempo, pressão, dose)
+4. Dicas práticas e específicas para a PRÓXIMA extração
 
-Seja técnico, direto e acessível. Use linguagem de barista treinando alguém.
-Responda em português brasileiro. Entre 250 e 380 palavras."""
+Seja técnico, direto e acessível. Responda em português brasileiro. Entre 250 e 380 palavras."""
 
-    resp = client.messages.create(
-        model="claude-sonnet-4-6", max_tokens=700,
-        messages=[{"role": "user", "content": prompt}])
-    return resp.content[0].text.strip()
+    resp = _gemini("gemini-1.5-pro").generate_content(prompt)
+    return resp.text.strip()
 
 # ── Brand wordmark ─────────────────────────────────────────────────────
 
@@ -3088,48 +3151,26 @@ function reset(){clearInterval(iv);iv=null;ms=0;laps=[];document.getElementById(
 
 # ── Vision · leitura de embalagem ──────────────────────────────────────
 def _analisar_embalagem(b64_img: str) -> dict:
-    # Prioriza env var (Render/Railway/Heroku) — st.secrets lança FileNotFoundError
-    # quando não há secrets.toml (plataformas sem Streamlit Cloud config).
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        try:
-            api_key = st.secrets.get("ANTHROPIC_API_KEY", "") or ""
-        except Exception:
-            api_key = ""
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY não configurada. Defina a variável de ambiente no painel do Render.")
+    """Analisa foto de embalagem de café usando Gemini Vision."""
+    img_bytes = _b64mod.b64decode(b64_img)
+    pil_img = Image.open(_io_mod.BytesIO(img_bytes))
 
-    client = anthropic.Anthropic(api_key=api_key)
-    resp = client.messages.create(
-        model="claude-opus-4-8",
-        max_tokens=512,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image",
-                 "source": {"type": "base64",
-                            "media_type": "image/jpeg",
-                            "data": b64_img}},
-                {"type": "text",
-                 "text": (
-                    "Analise esta embalagem de café. "
-                    "Retorne APENAS um JSON com os campos:\n"
-                    "  nome: string (marca + nome do café),\n"
-                    "  fazenda: string ou null,\n"
-                    "  regiao: string ou null (país/estado de origem),\n"
-                    "  torra: \"Clara\" | \"Média\" | \"Escura\",\n"
-                    "  tipo: \"Grãos\" | \"Moído\",\n"
-                    "  notas: string (notas de sabor se visíveis, senão null),\n"
-                    "  tamanho_pacote: 250 | 500 | 1000 (em g, ou null).\n"
-                    "Se um campo não for identificável, use null. "
-                    "Responda SOMENTE o JSON, sem markdown."
-                 )}
-            ]
-        }]
+    prompt = (
+        "Analise esta embalagem de café. "
+        "Retorne APENAS um JSON com os campos:\n"
+        "  nome: string (marca + nome do café),\n"
+        "  fazenda: string ou null,\n"
+        "  regiao: string ou null (país/estado de origem),\n"
+        "  torra: \"Clara\" | \"Média\" | \"Escura\",\n"
+        "  tipo: \"Grãos\" | \"Moído\",\n"
+        "  notas: string (notas de sabor se visíveis, senão null),\n"
+        "  tamanho_pacote: 250 | 500 | 1000 (em g, ou null).\n"
+        "Se um campo não for identificável, use null. "
+        "Responda SOMENTE o JSON, sem markdown."
     )
 
-    raw = resp.content[0].text.strip()
-    raw = raw.lstrip("```json").lstrip("```").rstrip("```").strip()
+    resp = _gemini("gemini-2.0-flash").generate_content([pil_img, prompt])
+    raw = resp.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
     return json.loads(raw)
 
 _APP_VERSION = "3.3.3"
@@ -3175,6 +3216,20 @@ def main():
         del st.query_params["about"]
         _about_dialog()
 
+    # ── Google OAuth callback ────────────────────────────────────────────
+    _g_code  = st.query_params.get("code")
+    _g_error = st.query_params.get("error")
+    if _g_code and 'user_id' not in st.session_state:
+        st.query_params.clear()
+        _g_result = _login_google(_g_code)
+        if _g_result == LoginResult.OK:
+            st.toast("Login com Google realizado!", icon="✅")
+            st.rerun()
+        else:
+            st.error("Falha no login com Google. Tente novamente.")
+    elif _g_error:
+        st.query_params.clear()
+
     # ── Autenticação ────────────────────────────────────────────────────
     if 'user_id' not in st.session_state:
         if not _check_remember_token():
@@ -3200,6 +3255,32 @@ def main():
                         '<p class="mc-step-title" style="margin:0.5rem 0 1.25rem">'
                         'Bem-vindo de volta</p>',
                         unsafe_allow_html=True)
+
+                    # Botão Google OAuth (só aparece se GOOGLE_CLIENT_ID configurado)
+                    _g_url = _google_auth_url()
+                    if _g_url:
+                        st.markdown(
+                            f'<a href="{_g_url}" target="_self" style="text-decoration:none">'
+                            f'<div style="display:flex;align-items:center;justify-content:center;'
+                            f'gap:10px;background:#fff;border:1.5px solid #dadce0;border-radius:8px;'
+                            f'padding:10px 16px;cursor:pointer;font-size:15px;font-weight:500;'
+                            f'color:#3c4043;margin-bottom:0.75rem;transition:box-shadow .2s">'
+                            f'<svg width="20" height="20" viewBox="0 0 48 48">'
+                            f'<path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.8 6.1C12.3 13 17.7 9.5 24 9.5z"/>'
+                            f'<path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/>'
+                            f'<path fill="#FBBC05" d="M10.4 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.9-4.6L2.6 13.3A23.9 23.9 0 0 0 0 24c0 3.8.9 7.4 2.6 10.7l7.8-6.1z"/>'
+                            f'<path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.3-7.7 2.3-6.3 0-11.6-4.2-13.6-10l-7.8 6.1C6.6 42.6 14.6 48 24 48z"/>'
+                            f'</svg>'
+                            f'Entrar com Google</div></a>',
+                            unsafe_allow_html=True)
+                        st.markdown(
+                            '<div style="display:flex;align-items:center;gap:8px;margin:0.5rem 0">'
+                            '<hr style="flex:1;border:none;border-top:1px solid var(--mc-border);margin:0">'
+                            '<span style="color:var(--mc-text-3);font-size:12px">ou</span>'
+                            '<hr style="flex:1;border:none;border-top:1px solid var(--mc-border);margin:0">'
+                            '</div>',
+                            unsafe_allow_html=True)
+
                     email = st.text_input("E-mail", key="login_email",
                                           placeholder="seu@email.com")
                     senha = st.text_input("Senha", type="password", key="login_senha",
