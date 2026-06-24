@@ -116,9 +116,10 @@ def _load_logo(max_width: int = 380) -> bool:
         return False
 
 def _show_daily_consumption() -> None:
-    """Widget de consumo: xícaras hoje + semana + custo estimado + total."""
+    """Widget de consumo: xícaras hoje + semana + custo mensal + total."""
     hoje = _today_local()
     user_id = st.session_state.get('user_id')
+    primeiro_dia_mes = hoje.replace(day=1)
 
     stats = _fetch("""
         SELECT
@@ -131,20 +132,21 @@ def _show_daily_consumption() -> None:
         FROM extracoes WHERE user_id = %s
     """, (hoje, hoje, hoje - timedelta(days=6), hoje - timedelta(days=6), user_id), _v=_v())
 
-    cost_info = _fetch("""
+    cost_mes = _fetch("""
         SELECT c.valor_compra, c.tamanho_pacote, e.gramas
         FROM extracoes e JOIN coffees c ON c.id = e.coffee_id
-        WHERE e.data = %s AND e.user_id = %s AND c.valor_compra > 0 AND c.tamanho_pacote > 0
-    """, (hoje, user_id), _v=_v())
+        WHERE e.data >= %s AND e.user_id = %s AND c.valor_compra > 0 AND c.tamanho_pacote > 0
+    """, (primeiro_dia_mes, user_id), _v=_v())
 
     s = stats[0] if stats else {"hoje_n": 0, "hoje_g": 0, "semana_n": 0, "semana_g": 0, "total_n": 0, "total_g": 0}
-    custo_hoje = sum(
+    custo_mes = sum(
         (r["valor_compra"] / r["tamanho_pacote"]) * r["gramas"]
-        for r in cost_info if r["valor_compra"] and r["tamanho_pacote"]
+        for r in cost_mes if r["valor_compra"] and r["tamanho_pacote"]
     )
-    custo_str = f"R$ {custo_hoje:.2f}" if custo_hoje > 0 else "—"
+    custo_str = f"R$ {custo_mes:.2f}" if custo_mes > 0 else "—"
     media_semana = (int(s["semana_n"]) / 7) if s["semana_n"] else 0
     hoje_n = int(s["hoje_n"])
+    mes_nome = hoje.strftime("%b").capitalize()
 
     st.markdown(
         f'<div class="mc-consumo">'
@@ -159,9 +161,9 @@ def _show_daily_consumption() -> None:
         f'    <p class="mc-consumo-sub">{s["semana_g"]:.0f}g · {media_semana:.1f}/dia</p>'
         f'  </div>'
         f'  <div class="mc-consumo-cell">'
-        f'    <p class="mc-consumo-label">Custo Hoje</p>'
+        f'    <p class="mc-consumo-label">Gasto em {mes_nome}</p>'
         f'    <p class="mc-consumo-value" style="font-size:15px">{custo_str}</p>'
-        f'    <p class="mc-consumo-sub">estimado p/ cafés com valor</p>'
+        f'    <p class="mc-consumo-sub">acumulado no mês</p>'
         f'  </div>'
         f'  <div class="mc-consumo-cell">'
         f'    <p class="mc-consumo-label">Total Histórico</p>'
@@ -1702,6 +1704,20 @@ def _init_db() -> None:
                     THEN ALTER TABLE backups DROP COLUMN usuarios_data; END IF;
                 END $$;
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS grinder_profiles (
+                    id         SERIAL PRIMARY KEY,
+                    user_id    INTEGER REFERENCES usuarios(id),
+                    coffee_id  INTEGER REFERENCES coffees(id) ON DELETE CASCADE,
+                    moedor     TEXT NOT NULL DEFAULT '',
+                    torra      TEXT NOT NULL DEFAULT 'Média',
+                    metodo     TEXT NOT NULL DEFAULT 'Espresso',
+                    clicks     INTEGER NOT NULL DEFAULT 0,
+                    updated_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(user_id, coffee_id, moedor, torra, metodo)
+                );
+                CREATE INDEX IF NOT EXISTS idx_grinder_profiles_user ON grinder_profiles(user_id, coffee_id);
+            """)
 
             conn.commit()
             st.session_state["_db_ready"] = True
@@ -1948,7 +1964,8 @@ def _tag(t: str, accent: bool = False) -> str:
     return f'<span class="tag{" tag-accent" if accent else ""}">{t}</span>'
 
 def _irow(k: str, v: str) -> str:
-    return f'<div class="info-row"><span class="info-key">{k}</span><span class="info-val">{v}</span></div>'
+    return (f'<div class="info-row"><span class="info-key">{_html.escape(str(k))}</span>'
+            f'<span class="info-val">{_html.escape(str(v))}</span></div>')
 
 def _ph() -> str:
     return ('<div style="width:150px;height:150px;background:#141414;border:1px solid #2A2A2A;'
@@ -2640,6 +2657,116 @@ class CoffeeEngine:
         if ey > 22:  return (3, 4, 8, 9, 4)
         return (9, 8, 8, 4, 9)
 
+    @staticmethod
+    def estimate_ey(coffee_g: float, water_g: float, time_s: int,
+                    torra: str = "Média", metodo: str = "Espresso") -> float:
+        """Estima EY sem refratômetro (±2-3% de margem). Baseado em modelo SCA/Hoffmann."""
+        if coffee_g <= 0 or water_g <= 0:
+            return 0.0
+        # Retenção por método: espresso retém menos (crema), filtrado retém ~2× pó
+        retencao = {"Espresso": 1.5, "Moka Pot": 1.8}.get(metodo, 2.0)
+        bev = max(water_g - retencao * coffee_g, 0)
+        if bev <= 0:
+            return 0.0
+        # TDS base estimado por torra (estudo SCA)
+        tds_base = {"Clara": 1.35, "Média": 1.45, "Escura": 1.25}.get(torra, 1.45)
+        # Ajuste por método: imersão tende a ter TDS menor
+        tds_base *= {"Espresso": 1.35, "French Press": 0.88,
+                     "Cold Brew": 0.70, "Moka Pot": 1.20}.get(metodo, 1.0)
+        # Ajuste por tempo (cinética de extração, cap em 35s para espresso, 4min para filtrado)
+        ref_time = 30 if metodo == "Espresso" else 180
+        time_factor = min(time_s / ref_time, 1.15)
+        estimated_tds = tds_base * (0.75 + 0.5 * time_factor)
+        ey = (bev * estimated_tds) / coffee_g
+        return round(min(ey, 28.0), 1)
+
+def _dial_in_recomendacao(coffee_id: int, metodo: str, user_id: int) -> dict:
+    """Analisa as últimas 3 extrações e retorna recomendação de ajuste de moagem."""
+    recentes = _fetch("""
+        SELECT gramas, agua_alvo, tempo_extracao, ey, tds, nota_final_stars, clicks_moedor, data
+        FROM extracoes
+        WHERE coffee_id=%s AND metodo=%s AND user_id=%s
+        ORDER BY data DESC, created_at DESC LIMIT 5
+    """, (coffee_id, metodo, user_id), _v=_v())
+
+    if not recentes:
+        return {"status": "sem_dados"}
+
+    # Calcula médias apenas das extrações com dados válidos
+    com_ey  = [r for r in recentes if r.get("ey") and float(r["ey"]) > 0]
+    com_nota = [r for r in recentes if r.get("nota_final_stars") and int(r["nota_final_stars"]) > 0]
+    n = len(recentes)
+
+    avg_tempo  = sum(int(r["tempo_extracao"] or 0) for r in recentes) / n
+    avg_ey     = sum(float(r["ey"]) for r in com_ey) / len(com_ey) if com_ey else 0.0
+    avg_nota   = sum(int(r["nota_final_stars"]) for r in com_nota) / len(com_nota) if com_nota else 0.0
+    last_clicks = int(recentes[0].get("clicks_moedor") or 0)
+
+    recs = []
+
+    # Diagnóstico EY (prioridade máxima)
+    if avg_ey > 0:
+        if avg_ey < 18.0:
+            recs.append({
+                "icone": "⬇️", "cor": "#e74c3c",
+                "titulo": f"Sub-extração (EY médio {avg_ey:.1f}%)",
+                "acao": "Afine a moagem 1–2 clicks" if last_clicks > 0 else "Afine a moagem",
+                "alternativa": f"ou aumente o tempo em 2–3s (atual: {avg_tempo:.0f}s)"
+            })
+        elif avg_ey > 22.0:
+            recs.append({
+                "icone": "⬆️", "cor": "#e67e22",
+                "titulo": f"Super-extração (EY médio {avg_ey:.1f}%)",
+                "acao": "Abra a moagem 1–2 clicks" if last_clicks > 0 else "Abra a moagem",
+                "alternativa": f"ou reduza o tempo em 2–3s (atual: {avg_tempo:.0f}s)"
+            })
+        else:
+            recs.append({
+                "icone": "✅", "cor": "#27ae60",
+                "titulo": f"EY na janela ideal ({avg_ey:.1f}%)",
+                "acao": "Mantenha os parâmetros",
+                "alternativa": "extração equilibrada"
+            })
+
+    # Diagnóstico tempo (só se não há EY para comparar)
+    if not com_ey:
+        if avg_tempo < 22 and metodo == "Espresso":
+            recs.append({
+                "icone": "⚡", "cor": "#e74c3c",
+                "titulo": f"Fluxo rápido (média {avg_tempo:.0f}s)",
+                "acao": "Afine a moagem para aumentar resistência",
+                "alternativa": "meta: 25–32s para espresso"
+            })
+        elif avg_tempo > 38 and metodo == "Espresso":
+            recs.append({
+                "icone": "🐌", "cor": "#e67e22",
+                "titulo": f"Fluxo lento (média {avg_tempo:.0f}s)",
+                "acao": "Abra a moagem para aumentar fluxo",
+                "alternativa": "meta: 25–32s para espresso"
+            })
+
+    # Avaliação sensorial baixa
+    if avg_nota > 0 and avg_nota < 2.5 and not recs:
+        recs.append({
+            "icone": "⭐", "cor": "#8e44ad",
+            "titulo": f"Nota sensorial baixa (média {avg_nota:.1f}/5)",
+            "acao": "Mude UMA variável por vez: moagem → observe → ajuste",
+            "alternativa": "anote o resultado de cada ajuste"
+        })
+
+    ultima_data = recentes[0]["data"].strftime("%d/%m") if recentes[0].get("data") else ""
+    return {
+        "status": "ok",
+        "n_extracoes": n,
+        "avg_ey": avg_ey,
+        "avg_tempo": avg_tempo,
+        "avg_nota": avg_nota,
+        "last_clicks": last_clicks,
+        "ultima_data": ultima_data,
+        "recomendacoes": recs,
+    }
+
+
 def _motor_barista_params(torra: str, tipo: str) -> dict:
     """
     Retorna parâmetros pré-definidos para o Motor Barista baseado em torra e tipo,
@@ -3150,12 +3277,12 @@ def main():
                 st.markdown(f"""
                 <div style="background:var(--mc-orange-soft);border:1px solid var(--mc-orange);
                 border-radius:12px;padding:16px;margin:0">
-                    <p style="margin:0 0 8px;font-weight:700;color:var(--mc-orange);font-size:14px">{bc['nome']}</p>
+                    <p style="margin:0 0 8px;font-weight:700;color:var(--mc-orange);font-size:14px">{_html.escape(bc['nome'])}</p>
                     <p style="margin:0;color:var(--mc-text-2);font-size:12px">
-                    <strong>Torra:</strong> {bc['torra']} | <strong>Intensidade:</strong> {bc['intensidade']}/12
+                    <strong>Torra:</strong> {_html.escape(bc['torra'])} | <strong>Intensidade:</strong> {bc['intensidade']}/12
                     </p>
-                    <p style="margin:6px 0 0;color:var(--mc-text-3);font-size:12px">{bc['regiao'] or '—'}</p>
-                    <p style="margin:8px 0 0;color:var(--mc-text);font-size:11px">{bc['notas'] or '(sem notas)'}</p>
+                    <p style="margin:6px 0 0;color:var(--mc-text-3);font-size:12px">{_html.escape(bc['regiao'] or '—')}</p>
+                    <p style="margin:8px 0 0;color:var(--mc-text);font-size:11px">{_html.escape(bc['notas'] or '(sem notas)')}</p>
                     <p style="margin:8px 0 0;font-size:18px;color:var(--mc-orange)">{'⭐' * int(bc['classificacao'])}</p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -3466,10 +3593,10 @@ def main():
                         f'border-left:3px solid var(--mc-orange);border-radius:0 10px 10px 0;'
                         f'padding:10px 14px;margin:4px 0 8px;font-size:13px;line-height:1.7;color:var(--mc-text)">'
                         f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange);'
-                        f'text-transform:uppercase;letter-spacing:.1em">🔁 Última receita ({metodo})</span><br>'
+                        f'text-transform:uppercase;letter-spacing:.1em">🔁 Última receita ({_html.escape(metodo)})</span><br>'
                         f"<b>{float(lx['gramas'] or 0):.1f}g → {float(lx['agua_alvo'] or 0):.0f}g</b> · "
                         f"{int(lx['tempo_extracao'] or 0)}s · "
-                        f"{int(lx['clicks_moedor'] or 0)} clicks ({lx['moedor'] or '—'}) · "
+                        f"{int(lx['clicks_moedor'] or 0)} clicks ({_html.escape(lx['moedor'] or '—')}) · "
                         f"{float(lx['temp_real'] or 0):.0f}°C"
                         + (f" · EY {_ley:.1f}%" if _ley > 0 else "")
                         + (f" · {_stars(_ln)}" if _ln else "")
@@ -3498,15 +3625,17 @@ def main():
                     '<p class="section-label" style="margin-bottom:1rem">Setup da Sessão</p>',
                     unsafe_allow_html=True)
     
-                # Grinder persistence: invalida cache junto com _v() para refletir updates
+                # Grinder persistence: primeiro busca perfil específico (café+torra+método),
+                # senão usa o último global gravado em usuarios
                 last_grinder, last_clicks = "", 0
+                _cafe_torra = (cafe_info[0]["torra"] if cafe_info else "Média")
                 if user_id:
                     ginfo = _fetch("SELECT last_grinder, last_clicks FROM usuarios WHERE id=%s",
                                   (user_id,), _v=_v())
                     if ginfo and ginfo[0]['last_grinder']:
                         last_grinder = ginfo[0]['last_grinder']
                         last_clicks  = ginfo[0]['last_clicks'] or 0
-    
+
                 sc1, sc2 = st.columns([2, 1], gap="medium")
                 with sc1:
                     # Moedor: selectbox com opções pré-definidas + Outros
@@ -3522,13 +3651,57 @@ def main():
                                                key="inp_moedor_custom")
                     else:
                         moedor = _moedor_sel
+
+                # Busca clicks do perfil específico (café + moedor + torra + método)
+                _profile_clicks = last_clicks
+                if user_id and moedor and cid:
+                    _pf = _fetch("""
+                        SELECT clicks FROM grinder_profiles
+                        WHERE user_id=%s AND coffee_id=%s AND moedor=%s AND torra=%s AND metodo=%s
+                        LIMIT 1
+                    """, (user_id, cid, moedor, _cafe_torra, metodo), _v=_v())
+                    if _pf:
+                        _profile_clicks = int(_pf[0]["clicks"])
+                        st.caption(f"💾 Clicks do perfil: **{_profile_clicks}** (café+moedor+torra+método)")
+
                 with sc2:
-                    clicks = st.number_input("Clicks", 0, 200, last_clicks, 1,
-                                             help="Pré-preenchido com o último valor",
+                    clicks = st.number_input("Clicks", 0, 200, _profile_clicks, 1,
+                                             help="Pré-preenchido pelo perfil deste café+moedor",
                                              key="inp_clicks")
                 st.caption("🕐 Data e hora são registradas automaticamente no momento do registro.")
                 st.markdown('</div>', unsafe_allow_html=True)
     
+                # ═════════════════════════════════════════════════════════════
+                # DIAL-IN AUTOMÁTICO — recomendação baseada no histórico
+                # ═════════════════════════════════════════════════════════════
+                _dialin = _dial_in_recomendacao(cid, metodo, user_id) if user_id else {"status": "sem_dados"}
+                if _dialin["status"] == "ok":
+                    _di_n     = _dialin["n_extracoes"]
+                    _di_data  = _dialin.get("ultima_data", "")
+                    _di_recs  = _dialin.get("recomendacoes", [])
+                    _di_cards = ""
+                    for _di_r in _di_recs:
+                        _di_cards += (
+                            f'<div style="display:flex;align-items:flex-start;gap:10px;'
+                            f'background:var(--mc-surface-2);border-left:3px solid {_di_r["cor"]};'
+                            f'border-radius:0 8px 8px 0;padding:10px 14px;margin:4px 0;'
+                            f'font-size:13px;color:var(--mc-text)">'
+                            f'<span style="font-size:20px;line-height:1">{_di_r["icone"]}</span>'
+                            f'<div><b>{_di_r["titulo"]}</b><br>'
+                            f'<span style="color:{_di_r["cor"]};font-weight:600">{_di_r["acao"]}</span>'
+                            f'<span style="color:var(--mc-text-3)"> — {_di_r["alternativa"]}</span></div>'
+                            f'</div>'
+                        )
+                    st.markdown(
+                        f'<div style="background:var(--mc-surface);border:1px solid var(--mc-border);'
+                        f'border-radius:12px;padding:14px 18px;margin:0 0 1rem">'
+                        f'<p style="margin:0 0 8px;font-size:11px;font-weight:700;'
+                        f'color:var(--mc-orange);text-transform:uppercase;letter-spacing:.1em">'
+                        f'📊 Dial-in Automático — {_di_n} extraç{"ão" if _di_n==1 else "ões"} '
+                        f'({metodo}{f", última: {_di_data}" if _di_data else ""})</p>'
+                        f'{_di_cards}</div>',
+                        unsafe_allow_html=True)
+
                 # ═════════════════════════════════════════════════════════════
                 # 1) MOTOR BARISTA
                 # ═════════════════════════════════════════════════════════════
@@ -3626,6 +3799,12 @@ def main():
                 with col_radar_real:
                     m_real  = CoffeeEngine.calc(gramas, agua, tds if tds > 0 else None, tempo)
                     ey_real = m_real.get("ey", 0.0)
+                    # EY estimado quando não há TDS (sem refratômetro)
+                    _ey_estimado = 0.0
+                    if tds == 0 and gramas > 0 and agua > 0:
+                        _cafe_torra_real = (cafe_info[0]["torra"] if cafe_info else "Média")
+                        _ey_estimado = CoffeeEngine.estimate_ey(gramas, agua, tempo,
+                                                                 _cafe_torra_real, metodo)
                     st.markdown(
                         '<p style="font-size:11px;font-weight:700;color:var(--mc-orange);'
                         'letter-spacing:0.12em;text-transform:uppercase;margin-bottom:0.25rem">'
@@ -3705,10 +3884,17 @@ def main():
                         else:
                             diagnosticos.append(
                                 f"✅ <b>EY dentro da janela de ouro ({ey_real:.1f}%)</b> — extração equilibrada.")
-    
-                    if ey_real > 0:
                         diagnosticos.append(
                             f"🧪 <b>Extraction Yield: {ey_real:.2f}%</b> — {m_real.get('status','')}.")
+                    elif _ey_estimado > 0:
+                        # Sem refratômetro — mostra estimativa com aviso de margem
+                        _ey_est_status = ("sub-extração estimada" if _ey_estimado < CoffeeEngine.EY_LOW
+                                          else "super-extração estimada" if _ey_estimado > CoffeeEngine.EY_HIGH
+                                          else "na janela ideal estimada")
+                        diagnosticos.append(
+                            f"🔬 <b>EY estimado (sem refratômetro): ~{_ey_estimado:.1f}%</b> — "
+                            f"{_ey_est_status}. <span style='color:var(--mc-text-3)'>"
+                            f"Margem ±2-3%. Para precisão real, use um refratômetro.</span>")
     
                     if not diagnosticos:
                         diagnosticos = ["✅ <b>Extração alinhada com o plano</b> — "
@@ -3777,6 +3963,13 @@ def main():
                     if user_id and moedor:
                         _run("UPDATE usuarios SET last_grinder=%s, last_clicks=%s WHERE id=%s",
                              (moedor, clicks, user_id))
+                        # Salva perfil específico: este café + moedor + torra + método
+                        _run("""
+                            INSERT INTO grinder_profiles (user_id, coffee_id, moedor, torra, metodo, clicks, updated_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                            ON CONFLICT (user_id, coffee_id, moedor, torra, metodo)
+                            DO UPDATE SET clicks=EXCLUDED.clicks, updated_at=NOW()
+                        """, (user_id, cid, moedor, _cafe_torra, metodo, clicks))
                     # Limpa hora para próxima extração usar hora atual
                     st.session_state.pop("hora_ext", None)
                     st.toast("✓ Extração registrada com sucesso", icon="☕")
@@ -3873,7 +4066,7 @@ def main():
                         if c.get("data_compra"):
                             info += _irow("Data compra", c["data_compra"].strftime('%d/%m/%Y'))
                         note = (f'<div style="margin-top:10px;font-size:13px;color:#B8B0A8;'
-                                f'font-style:italic;line-height:1.5;">{c["notas"]}</div>' if c["notas"] else "")
+                                f'font-style:italic;line-height:1.5;">{_html.escape(c["notas"])}</div>' if c["notas"] else "")
                         st.markdown(f'<div>{tags}</div><div style="margin-top:12px">{info}</div>{note}',
                                     unsafe_allow_html=True)
                     with cc:
@@ -4269,7 +4462,7 @@ def main():
                                 (_irow("Moedor", f"{r['moedor']}  ·  {r['clicks_moedor']} clicks")
                                  if r["moedor"] else ""))
                         note = (f'<div style="margin-top:10px;font-size:13px;color:#B8B0A8;'
-                                f'font-style:italic;line-height:1.5;">{r["notas"]}</div>' if r["notas"] else "")
+                                f'font-style:italic;line-height:1.5;">{_html.escape(r["notas"])}</div>' if r["notas"] else "")
                         st.markdown(f'<div>{tags}</div><div style="margin-top:12px">{info}</div>{note}',
                                     unsafe_allow_html=True)
                     with rc:
