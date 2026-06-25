@@ -1343,7 +1343,15 @@ st.markdown("""
 # ── Database layer ─────────────────────────────────────────────────────
 @st.cache_resource
 def _get_pool() -> pg_pool.ThreadedConnectionPool:
-    kwargs = dict(connect_timeout=10, sslmode="require")
+    # keepalives prevent Neon from closing idle SSL connections
+    kwargs = dict(
+        connect_timeout=10,
+        sslmode="require",
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=5,
+    )
     db_url = os.environ.get("DATABASE_URL")
     if db_url:
         return pg_pool.ThreadedConnectionPool(1, 10, db_url, **kwargs)
@@ -1366,14 +1374,29 @@ def _get_pool() -> pg_pool.ThreadedConnectionPool:
 
 @contextlib.contextmanager
 def _db():
-    """Pega uma conexão do pool e devolve ao finalizar."""
+    """Pega uma conexão do pool; revalida e recria a pool se a conexão estiver morta (Neon idle timeout)."""
     pool = _get_pool()
     conn = pool.getconn()
     try:
+        # Verifica se a conexão SSL ainda está viva
+        try:
+            conn.cursor().execute("SELECT 1")
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            # Conexão morta — descarta, limpa cache da pool e abre uma nova
+            try:
+                pool.putconn(conn, close=True)
+            except Exception:
+                pass
+            _get_pool.clear()
+            pool = _get_pool()
+            conn = pool.getconn()
         yield conn
     finally:
         try:
-            pool.putconn(conn)
+            if conn.closed:
+                pool.putconn(conn, close=True)
+            else:
+                pool.putconn(conn)
         except Exception:
             pass
 
