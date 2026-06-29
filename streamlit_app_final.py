@@ -1615,67 +1615,56 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
     return LoginResult.OK
 
 def _check_remember_token() -> bool:
-    """Restaura sessão se houver token válido em cookie OU session_state.
-
-    Fluxo:
-    1. Se user_id já está na sessão → logado, retorna True imediatamente
-    2. Tenta ler cookie do browser (persistente entre visitas)
-    3. Fallback para remember_token em session_state
-    4. Valida token no DB
-    5. Permite até 3 tentativas sem token antes de desistir (cookie é async)
-    """
-    # Já logado nesta sessão — não precisa checar nada
+    """Restaura sessão a partir de query_param mc_token, cookie ou session_state."""
     if st.session_state.get('user_id'):
         return True
-
-    # Já confirmamos que não há token válido nesta sessão
     if st.session_state.get('_token_checked'):
         return False
 
-    # 1) Cookie persistente do browser (síncrono via st.context — sem reruns)
-    token = _read_cookie() or st.session_state.get('remember_token')
+    # Prioridade: query_param (confiável entre reruns) > cookie HTTP > session_state
+    token = (st.query_params.get("mc_token") or
+             _read_cookie() or
+             st.session_state.get('remember_token'))
+
+    st.session_state['_token_checked'] = True
+
     if not token:
-        st.session_state['_token_checked'] = True
         return False
 
-    # Temos um token — valida no banco
     try:
         result = _fetch(
             "SELECT id, email, remember_token_expires FROM usuarios WHERE remember_token=%s",
             (token,), _v=0)
         if not result:
-            st.session_state['_token_checked'] = True
+            if "mc_token" in st.query_params:
+                del st.query_params["mc_token"]
             return False
         usuario = result[0]
         expiry = usuario['remember_token_expires']
         if expiry and expiry < _now_local():
-            st.session_state['_token_checked'] = True
+            if "mc_token" in st.query_params:
+                del st.query_params["mc_token"]
             return False
-        # Login restaurado com sucesso
-        st.session_state['user_id']       = usuario['id']
-        st.session_state['user_email']    = usuario['email']
+        st.session_state['user_id']        = usuario['id']
+        st.session_state['user_email']     = usuario['email']
         st.session_state['remember_token'] = token
-        st.session_state['_token_checked'] = True
         return True
     except Exception:
-        st.session_state['_token_checked'] = True
         return False
 
 def _logout() -> None:
-    """Limpa sessão, token no DB e cookie no browser."""
+    """Limpa sessão, token no DB, cookie e query param."""
     user_id = st.session_state.get('user_id')
     if user_id:
         try:
             _run("UPDATE usuarios SET remember_token=NULL, remember_token_expires=NULL WHERE id=%s", (user_id,))
         except Exception:
             pass
-    # Cookie é apagado no próximo run (página de login), onde o JS executa
     st.session_state['_clear_cookie'] = True
-    st.session_state.pop('user_id', None)
-    st.session_state.pop('user_email', None)
-    st.session_state.pop('remember_token', None)
-    st.session_state.pop('_token_checked', None)
-    st.session_state.pop('_cookie_attempts', None)
+    if "mc_token" in st.query_params:
+        del st.query_params["mc_token"]
+    for k in ['user_id', 'user_email', 'remember_token', '_token_checked', '_cookie_attempts']:
+        st.session_state.pop(k, None)
 
 def _init_db() -> None:
     if st.session_state.get("_db_ready"):
@@ -3246,6 +3235,18 @@ def main():
         st.query_params.clear()
         _g_result = _login_google(_g_code)
         if _g_result == LoginResult.OK:
+            uid = st.session_state.get('user_id')
+            if uid:
+                try:
+                    _tok = secrets.token_urlsafe(32)
+                    _exp = _now_local() + timedelta(days=30)
+                    _run("UPDATE usuarios SET remember_token=%s, remember_token_expires=%s WHERE id=%s",
+                         (_tok, _exp, uid))
+                    st.session_state['remember_token'] = _tok
+                    st.session_state['_pending_cookie'] = (_tok, _exp)
+                    st.query_params["mc_token"] = _tok
+                except Exception:
+                    pass
             st.toast("Login com Google realizado!", icon="✅")
             st.rerun()
         else:
@@ -3315,6 +3316,8 @@ def main():
                                  use_container_width=True, key="btn_login"):
                         outcome = _login(email, senha, remember=remember_me)
                         if outcome == LoginResult.OK:
+                            if remember_me and st.session_state.get('remember_token'):
+                                st.query_params["mc_token"] = st.session_state['remember_token']
                             st.toast("Login realizado", icon="✅")
                             st.rerun()
                         elif outcome == LoginResult.RATE_LIMITED:
