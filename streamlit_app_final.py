@@ -59,24 +59,33 @@ def ask_barista_expert(pergunta: str, history: list | None = None) -> str:
         "3. Responda como um barista experiente explicando para outro barista."
     )
 
-    try:
-        model = _gemini("gemini-2.0-flash")
-        # Constrói histórico no formato Gemini
-        chat_history = []
-        if history:
-            for m in history[-10:]:
-                role = "user" if m["role"] == "user" else "model"
-                chat_history.append({"role": role, "parts": [m["content"]]})
-        model_with_sys = genai.GenerativeModel(
-            "gemini-2.0-flash",
-            system_instruction=system_prompt
-        )
-        genai.configure(api_key=_get_gemini_key())
-        chat = model_with_sys.start_chat(history=chat_history)
-        resp = chat.send_message(pergunta)
-        return resp.text
-    except Exception as e:
-        return f"❌ Erro: {str(e)}"
+    chat_history = []
+    if history:
+        for m in history[-10:]:
+            role = "user" if m["role"] == "user" else "model"
+            chat_history.append({"role": role, "parts": [m["content"]]})
+
+    genai.configure(api_key=_get_gemini_key())
+
+    for _model_name in ("gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"):
+        try:
+            model_with_sys = genai.GenerativeModel(
+                _model_name,
+                system_instruction=system_prompt
+            )
+            chat = model_with_sys.start_chat(history=chat_history)
+            resp = chat.send_message(pergunta)
+            return resp.text
+        except Exception as e:
+            _err = str(e)
+            if "429" in _err or "quota" in _err.lower() or "exhausted" in _err.lower():
+                continue  # tenta próximo modelo
+            return f"❌ Erro: {_err}"
+
+    return (
+        "⚠️ Cota da API Gemini esgotada em todos os modelos disponíveis. "
+        "Ative o faturamento em aistudio.google.com para continuar usando o Barista Expert."
+    )
 
 # ── Page config ────────────────────────────────────────────────────────
 st.set_page_config(
@@ -2179,8 +2188,16 @@ def _comentario_motor_barista(coffee_info: dict, params: dict) -> str:
             f"{params['time']}s | {params['temp']}°C | {params['pressure']} bar\n\n"
             "Responda em português. Máximo 70 palavras."
         )
-        resp = _gemini("gemini-2.0-flash").generate_content(prompt)
-        return resp.text.strip()
+        genai.configure(api_key=_get_gemini_key())
+        for _mn in ("gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"):
+            try:
+                resp = genai.GenerativeModel(_mn).generate_content(prompt)
+                return resp.text.strip()
+            except Exception as _e:
+                if "429" in str(_e) or "quota" in str(_e).lower():
+                    continue
+                break
+        return ""
     except Exception:
         return ""
 
@@ -3212,11 +3229,19 @@ def _analisar_embalagem(b64_img: str) -> dict:
         "Responda SOMENTE o JSON, sem markdown."
     )
 
-    resp = _gemini("gemini-2.0-flash").generate_content([pil_img, prompt])
-    raw = resp.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
-    return json.loads(raw)
+    genai.configure(api_key=_get_gemini_key())
+    for _mn in ("gemini-2.0-flash", "gemini-1.5-flash"):
+        try:
+            resp = genai.GenerativeModel(_mn).generate_content([pil_img, prompt])
+            raw = resp.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+            return json.loads(raw)
+        except Exception as _e:
+            if "429" in str(_e) or "quota" in str(_e).lower():
+                continue
+            raise
+    raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.5.1"
+_APP_VERSION = "3.5.2"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
