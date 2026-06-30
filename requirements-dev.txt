@@ -1,0 +1,4 @@
+# Dependências de desenvolvimento/testes (não vão para produção)
+# Uso:  pip install -r requirements-dev.txt  &&  pytest -q
+-r requirements.txt
+pytest>=8.0

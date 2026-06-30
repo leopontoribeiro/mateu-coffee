@@ -25,6 +25,9 @@ from urllib.parse import urlencode
 from PIL import Image
 import io as _io_mod
 import base64 as _b64mod
+import mc_core  # lógica pura (auth, helpers) + observabilidade
+
+_log = mc_core.get_logger()  # logs → stdout (capturado pelo Render)
 
 # ── Gemini helper ──────────────────────────────────────────────────────
 def _get_gemini_key() -> str:
@@ -82,10 +85,13 @@ def ask_barista_expert(pergunta: str, history: list | None = None) -> str:
         except Exception as e:
             _err = str(e)
             if "429" in _err or "quota" in _err.lower() or "exhausted" in _err.lower():
+                _log.warning("Gemini quota/429 em %s: %s", _model_name, _err[:160])
                 continue  # tenta próximo modelo
+            _log.error("Gemini erro em %s: %s", _model_name, _err[:200])
             return ("No momento o assistente atingiu um erro temporário. "
                     "Tente novamente em alguns instantes.")
 
+    _log.error("Gemini: cota esgotada em todos os modelos")
     return (
         "⚠️ Cota da API Gemini esgotada em todos os modelos disponíveis. "
         "Ative o faturamento em aistudio.google.com para continuar usando o Barista Expert."
@@ -492,6 +498,56 @@ st.markdown("""
     [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
         box-shadow: 0 0 0 4px var(--mc-orange-glow) !important;
     }
+
+    /* ═══ REFINO DE DENSIDADE — respiro e ritmo vertical ═══ */
+    /* Mais ar entre blocos verticais (reduz competição visual) */
+    [data-testid="stVerticalBlock"] { gap: 0.85rem !important; }
+    /* Largura de leitura confortável em parágrafos longos */
+    .stMarkdown p { max-width: 68ch; }
+    /* Colunas com gutter generoso */
+    [data-testid="stHorizontalBlock"] { gap: 1.1rem !important; }
+    /* Conteúdo do expander com respiro interno */
+    [data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+        padding: 0.35rem 0.25rem 0.5rem !important;
+    }
+
+    /* ═══ EMPTY STATE — vira convite (card pontilhado + CTA) ═══ */
+    .mc-empty {
+        background: var(--mc-surface) !important;
+        border: 1px dashed var(--mc-border-strong);
+        border-radius: 16px;
+        padding: 2.5rem 1.5rem !important;
+        animation: mcFadeUp .4s ease both;
+    }
+    .mc-empty-hint {
+        display: inline-block;
+        margin-top: 1rem;
+        padding: 8px 16px;
+        border: 1px solid var(--mc-orange);
+        border-radius: 24px;
+        color: var(--mc-orange) !important;
+        font-weight: 600;
+        font-size: 13px;
+    }
+
+    /* ═══ ONBOARDING — card de boas-vindas (1ª sessão) ═══ */
+    .mc-onboard {
+        background: linear-gradient(135deg, var(--mc-surface-3), var(--mc-surface));
+        border: 1px solid var(--mc-border-strong);
+        border-left: 3px solid var(--mc-orange);
+        border-radius: 14px;
+        padding: 1.25rem 1.5rem;
+        margin: 0 0 1.5rem;
+        animation: mcFadeUp .45s ease both;
+    }
+    .mc-onboard h4 {
+        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-size: 20px !important; color: var(--mc-text) !important;
+        margin: 0 0 .5rem !important;
+    }
+    .mc-onboard ul { margin: .25rem 0 0; padding-left: 1.1rem; }
+    .mc-onboard li { color: var(--mc-text-2) !important; font-size: 13.5px; margin: .25rem 0; }
+    .mc-onboard b { color: var(--mc-orange) !important; }
 
     .stApp { background-color: var(--mc-bg); color: var(--mc-text); }
     .block-container {
@@ -1595,6 +1651,7 @@ def _db():
             conn.cursor().execute("SELECT 1")
         except (psycopg2.OperationalError, psycopg2.InterfaceError):
             # Conexão morta — descarta, limpa cache da pool e abre uma nova
+            _log.warning("DB: conexão morta (idle timeout Neon) — recriando pool")
             try:
                 pool.putconn(conn, close=True)
             except Exception:
@@ -1666,24 +1723,9 @@ def _read_cookie() -> Optional[str]:
     except Exception:
         return None
 
-def _hash_senha(senha: str) -> str:
-    """Hash bcrypt — lento por design, resistente a brute-force."""
-    return bcrypt.hashpw(senha.encode(), bcrypt.gensalt()).decode()
-
-def _verify_senha(senha: str, hash_stored: str) -> bool:
-    """Verifica senha. Suporta bcrypt (novo) e SHA-256 legado (migração)."""
-    # Bcrypt começa com $2b$ ou $2a$
-    if hash_stored.startswith("$2"):
-        try:
-            return bcrypt.checkpw(senha.encode(), hash_stored.encode())
-        except Exception:
-            return False
-    # Legado SHA-256: formato "{salt}${hex}"
-    parts = hash_stored.split("$")
-    if len(parts) == 2:
-        salt, h = parts
-        return hashlib.sha256(f"{salt}{senha}".encode()).hexdigest() == h
-    return False
+# Auth delega para mc_core (módulo puro, coberto por testes)
+_hash_senha = mc_core.hash_senha
+_verify_senha = mc_core.verify_senha
 
 class LoginResult:
     OK = "ok"
@@ -3447,7 +3489,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.10.4"
+_APP_VERSION = "3.11.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3738,6 +3780,21 @@ def main():
     _auto_backup_check(st.session_state['user_id'])
 
     st.markdown("---")
+
+    # ── Onboarding (1ª sessão) — apresenta os diferenciais escondidos ──
+    if not st.session_state.get("_onboard_dismiss"):
+        st.markdown(
+            '<div class="mc-onboard">'
+            '<h4>Bem-vindo ao Mateu Coffee</h4>'
+            '<ul>'
+            '<li>Comece em <b>Novo Café</b> — a foto da embalagem vira ficha por IA.</li>'
+            '<li>Em <b>Nova Extração</b>, o <b>dial-in automático</b> sugere clicks e dose pelo seu histórico.</li>'
+            '<li>O <b>Barista Expert</b> tira dúvidas de técnica, defeitos de extração e receitas.</li>'
+            '</ul></div>', unsafe_allow_html=True)
+        if st.button("Entendi, começar", key="_onboard_btn"):
+            st.session_state["_onboard_dismiss"] = True
+            _log.info("Onboarding dispensado (user=%s)", st.session_state.get('user_id'))
+            st.rerun()
 
     tab1, tab2, tab3, tab4, tab_barista, tab5, tab6, tab7 = st.tabs([
         "Novo Café", "Nova Extração", "Meus Cafés", "Histórico",
