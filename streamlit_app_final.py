@@ -318,6 +318,16 @@ st.markdown("""
     .mc-serif, .mc-serif * {
         font-family: 'DM Serif Display', 'Cormorant Garamond', Georgia, serif !important;
     }
+    .stMarkdown p.mc-login-tagline, .mc-login-tagline {
+        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-style: italic;
+        font-size: 22px !important;
+        line-height: 1.6;
+        text-align: center;
+        color: var(--mc-text-2) !important;
+        max-width: 400px;
+        margin: 0.75rem auto 0;
+    }
 
     .stApp { background-color: var(--mc-bg); color: var(--mc-text); }
     .block-container {
@@ -3268,7 +3278,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.6.2"
+_APP_VERSION = "3.6.3"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3398,9 +3408,7 @@ def main():
                 st.markdown('<div class="mc-login-hero">', unsafe_allow_html=True)
                 _load_logo(max_width=560)
                 st.markdown(
-                    '<p style="text-align:center;font-family:\'DM Serif Display\',Georgia,'
-                    'serif!important;font-style:italic;font-size:22px;line-height:1.6;'
-                    'color:var(--mc-text-2);max-width:400px;margin:0.75rem auto 0">'
+                    '<p class="mc-login-tagline">'
                     'Para baristas, entusiastas e apaixonados por café. '
                     'Para mim e para você também.</p>'
                     '</div>',
