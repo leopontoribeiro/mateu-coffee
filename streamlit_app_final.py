@@ -240,7 +240,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("""
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=DM+Serif+Display:ital@0;1&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
     /* ═══════════════════════════════════════════════════════════════
        MATEU COFFEE — DESIGN TOKENS
@@ -248,20 +248,20 @@ st.markdown("""
        sobre preto puro, com "COFFEE" em cinza quente.
        ═══════════════════════════════════════════════════════════════ */
     :root {
-        --mc-bg: #0A0A0A;
-        --mc-surface: #141414;
-        --mc-surface-2: #1C1C1C;
-        --mc-surface-3: #242424;
-        --mc-border: #2A2A2A;
-        --mc-border-strong: #3A3A3A;
+        --mc-bg: #0D0B09;
+        --mc-surface: #161210;
+        --mc-surface-2: #1E1A16;
+        --mc-surface-3: #27211B;
+        --mc-border: #2E2820;
+        --mc-border-strong: #3E3630;
 
-        --mc-orange: #E8722E;
-        --mc-orange-hover: #F08842;
-        --mc-orange-soft: #3A1E10;
-        --mc-orange-glow: rgba(232, 114, 46, 0.18);
+        --mc-orange: #D97732;
+        --mc-orange-hover: #E8883A;
+        --mc-orange-soft: #3D1F0D;
+        --mc-orange-glow: rgba(217, 119, 50, 0.16);
 
-        --mc-text: #F5EDE8;
-        --mc-text-2: #B8B0A8;
+        --mc-text: #F2EBE0;
+        --mc-text-2: #B4ACA4;
         --mc-text-3: #8A8278;
         --mc-text-muted: #6C6660;
 
@@ -303,6 +303,9 @@ st.markdown("""
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
     }
+    .mc-serif, .mc-serif * {
+        font-family: 'DM Serif Display', 'Cormorant Garamond', Georgia, serif !important;
+    }
 
     .stApp { background-color: var(--mc-bg); color: var(--mc-text); }
     .block-container {
@@ -318,17 +321,19 @@ st.markdown("""
          #6C6660 = 3.3:1  (AA texto grande apenas)
        ──────────────────────────────────────────────────────────── */
     h1 {
+        font-family: 'DM Serif Display', Georgia, serif !important;
         font-size: 28px !important;
-        font-weight: 800 !important;
+        font-weight: 400 !important;
         color: var(--mc-text) !important;
-        letter-spacing: -0.025em !important;
+        letter-spacing: -0.01em !important;
         margin: 0 0 1rem 0 !important;
     }
     h2 {
+        font-family: 'DM Serif Display', Georgia, serif !important;
         font-size: 22px !important;
-        font-weight: 700 !important;
+        font-weight: 400 !important;
         color: var(--mc-text) !important;
-        letter-spacing: -0.02em !important;
+        letter-spacing: -0.01em !important;
         margin: 1.5rem 0 0.75rem 0 !important;
     }
     h3 {
@@ -360,7 +365,7 @@ st.markdown("""
         align-items: center;
         gap: 16px;
         padding: 0 0 1.5rem 0;
-        border-bottom: 1px solid var(--mc-border);
+        border-bottom: 0.5px solid var(--mc-border);
         margin-bottom: 2rem;
     }
     .app-header-title {
@@ -379,55 +384,69 @@ st.markdown("""
         font-weight: 600;
     }
 
-    /* ─── Tabs (navegação principal) ────────────────────────────── */
+    /* ─── Tabs (navegação principal) — underline minimalista ────── */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 4px;
-        background: var(--mc-surface);
-        border-radius: 12px;
-        padding: 6px;
-        border: 1px solid var(--mc-border);
-        width: fit-content;
-        margin-bottom: 0.5rem;
+        gap: 0;
+        background: transparent;
+        border-radius: 0;
+        padding: 0;
+        border: none;
+        border-bottom: 0.5px solid var(--mc-border);
+        width: 100%;
+        margin-bottom: 1.5rem;
     }
     .stTabs [data-baseweb="tab"] {
         background: transparent;
-        border-radius: 8px;
-        color: var(--mc-text-2);
+        border-radius: 0;
+        color: var(--mc-text-3);
         font-size: 13px;
-        font-weight: 600;
-        padding: 9px 22px;
+        font-weight: 500;
+        padding: 10px 18px;
         border: none;
-        transition: all 0.18s ease;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -0.5px;
+        transition: color 0.15s ease, border-color 0.15s ease;
         letter-spacing: 0;
     }
     .stTabs [data-baseweb="tab"]:hover {
-        background: var(--mc-surface-2);
+        background: transparent;
         color: var(--mc-text);
+        border-bottom-color: var(--mc-border-strong);
     }
     .stTabs [aria-selected="true"] {
-        background: var(--mc-orange) !important;
-        color: #0A0A0A !important;
-        font-weight: 700 !important;
-        box-shadow: 0 4px 12px var(--mc-orange-glow) !important;
+        background: transparent !important;
+        color: var(--mc-orange) !important;
+        font-weight: 600 !important;
+        border-bottom: 2px solid var(--mc-orange) !important;
+        box-shadow: none !important;
     }
     .stTabs [data-baseweb="tab-border"] { display: none !important; }
-    .stTabs [data-baseweb="tab-panel"]  { padding-top: 2rem !important; }
+    .stTabs [data-baseweb="tab-panel"]  { padding-top: 1.5rem !important; }
 
     /* ─── Section labels (eyebrow) ──────────────────────────────── */
     .section-label {
         font-size: 11px;
-        font-weight: 700;
+        font-weight: 600;
         color: var(--mc-orange);
-        letter-spacing: 0.16em;
+        letter-spacing: 0.14em;
         text-transform: uppercase;
         margin: 0 0 1.25rem 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .section-label::before {
+        content: '';
         display: inline-block;
-        padding-bottom: 6px;
-        border-bottom: 2px solid var(--mc-orange);
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--mc-orange);
+        flex-shrink: 0;
     }
     .section-divider {
         border: none;
-        border-top: 1px solid var(--mc-border);
+        border-top: 0.5px solid var(--mc-border);
         margin: 2.25rem 0;
     }
 
@@ -435,7 +454,7 @@ st.markdown("""
     .tag {
         display: inline-block;
         background: var(--mc-surface-2);
-        border: 1px solid var(--mc-border);
+        border: 0.5px solid var(--mc-border);
         border-radius: 6px;
         font-size: 11px;
         font-weight: 600;
@@ -475,7 +494,7 @@ st.markdown("""
     /* ─── Métricas (cards de KPI) ──────────────────────────────── */
     div[data-testid="stMetric"] {
         background: var(--mc-surface) !important;
-        border: 1px solid var(--mc-border) !important;
+        border: 0.5px solid var(--mc-border) !important;
         border-radius: 12px !important;
         padding: 18px 22px !important;
         transition: border-color 0.18s ease;
@@ -491,10 +510,11 @@ st.markdown("""
         letter-spacing: 0.12em !important;
     }
     div[data-testid="stMetricValue"] {
-        font-size: 22px !important;
-        font-weight: 800 !important;
+        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-size: 24px !important;
+        font-weight: 400 !important;
         color: var(--mc-orange) !important;
-        letter-spacing: -0.025em !important;
+        letter-spacing: -0.01em !important;
     }
     div[data-testid="stMetricDelta"] {
         font-size: 11px !important;
@@ -508,7 +528,7 @@ st.markdown("""
     .stDateInput input,
     .stTimeInput input {
         background: var(--mc-surface) !important;
-        border: 1px solid var(--mc-border) !important;
+        border: 0.5px solid var(--mc-border) !important;
         border-radius: 8px !important;
         color: var(--mc-text) !important;
         font-size: 14px !important;
@@ -541,7 +561,7 @@ st.markdown("""
     /* Selects */
     div[data-baseweb="select"] > div {
         background: var(--mc-surface) !important;
-        border: 1px solid var(--mc-border) !important;
+        border: 0.5px solid var(--mc-border) !important;
         border-radius: 8px !important;
         color: var(--mc-text) !important;
         min-height: 42px !important;
@@ -552,7 +572,7 @@ st.markdown("""
     }
     div[data-baseweb="popover"] ul {
         background: var(--mc-surface-2) !important;
-        border: 1px solid var(--mc-border) !important;
+        border: 0.5px solid var(--mc-border) !important;
     }
     div[data-baseweb="popover"] li {
         color: var(--mc-text) !important;
@@ -591,7 +611,7 @@ st.markdown("""
     /* ─── Botões ────────────────────────────────────────────── */
     .stButton > button {
         background: var(--mc-surface-2) !important;
-        border: 1px solid var(--mc-border) !important;
+        border: 0.5px solid var(--mc-border) !important;
         border-radius: 8px !important;
         color: var(--mc-text) !important;
         font-size: 13px !important;
@@ -611,7 +631,7 @@ st.markdown("""
     .stButton > button[kind="primary"] {
         background: var(--mc-orange) !important;
         border-color: var(--mc-orange) !important;
-        color: #0A0A0A !important;
+        color: #0D0B09 !important;
         font-weight: 700 !important;
         box-shadow: 0 2px 8px var(--mc-orange-glow) !important;
     }
@@ -625,7 +645,7 @@ st.markdown("""
     /* Download button */
     .stDownloadButton > button {
         background: var(--mc-surface-2) !important;
-        border: 1px solid var(--mc-border) !important;
+        border: 0.5px solid var(--mc-border) !important;
         color: var(--mc-text) !important;
     }
 
@@ -633,7 +653,7 @@ st.markdown("""
     .stRadio > div { gap: 8px !important; }
     .stRadio > div > label {
         background: var(--mc-surface) !important;
-        border: 1px solid var(--mc-border) !important;
+        border: 0.5px solid var(--mc-border) !important;
         border-radius: 8px !important;
         padding: 9px 16px !important;
         color: var(--mc-text-2) !important;
@@ -668,7 +688,7 @@ st.markdown("""
     /* ─── Expanders ───────────────────────────────────────────── */
     [data-testid="stExpander"] details {
         background: var(--mc-surface) !important;
-        border: 1px solid var(--mc-border) !important;
+        border: 0.5px solid var(--mc-border) !important;
         border-radius: 12px !important;
         margin-bottom: 0.75rem;
     }
@@ -684,7 +704,7 @@ st.markdown("""
     .streamlit-expanderContent,
     [data-testid="stExpander"] > details > div {
         background: var(--mc-surface) !important;
-        border-top: 1px solid var(--mc-border) !important;
+        border-top: 0.5px solid var(--mc-border) !important;
         padding: 20px !important;
     }
 
@@ -724,14 +744,14 @@ st.markdown("""
     .stDataFrame {
         background: var(--mc-surface) !important;
         border-radius: 10px !important;
-        border: 1px solid var(--mc-border) !important;
+        border: 0.5px solid var(--mc-border) !important;
     }
 
     /* ─── Tooltips ────────────────────────────────────────────── */
     div[role="tooltip"] {
         background: var(--mc-surface-3) !important;
         color: var(--mc-text) !important;
-        border: 1px solid var(--mc-border-strong) !important;
+        border: 0.5px solid var(--mc-border-strong) !important;
         font-size: 12px !important;
     }
 
@@ -812,8 +832,8 @@ st.markdown("""
     .mc-empty {
         text-align: center;
         padding: 3rem 1.5rem;
-        background: linear-gradient(180deg, var(--mc-surface) 0%, var(--mc-bg) 100%);
-        border: 1px dashed var(--mc-border-strong);
+        background: var(--mc-surface);
+        border: 0.5px dashed var(--mc-border-strong);
         border-radius: 14px;
         margin: 1rem 0;
     }
@@ -842,7 +862,7 @@ st.markdown("""
         gap: 8px;
         padding: 8px 14px;
         background: var(--mc-orange-soft);
-        border: 1px solid var(--mc-orange);
+        border: 0.5px solid var(--mc-orange);
         color: var(--mc-orange);
         border-radius: 24px;
         font-size: 12px;
@@ -923,7 +943,7 @@ st.markdown("""
     .mc-login-hero {
         text-align: center;
         padding: 2.5rem 0 2rem;
-        border-bottom: 1px solid var(--mc-border);
+        border-bottom: 0.5px solid var(--mc-border);
         margin-bottom: 1.75rem;
     }
     .mc-login-hero img {
@@ -1206,7 +1226,7 @@ st.markdown("""
         gap: 6px;
         padding: 3px 10px;
         background: var(--mc-surface-2);
-        border: 1px solid var(--mc-border);
+        border: 0.5px solid var(--mc-border);
         border-radius: 100px;
         font-size: 11px;
         font-weight: 600;
@@ -1222,7 +1242,7 @@ st.markdown("""
         h2 { font-size: 18px !important; }
         h3 { font-size: 16px !important; }
 
-        /* Tabs: barra fixa no topo, rolável na horizontal, sem quebra */
+        /* Tabs mobile: underline scrollável */
         .stTabs [data-baseweb="tab-list"] {
             width: 100% !important;
             overflow-x: auto !important;
@@ -1230,14 +1250,15 @@ st.markdown("""
             position: sticky;
             top: 0;
             z-index: 999;
+            background: var(--mc-bg) !important;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
-            gap: 2px;
-            padding: 5px;
+            gap: 0;
+            padding: 0;
         }
         .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar { display: none; }
         .stTabs [data-baseweb="tab"] {
-            padding: 10px 13px;
+            padding: 10px 14px;
             font-size: 12px;
             white-space: nowrap;
             flex-shrink: 0;
@@ -3195,7 +3216,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
     raw = resp.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
     return json.loads(raw)
 
-_APP_VERSION = "3.4.0"
+_APP_VERSION = "3.5.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
