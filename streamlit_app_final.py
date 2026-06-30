@@ -236,12 +236,12 @@ _load_mobile_css()
 
 # ── PWA Manifest (instalar como app no Android/iOS) ───────────────────
 st.markdown("""
-<link rel="manifest" href="data:application/json;charset=utf-8,%7B%22name%22%3A%22Mateu%20Coffee%22%2C%22short_name%22%3A%22Mateu%22%2C%22start_url%22%3A%22%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230A0A0A%22%2C%22theme_color%22%3A%22%23E8722E%22%2C%22orientation%22%3A%22portrait%22%7D">
+<link rel="manifest" href="data:application/json;charset=utf-8,%7B%22name%22%3A%22Mateu%20Coffee%22%2C%22short_name%22%3A%22Mateu%22%2C%22start_url%22%3A%22%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230D0B09%22%2C%22theme_color%22%3A%22%23D97732%22%2C%22orientation%22%3A%22portrait%22%7D">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Mateu Coffee">
-<meta name="theme-color" content="#E8722E">
+<meta name="theme-color" content="#D97732">
 <style>
   /* Remove margens extras no mobile para parecer app nativo */
   @media (display-mode: standalone) {
@@ -3265,7 +3265,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.5.5"
+_APP_VERSION = "3.5.6"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
