@@ -381,7 +381,7 @@ st.markdown("""
         margin-bottom: 2rem;
     }
     .app-header-title {
-        font-family: 'DM Serif Display', Georgia, serif;
+        font-family: 'DM Serif Display', Georgia, serif !important;
         font-size: 26px;
         font-weight: 400;
         color: var(--mc-text);
@@ -828,7 +828,7 @@ st.markdown("""
     }
     .mc-step-body { flex: 1; min-width: 0; }
     .mc-step-title {
-        font-family: 'DM Serif Display', Georgia, serif;
+        font-family: 'DM Serif Display', Georgia, serif !important;
         font-size: 21px;
         font-weight: 400;
         color: var(--mc-text);
@@ -859,7 +859,7 @@ st.markdown("""
         opacity: 0.85;
     }
     .mc-empty-title {
-        font-family: 'DM Serif Display', Georgia, serif;
+        font-family: 'DM Serif Display', Georgia, serif !important;
         font-size: 22px;
         font-weight: 400;
         color: var(--mc-text);
@@ -3268,7 +3268,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.6.1"
+_APP_VERSION = "3.6.2"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3399,7 +3399,7 @@ def main():
                 _load_logo(max_width=560)
                 st.markdown(
                     '<p style="text-align:center;font-family:\'DM Serif Display\',Georgia,'
-                    'serif;font-style:italic;font-size:20px;line-height:1.6;'
+                    'serif!important;font-style:italic;font-size:22px;line-height:1.6;'
                     'color:var(--mc-text-2);max-width:400px;margin:0.75rem auto 0">'
                     'Para baristas, entusiastas e apaixonados por café. '
                     'Para mim e para você também.</p>'
