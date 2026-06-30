@@ -3216,7 +3216,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
     raw = resp.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
     return json.loads(raw)
 
-_APP_VERSION = "3.5.0"
+_APP_VERSION = "3.5.1"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3234,6 +3234,30 @@ def _about_dialog():
         f'<p style="margin:0.75rem 0 0;font-size:14px;color:var(--mc-text)">'
         f'Desenvolvido por <b>Leandro Ribeiro</b></p></div>',
         unsafe_allow_html=True)
+
+@st.dialog("Recuperar acesso")
+def _forgot_password_dialog():
+    st.markdown(
+        '<p style="font-size:14px;color:var(--mc-text-2);margin-bottom:1.25rem;line-height:1.6">'
+        'Informe seu e-mail e geraremos uma senha temporária para você entrar.</p>',
+        unsafe_allow_html=True)
+    fp_email = st.text_input("E-mail cadastrado", placeholder="seu@email.com", key="fp_email_input")
+    if st.button("Gerar senha temporária", type="primary", use_container_width=True, key="fp_gerar_btn"):
+        if not fp_email.strip():
+            st.error("Informe seu e-mail.")
+        else:
+            result = _fetch("SELECT id FROM usuarios WHERE LOWER(email)=LOWER(%s)",
+                            (fp_email.strip(),), _v=0)
+            if not result:
+                st.error("E-mail não encontrado.")
+            else:
+                import string as _str
+                tmp_pwd = ''.join(secrets.choice(_str.ascii_letters + _str.digits) for _ in range(10))
+                _run("UPDATE usuarios SET senha_hash=%s WHERE LOWER(email)=LOWER(%s)",
+                     (_hash_senha(tmp_pwd), fp_email.strip().lower()))
+                st.success("Senha temporária gerada com sucesso!")
+                st.code(tmp_pwd, language=None)
+                st.caption("Copie e use para entrar. Troque a senha depois nas configurações.")
 
 # ── Main ───────────────────────────────────────────────────────────────
 def main():
@@ -3253,6 +3277,11 @@ def main():
     else:
         _js = ""
     components.html(f"<script>{_js}</script>", height=0)
+
+    # Dialog "Recuperar senha"
+    if st.session_state.get("_show_forgot"):
+        st.session_state.pop("_show_forgot")
+        _forgot_password_dialog()
 
     # Dialog "Sobre" — aberto pelo clique na marca (?about=1), em qualquer estado
     if "about" in st.query_params:
@@ -3295,9 +3324,9 @@ def main():
                 st.markdown('<div class="mc-login-hero">', unsafe_allow_html=True)
                 _load_logo(max_width=560)
                 st.markdown(
-                    '<p style="text-align:center;font-family:Georgia,\'Times New Roman\','
-                    'serif;font-style:italic;font-size:19px;line-height:1.6;'
-                    'color:var(--mc-text-2);max-width:420px;margin:0.5rem auto 0">'
+                    '<p style="text-align:center;font-family:\'DM Serif Display\',Georgia,'
+                    'serif;font-style:italic;font-size:20px;line-height:1.6;'
+                    'color:var(--mc-text-2);max-width:400px;margin:0.75rem auto 0">'
                     'Para baristas, entusiastas e apaixonados por café. '
                     'Para mim e para você também.</p>'
                     '</div>',
@@ -3330,9 +3359,9 @@ def main():
                             unsafe_allow_html=True)
                         st.markdown(
                             '<div style="display:flex;align-items:center;gap:8px;margin:0.5rem 0">'
-                            '<hr style="flex:1;border:none;border-top:1px solid var(--mc-border);margin:0">'
-                            '<span style="color:var(--mc-text-3);font-size:12px">ou</span>'
-                            '<hr style="flex:1;border:none;border-top:1px solid var(--mc-border);margin:0">'
+                            '<hr style="flex:1;border:none;border-top:0.5px solid var(--mc-border);margin:0">'
+                            '<span style="color:var(--mc-text-3);font-size:12px;letter-spacing:.08em">ou</span>'
+                            '<hr style="flex:1;border:none;border-top:0.5px solid var(--mc-border);margin:0">'
                             '</div>',
                             unsafe_allow_html=True)
 
@@ -3357,6 +3386,10 @@ def main():
                             st.error("E-mail ou senha incorretos. Verifique e tente de novo.")
                         else:
                             st.error("Erro ao acessar o banco de dados. Tente novamente em instantes.")
+
+                    if st.button("Esqueci minha senha", use_container_width=True, key="btn_forgot"):
+                        st.session_state["_show_forgot"] = True
+                        st.rerun()
 
                 with tab_cadastro:
                     st.markdown(
