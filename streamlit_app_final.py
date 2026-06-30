@@ -382,10 +382,11 @@ st.markdown("""
         margin-bottom: 2rem;
     }
     .app-header-title {
-        font-size: 24px;
-        font-weight: 800;
+        font-family: 'DM Serif Display', Georgia, serif;
+        font-size: 26px;
+        font-weight: 400;
         color: var(--mc-text);
-        letter-spacing: -0.03em;
+        letter-spacing: -0.01em;
         margin: 0;
     }
     .app-header-sub {
@@ -827,12 +828,13 @@ st.markdown("""
     }
     .mc-step-body { flex: 1; min-width: 0; }
     .mc-step-title {
-        font-size: 17px;
-        font-weight: 700;
+        font-family: 'DM Serif Display', Georgia, serif;
+        font-size: 21px;
+        font-weight: 400;
         color: var(--mc-text);
         letter-spacing: -0.01em;
         margin: 0;
-        line-height: 1.2;
+        line-height: 1.25;
     }
     .mc-step-sub {
         font-size: 12px;
@@ -857,8 +859,9 @@ st.markdown("""
         opacity: 0.85;
     }
     .mc-empty-title {
-        font-size: 18px;
-        font-weight: 700;
+        font-family: 'DM Serif Display', Georgia, serif;
+        font-size: 22px;
+        font-weight: 400;
         color: var(--mc-text);
         margin: 0 0 0.5rem 0;
     }
@@ -3007,7 +3010,7 @@ def _radar(profile: tuple) -> go.Figure:
         name='Target', line_color='#8A8278', fillcolor='rgba(138,130,120,0.12)'))
     fig.add_trace(go.Scatterpolar(
         r=profile, theta=attrs, fill='toself',
-        name='Atual', line_color='#E8722E', fillcolor='rgba(232,114,46,0.22)'))
+        name='Atual', line_color='#D97732', fillcolor='rgba(232,114,46,0.22)'))
     fig.update_layout(
         polar=dict(
             bgcolor='rgba(0,0,0,0)',
@@ -3037,7 +3040,7 @@ _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
     --text:    #F5EDE8;
     --muted:   #8A8278;
     --label:   #B8B0A8;
-    --accent:  #E8722E;
+    --accent:  #D97732;
     --accent2: #F08842;
     --border:  #2A2A2A;
   }
@@ -3189,7 +3192,7 @@ _TIMER_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <style>
-  :root{--bg:#0A0A0A;--card:#141414;--text:#F5EDE8;--accent:#E8722E;--border:#2A2A2A;--muted:#8A8278;}
+  :root{--bg:#0A0A0A;--card:#141414;--text:#F5EDE8;--accent:#D97732;--border:#2A2A2A;--muted:#8A8278;}
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;background:var(--bg);padding:10px 0 0}
   .wrap{display:flex;align-items:center;gap:16px;background:var(--card);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:12px;padding:12px 18px;flex-wrap:wrap}
@@ -3265,7 +3268,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.5.6"
+_APP_VERSION = "3.6.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3627,7 +3630,7 @@ def main():
         with col_promo:
             st.markdown('<p class="info-key" style="margin-bottom:0.5rem">Dica do Dia</p>', unsafe_allow_html=True)
             st.markdown(f"""
-            <div style="background:linear-gradient(135deg, #E8722E 0%, #F08842 100%);
+            <div style="background:linear-gradient(135deg, #D97732 0%, #F08842 100%);
             border-radius:12px;padding:16px;margin:0;color:#0A0A0A">
                 <p style="margin:0 0 8px;font-weight:700;font-size:14px">🎯 {_html.escape(_dica_titulo)}</p>
                 <p style="margin:0;font-size:12px;line-height:1.6">{_html.escape(_dica_texto)}</p>
@@ -4528,7 +4531,7 @@ def main():
                             'border-radius:10px;color:#8A8278;font-size:13px;'
                             'font-weight:500">'
                             '☕ Ainda sem extrações deste café — vá em '
-                            '<strong style="color:#E8722E">Nova Extração</strong> '
+                            '<strong style="color:#D97732">Nova Extração</strong> '
                             'para começar.</div>',
                             unsafe_allow_html=True)
                     else:

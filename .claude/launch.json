@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mateu",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "streamlit", "run", "streamlit_app_final.py", "--server.port=8599", "--server.headless=true", "--server.address=127.0.0.1"],
+      "port": 8599
+    }
+  ]
+}
