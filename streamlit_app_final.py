@@ -2237,7 +2237,15 @@ def _backup_restaurar_dados(backup_id: int, user_id: int) -> bool:
 
 
 def _chat_carregar(user_id: int) -> list:
-    """Carrega até 60 mensagens mais recentes do chat do Barista Expert."""
+    """Carrega até 60 mensagens; auto-remove erros técnicos persistidos (429/cota)."""
+    # Limpeza permanente de mensagens de erro que ficaram salvas no histórico
+    try:
+        _run("""DELETE FROM barista_chats WHERE user_id=%s AND role='assistant'
+                AND (content LIKE '%%429%%' OR content LIKE '%%Quota exceeded%%'
+                     OR content LIKE '%%esgotada%%' OR content LIKE '%%erro temporário%%'
+                     OR content LIKE '❌%%')""", (user_id,))
+    except Exception:
+        pass
     rows = _fetch(
         "SELECT role, content FROM barista_chats WHERE user_id=%s ORDER BY criado_em ASC LIMIT 60",
         (user_id,), _v=0)
@@ -3443,7 +3451,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.10.2"
+_APP_VERSION = "3.10.3"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3886,10 +3894,12 @@ def main():
             _chat_salvar(user_id, "user", pergunta)
             with st.spinner("Barista Expert pensando..."):
                 resposta = ask_barista_expert(pergunta, history=_chat_msgs)
-            # Detecta erro 429 (quota) e mostra UX amigável
-            if "429" in resposta:
-                st.error("Limite de requisições atingido. Tente novamente em alguns instantes.")
-                st.info("💡 Dica: cada pergunta consome créditos. Tente ser específico para melhor uso.")
+            # Detecta resposta de erro (429/cota/temporário) e NÃO persiste
+            _is_erro = ("429" in resposta or "Cota da API" in resposta
+                        or "erro temporário" in resposta
+                        or resposta.startswith("⚠️") or resposta.startswith("❌"))
+            if _is_erro:
+                st.error("Limite de uso da IA atingido. Tente novamente em alguns instantes.")
             else:
                 _chat_salvar(user_id, "assistant", resposta)
                 st.rerun()
