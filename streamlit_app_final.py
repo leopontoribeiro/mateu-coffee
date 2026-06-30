@@ -480,6 +480,7 @@ st.markdown("""
     /* ─── Section labels (eyebrow) ──────────────────────────────── */
     .stMarkdown p.section-label,
     .section-label {
+        font-family: 'DM Serif Display', Georgia, serif !important;
         font-size: 11px;
         font-weight: 600;
         color: var(--mc-orange) !important;
@@ -3309,7 +3310,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.8.0"
+_APP_VERSION = "3.9.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3601,9 +3602,24 @@ def main():
 
     st.markdown("---")
 
+    # SVG icons: stroke-only, tom laranja
+    _ico_cafe = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6v7H9z"/><path d="M15 10h3a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3"/></svg>'
+    _ico_bolt = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
+    _ico_cal = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>'
+    _ico_star = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'
+    _ico_book = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>'
+    _ico_bean = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c-4 0-8 3-8 8 0 6 4 12 8 12s8-6 8-12c0-5-4-8-8-8z" opacity="0.5"/><path d="M12 8c2 0 3.5 2 3.5 4.5S14 17 12 17s-3.5-2-3.5-4.5S10 8 12 8z"/></svg>'
+    _ico_shield = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'
+
     tab1, tab2, tab3, tab4, tab_barista, tab5, tab6, tab7 = st.tabs([
-        "  ☕ Novo Café  ", "  ⚡ Nova Extração  ", "  Meus Cafés  ", "  📅 Histórico  ",
-        "  ✨ Barista Expert  ", "  📖 Receitas  ", "  🫘 Cápsulas  ", "  🛡️ Backup  "])
+        f"  {_ico_cafe} Novo Café  ",
+        f"  {_ico_bolt} Nova Extração  ",
+        f"  Meus Cafés  ",
+        f"  {_ico_cal} Histórico  ",
+        f"  {_ico_star} Barista Expert  ",
+        f"  {_ico_book} Receitas  ",
+        f"  {_ico_bean} Cápsulas  ",
+        f"  {_ico_shield} Backup  "])
 
     user_id = st.session_state['user_id']
 
@@ -3740,8 +3756,13 @@ def main():
             _chat_salvar(user_id, "user", pergunta)
             with st.spinner("🤔 Barista Expert pensando..."):
                 resposta = ask_barista_expert(pergunta, history=_chat_msgs)
-            _chat_salvar(user_id, "assistant", resposta)
-            st.rerun()
+            # Detecta erro 429 (quota) e mostra UX amigável
+            if "429" in resposta:
+                st.error("⏰ Limite de requisições atingido. Tente novamente em alguns instantes.")
+                st.info("💡 Dica: cada pergunta consome créditos. Tente ser específico para melhor uso.")
+            else:
+                _chat_salvar(user_id, "assistant", resposta)
+                st.rerun()
 
     # ── Tab 1 · Cadastrar café ─────────────────────────────────────────
     with tab1:
