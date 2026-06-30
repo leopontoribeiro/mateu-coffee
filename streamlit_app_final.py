@@ -346,18 +346,150 @@ st.markdown("""
         color: var(--mc-text-3) !important;
         margin: 0 0 12px 0 !important;
     }
-    /* Cabeçalhos de seção — DM Serif com fundo escuro (uniforme) */
+    /* Cabeçalhos de seção — DM Serif com fundo espresso + acento (uniforme) */
     .stMarkdown p.mc-section-header, .mc-section-header {
         font-family: 'DM Serif Display', Georgia, serif !important;
         font-size: 24px !important;
         font-weight: 400 !important;
-        color: #F2EBE0 !important;
-        background: #3a2f28 !important;
-        padding: 14px 18px !important;
+        color: var(--mc-text) !important;
+        background: linear-gradient(135deg, var(--mc-surface-3) 0%, var(--mc-surface-2) 100%) !important;
+        padding: 14px 18px 14px 22px !important;
         margin: 2rem 0 1.5rem 0 !important;
-        border-radius: 6px !important;
+        border-radius: 10px !important;
+        border-left: 3px solid var(--mc-orange) !important;
         line-height: 1.3;
         letter-spacing: -0.01em;
+        animation: mcFadeUp 0.4s ease both;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       SISTEMA UNIFICADO — cards, zonas, animações e refinamento
+       dos componentes nativos do Streamlit (aplica em TODO o app).
+       Animações são transitions de hover → não re-disparam em rerun,
+       zero impacto de performance.
+       ═══════════════════════════════════════════════════════════════ */
+    @keyframes mcFadeUp { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:translateY(0);} }
+
+    /* ─── Card genérico estilo carta de menu ─── */
+    .mc-card {
+        background: var(--mc-surface) !important;
+        border: 1px solid var(--mc-border);
+        border-radius: 14px;
+        padding: 1.25rem 1.5rem;
+        margin: 0.75rem 0 1.25rem;
+        transition: border-color .25s ease, box-shadow .25s ease, transform .25s ease;
+        animation: mcFadeUp .4s ease both;
+    }
+    .mc-card:hover {
+        border-color: var(--mc-border-strong);
+        box-shadow: 0 10px 30px rgba(0,0,0,.30);
+    }
+
+    /* ─── Zona (padrão das 3 zonas de extração) ─── */
+    .mc-zone {
+        position: relative;
+        background: var(--mc-surface-2);
+        border-left: 3px solid var(--mc-orange);
+        border-radius: 0 10px 10px 0;
+        padding: .65rem 1.1rem .4rem 1.25rem;
+        margin: .5rem 0 1.1rem;
+    }
+    .mc-zone-label {
+        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-size: 13px !important;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+        color: var(--mc-orange) !important;
+        margin: 0 0 .35rem 0 !important;
+    }
+
+    /* ─── Inputs · textarea · date — superfície + glow no foco ─── */
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stDateInput"] input,
+    [data-testid="stTextArea"] textarea {
+        background: var(--mc-surface) !important;
+        border: 1px solid var(--mc-border) !important;
+        border-radius: 9px !important;
+        color: var(--mc-text) !important;
+        transition: border-color .2s ease, box-shadow .2s ease !important;
+    }
+    [data-testid="stTextInput"] input:focus,
+    [data-testid="stNumberInput"] input:focus,
+    [data-testid="stDateInput"] input:focus,
+    [data-testid="stTextArea"] textarea:focus {
+        border-color: var(--mc-orange) !important;
+        box-shadow: 0 0 0 3px var(--mc-orange-glow) !important;
+    }
+
+    /* ─── Selectbox / multiselect ─── */
+    [data-baseweb="select"] > div {
+        background: var(--mc-surface) !important;
+        border: 1px solid var(--mc-border) !important;
+        border-radius: 9px !important;
+        transition: border-color .2s ease, box-shadow .2s ease !important;
+    }
+    [data-baseweb="select"] > div:hover { border-color: var(--mc-border-strong) !important; }
+    [data-baseweb="select"]:focus-within > div {
+        border-color: var(--mc-orange) !important;
+        box-shadow: 0 0 0 3px var(--mc-orange-glow) !important;
+    }
+
+    /* ─── Botões — lift + sombra suave (transition, sem replay) ─── */
+    [data-testid="stButton"] button,
+    [data-testid="stFormSubmitButton"] button {
+        border-radius: 9px !important;
+        font-weight: 600 !important;
+        transition: transform .15s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease !important;
+    }
+    [data-testid="stButton"] button:hover,
+    [data-testid="stFormSubmitButton"] button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px var(--mc-orange-glow);
+    }
+    [data-testid="stButton"] button:active,
+    [data-testid="stFormSubmitButton"] button:active { transform: translateY(0); }
+
+    /* ─── Expanders → cards de menu (Meus Cafés, Histórico) ─── */
+    [data-testid="stExpander"] {
+        background: var(--mc-surface) !important;
+        border: 1px solid var(--mc-border) !important;
+        border-radius: 12px !important;
+        margin-bottom: .75rem !important;
+        overflow: hidden;
+        transition: border-color .25s ease, box-shadow .25s ease !important;
+    }
+    [data-testid="stExpander"]:hover {
+        border-color: var(--mc-orange) !important;
+        box-shadow: 0 8px 26px rgba(0,0,0,.26);
+    }
+    [data-testid="stExpander"] summary { font-weight: 600 !important; }
+    [data-testid="stExpander"] summary:hover { color: var(--mc-orange) !important; }
+
+    /* ─── Métricas em mini-cards ─── */
+    [data-testid="stMetric"] {
+        background: var(--mc-surface) !important;
+        border: 1px solid var(--mc-border);
+        border-radius: 12px;
+        padding: .85rem 1rem !important;
+        transition: border-color .25s ease, transform .25s ease;
+    }
+    [data-testid="stMetric"]:hover {
+        border-color: var(--mc-border-strong);
+        transform: translateY(-2px);
+    }
+
+    /* ─── Alerts / file uploader / sliders ─── */
+    [data-testid="stAlert"] { border-radius: 10px !important; }
+    [data-testid="stFileUploader"] section {
+        background: var(--mc-surface) !important;
+        border: 1px dashed var(--mc-border-strong) !important;
+        border-radius: 12px !important;
+        transition: border-color .2s ease;
+    }
+    [data-testid="stFileUploader"] section:hover { border-color: var(--mc-orange) !important; }
+    [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
+        box-shadow: 0 0 0 4px var(--mc-orange-glow) !important;
     }
 
     .stApp { background-color: var(--mc-bg); color: var(--mc-text); }
@@ -3310,7 +3442,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.9.0"
+_APP_VERSION = "3.10.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():

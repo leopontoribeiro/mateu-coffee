@@ -298,6 +298,27 @@
   [data-testid="stButton"] button { font-size: 16px !important; }
 }
 
+/* ══ 5b. CARDS · ZONAS · TOQUE (mobile) ══════════════════════════ */
+@media (max-width: 768px) {
+  /* Cards e zonas: padding compacto, cantos generosos */
+  .mc-card { padding: 1rem 1.1rem !important; border-radius: 14px !important; }
+  .mc-zone { padding: .6rem .9rem .35rem 1rem !important; }
+  .mc-section-header { font-size: 20px !important; padding: 12px 14px 12px 18px !important; }
+  .mc-cafe-name { font-size: 23px !important; }
+
+  /* Expanders-card: respiro entre cartões */
+  [data-testid="stExpander"] { margin-bottom: .65rem !important; }
+
+  /* Em touch, hover não existe → feedback no :active (pressionar) */
+  [data-testid="stButton"] button:active,
+  [data-testid="stFormSubmitButton"] button:active {
+    transform: scale(.98) !important;
+    box-shadow: 0 4px 14px var(--mc-orange-glow) !important;
+  }
+  [data-testid="stExpander"]:active { border-color: var(--mc-orange) !important; }
+  [data-testid="stMetric"] { padding: .7rem .8rem !important; }
+}
+
 /* ══ 6. SCROLLBAR STYLING ════════════════════════════════════════ */
 ::-webkit-scrollbar       { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: var(--mc-bg); }
