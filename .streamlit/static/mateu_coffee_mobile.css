@@ -1,6 +1,8 @@
 /* ─────────────────────────────────────────────
    Mateu Coffee Production — Mobile Design System
-   Palette: Preto #0A0A0A · Laranja #E8722E · Creme #F5EDE8
+   Paleta v3.5: Espresso #0D0B09 · Laranja #D97732 · Creme #F2EBE0
+   Alinhado ao redesign — sem overrides de tipografia que
+   conflitem com o CSS principal (section-label, métricas, etc.)
    ───────────────────────────────────────────── */
 
 /* ══ 1. SAFE AREA (iPhone notch / Dynamic Island) ═══════════════ */
@@ -20,7 +22,7 @@
   align-items: center;
   gap: 24px;
   padding: 0 0 0.6rem;
-  border-bottom: 1px solid #2A2A2A;
+  border-bottom: 0.5px solid var(--mc-border);
   margin-bottom: 1rem;
 }
 .mc-hero-full img {
@@ -32,7 +34,7 @@
 }
 .mc-tagline {
   font-size: 15px;
-  color: #B8B0A8;
+  color: var(--mc-text-2);
   font-style: italic;
   line-height: 1.55;
   letter-spacing: 0.01em;
@@ -62,7 +64,7 @@
   align-items: center;
   gap: 14px;
   padding: 0.5rem 0 1.25rem;
-  border-bottom: 1px solid #2A2A2A;
+  border-bottom: 0.5px solid var(--mc-border);
   margin-bottom: 1.5rem;
 }
 .mc-hero img {
@@ -73,41 +75,27 @@
 }
 .mc-hero-text { line-height: 1.2; }
 .mc-hero-text h1 {
+  font-family: 'DM Serif Display', Georgia, serif;
   font-size: 20px;
-  font-weight: 700;
-  color: #F5EDE8;
+  font-weight: 400;
+  color: var(--mc-text);
   margin: 0;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.01em;
 }
 .mc-hero-text p {
   font-size: 10px;
-  color: #8A8278;
+  color: var(--mc-text-3);
   margin: 2px 0 0;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
-/* ══ 3. TIPOGRAFIA GLOBAL (todas as telas) ═══════════════════════ */
-
-/* Section labels (CADASTRAR NOVO CAFÉ, PARÂMETROS, etc.) */
-p.section-label,
-p[class*="section-label"] {
-  font-size: 12px !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.12em !important;
-  color: #B8B0A8 !important;
-}
-
-/* info-key e info-val dos cards Meus Cafés / Histórico */
+/* ══ 3. TIPOGRAFIA GLOBAL (todas as telas) ═══════════════════════
+   Section-label, métricas e tags são estilizados pelo CSS principal.
+   Aqui mantemos apenas info-key / info-val que não conflitam.
+   ──────────────────────────────────────────────────────────────── */
 .info-key { font-size: 13px !important; font-weight: 600 !important; }
 .info-val  { font-size: 15px !important; font-weight: 500 !important; }
-
-/* Tags (Grãos, Escura, 250g) */
-.tag {
-  font-size: 12px !important;
-  font-weight: 600 !important;
-  padding: 3px 9px !important;
-}
 
 /* ══ 4. MOBILE LAYOUT (≤ 768 px) ════════════════════════════════ */
 @media (max-width: 768px) {
@@ -118,7 +106,7 @@ p[class*="section-label"] {
     max-width: 100% !important;
   }
 
-  /* ── Corpo base: 16px mínimo ─────────────────────────────────── */
+  /* ── Corpo base: 15px mínimo ─────────────────────────────────── */
   p, li, span, div,
   [data-testid] p,
   [data-testid] span,
@@ -131,10 +119,10 @@ p[class*="section-label"] {
   [data-testid="stWidgetLabel"] > p,
   [data-testid="stWidgetLabel"] label,
   label {
-    font-size: 14px !important;
+    font-size: 13px !important;
     font-weight: 700 !important;
-    color: #F5EDE8 !important;
-    letter-spacing: 0.01em !important;
+    color: var(--mc-text-2) !important;
+    letter-spacing: 0.08em !important;
   }
 
   /* ── Help text abaixo dos widgets ────────────────────────────── */
@@ -145,32 +133,21 @@ p[class*="section-label"] {
     opacity: 0.75;
   }
 
-  /* ── Section labels mobile (sobreescrita específica) ─────────── */
-  p.section-label,
-  p[class*="section-label"] {
-    font-size: 13px !important;
-    font-weight: 800 !important;
-    letter-spacing: 0.14em !important;
-    margin-bottom: 0.6rem !important;
-  }
-
-  /* ── Tabs: horizontal scroll, no wrap ───────────────────────── */
+  /* ── Tabs: scroll horizontal, underline preservado ──────────── */
   [data-testid="stTabs"] > div:first-child {
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     flex-wrap: nowrap !important;
     gap: 0 !important;
-    border-bottom: 1px solid #2A2A2A !important;
   }
   [data-testid="stTabs"] > div:first-child::-webkit-scrollbar { display: none; }
 
   button[data-baseweb="tab"] {
     white-space: nowrap !important;
-    min-height: 50px !important;
-    padding: 0 18px !important;
-    font-size: 15px !important;
-    font-weight: 600 !important;
+    min-height: 48px !important;
+    padding: 0 14px !important;
+    font-size: 14px !important;
     letter-spacing: 0.01em !important;
   }
 
@@ -248,9 +225,9 @@ p[class*="section-label"] {
   /* ── Botões ──────────────────────────────────────────────────── */
   [data-testid="stButton"] button {
     min-height: 54px !important;
-    font-size: 17px !important;
-    font-weight: 700 !important;
-    border-radius: 10px !important;
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
     letter-spacing: 0.01em !important;
   }
 
@@ -267,15 +244,14 @@ p[class*="section-label"] {
   /* ── Expander: remove overflow clip ─────────────────────────── */
   [data-testid="stExpander"] > div > div { overflow: visible !important; }
 
-  /* ── Metrics ─────────────────────────────────────────────────── */
+  /* ── Metrics: respeita DM Serif do CSS principal ────────────── */
   [data-testid="stMetricValue"]  {
     font-size: 24px !important;
-    font-weight: 700 !important;
   }
   [data-testid="stMetricLabel"]  {
-    font-size: 13px !important;
+    font-size: 12px !important;
     font-weight: 600 !important;
-    letter-spacing: 0.02em !important;
+    letter-spacing: 0.08em !important;
   }
   [data-testid="stMetricDelta"] {
     font-size: 13px !important;
@@ -299,12 +275,6 @@ p[class*="section-label"] {
   .info-key { font-size: 14px !important; min-width: 100px !important; }
   .info-val  { font-size: 16px !important; }
 
-  /* ── Tags ────────────────────────────────────────────────────── */
-  .tag {
-    font-size: 13px !important;
-    padding: 4px 10px !important;
-  }
-
   /* ── App header ──────────────────────────────────────────────── */
   .mc-hero { gap: 10px; }
   .mc-hero img { width: 40px; height: 40px; }
@@ -322,19 +292,19 @@ p[class*="section-label"] {
   .block-container { padding: 0.5rem 0.75rem 2rem !important; }
   button[data-baseweb="tab"] {
     padding: 0 12px !important;
-    font-size: 14px !important;
+    font-size: 13px !important;
   }
-  [data-testid="stMetricValue"] { font-size: 20px !important; }
+  [data-testid="stMetricValue"] { font-size: 22px !important; }
   [data-testid="stButton"] button { font-size: 16px !important; }
 }
 
 /* ══ 6. SCROLLBAR STYLING ════════════════════════════════════════ */
 ::-webkit-scrollbar       { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: #0A0A0A; }
-::-webkit-scrollbar-thumb { background: #3A3A3A; border-radius: 4px; }
+::-webkit-scrollbar-track { background: var(--mc-bg); }
+::-webkit-scrollbar-thumb { background: var(--mc-border-strong); border-radius: 4px; }
 
 /* ══ 7. FOCUS / ACCESSIBILITY ════════════════════════════════════ */
 :focus-visible {
-  outline: 2px solid #E8722E !important;
+  outline: 2px solid var(--mc-orange) !important;
   outline-offset: 2px !important;
 }

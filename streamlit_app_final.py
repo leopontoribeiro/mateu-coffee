@@ -3249,7 +3249,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.5.3"
+_APP_VERSION = "3.5.4"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
