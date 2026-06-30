@@ -2236,8 +2236,16 @@ Faça uma análise cobrindo:
 
 Seja técnico, direto e acessível. Responda em português brasileiro. Entre 250 e 380 palavras."""
 
-    resp = _gemini("gemini-1.5-pro").generate_content(prompt)
-    return resp.text.strip()
+    genai.configure(api_key=_get_gemini_key())
+    for _mn in ("gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"):
+        try:
+            resp = genai.GenerativeModel(_mn).generate_content(prompt)
+            return resp.text.strip()
+        except Exception as _e:
+            if "429" in str(_e) or "quota" in str(_e).lower():
+                continue
+            raise
+    return "⚠️ Cota Gemini esgotada. Ative o faturamento em aistudio.google.com."
 
 # ── Brand wordmark ─────────────────────────────────────────────────────
 
@@ -3241,7 +3249,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.5.2"
+_APP_VERSION = "3.5.3"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
