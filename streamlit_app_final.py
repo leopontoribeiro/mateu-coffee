@@ -1666,8 +1666,15 @@ def _logout() -> None:
     for k in ['user_id', 'user_email', 'remember_token', '_token_checked', '_cookie_attempts']:
         st.session_state.pop(k, None)
 
+_DB_READY: bool = False  # module-level: runs migrations once per process
+
 def _init_db() -> None:
+    global _DB_READY
+    if _DB_READY:
+        st.session_state["_db_ready"] = True
+        return
     if st.session_state.get("_db_ready"):
+        _DB_READY = True
         return
     with _db() as conn:
         cur = conn.cursor()
@@ -1865,6 +1872,7 @@ def _init_db() -> None:
             """)
 
             conn.commit()
+            _DB_READY = True
             st.session_state["_db_ready"] = True
         except Exception:
             conn.rollback()
@@ -3176,7 +3184,9 @@ def _analisar_embalagem(b64_img: str) -> dict:
         "  torra: \"Clara\" | \"Média\" | \"Escura\",\n"
         "  tipo: \"Grãos\" | \"Moído\",\n"
         "  notas: string (notas de sabor se visíveis, senão null),\n"
-        "  tamanho_pacote: 250 | 500 | 1000 (em g, ou null).\n"
+        "  tamanho_pacote: 250 | 500 | 1000 (em g, ou null),\n"
+        "  classificacao_cafe: \"Specialty\" | \"Premium\" | \"Commodity\" | null "
+        "(baseado em indícios na embalagem como pontuação SCA, certificações, origem, etc).\n"
         "Se um campo não for identificável, use null. "
         "Responda SOMENTE o JSON, sem markdown."
     )
@@ -3185,7 +3195,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
     raw = resp.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
     return json.loads(raw)
 
-_APP_VERSION = "3.3.3"
+_APP_VERSION = "3.4.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3424,8 +3434,8 @@ def main():
 
     st.markdown("---")
 
-    tab2, tab3, tab4, tab1, tab_barista, tab5, tab6, tab7 = st.tabs([
-        "  ⚡ Nova Extração  ", "  Meus Cafés  ", "  📅 Histórico  ", "  Novo Café  ",
+    tab1, tab2, tab3, tab4, tab_barista, tab5, tab6, tab7 = st.tabs([
+        "  ☕ Novo Café  ", "  ⚡ Nova Extração  ", "  Meus Cafés  ", "  📅 Histórico  ",
         "  ✨ Barista Expert  ", "  📖 Receitas  ", "  🫘 Cápsulas  ", "  🛡️ Backup  "])
 
     user_id = st.session_state['user_id']
@@ -3508,10 +3518,40 @@ def main():
         # Carregar histórico persistido do DB
         _chat_msgs = _chat_carregar(user_id)
 
-        # Container para mensagens (renderizado antes do input)
-        chat_container = st.container()
+        # Histórico de mensagens (acima do input)
+        if _chat_msgs:
+            for msg in _chat_msgs:
+                if msg["role"] == "user":
+                    st.markdown(
+                        f'<div style="display:flex;justify-content:flex-end;margin:8px 0">'
+                        f'<div style="background:var(--mc-orange);color:#0A0A0A;'
+                        f'border-radius:12px;border-bottom-right-radius:0;'
+                        f'padding:12px 16px;max-width:70%;font-size:14px;line-height:1.5">'
+                        f'{_html.escape(msg["content"])}'
+                        f'</div></div>',
+                        unsafe_allow_html=True)
+                else:
+                    st.markdown(
+                        f'<div style="display:flex;justify-content:flex-start;margin:8px 0">'
+                        f'<div style="background:var(--mc-surface);border:1px solid var(--mc-border);'
+                        f'border-radius:12px;border-bottom-left-radius:0;'
+                        f'padding:12px 16px;max-width:70%;font-size:14px;line-height:1.6;color:var(--mc-text)">'
+                        f'{_html.escape(msg["content"])}'
+                        f'</div></div>',
+                        unsafe_allow_html=True)
+        else:
+            st.markdown(
+                '<div style="text-align:center;padding:40px 20px;color:var(--mc-text-3)">'
+                '<p style="font-size:14px">Faça uma pergunta sobre café, equipamentos, técnicas ou defeitos de extração...</p>'
+                '</div>', unsafe_allow_html=True)
 
-        # Input do usuário
+        # Botão para limpar chat
+        if _chat_msgs:
+            if st.button("🔄 Novo Chat", use_container_width=True):
+                _chat_limpar(user_id)
+                st.rerun()
+
+        # Input do usuário (abaixo das mensagens)
         col_input, col_send = st.columns([0.9, 0.1], gap="small")
         with col_input:
             pergunta = st.text_input(
@@ -3529,40 +3569,6 @@ def main():
                 resposta = ask_barista_expert(pergunta, history=_chat_msgs)
             _chat_salvar(user_id, "assistant", resposta)
             st.rerun()
-
-        # Renderizar histórico de mensagens
-        with chat_container:
-            if _chat_msgs:
-                for msg in _chat_msgs:
-                    if msg["role"] == "user":
-                        st.markdown(
-                            f'<div style="display:flex;justify-content:flex-end;margin:8px 0">'
-                            f'<div style="background:var(--mc-orange);color:#0A0A0A;'
-                            f'border-radius:12px;border-bottom-right-radius:0;'
-                            f'padding:12px 16px;max-width:70%;font-size:14px;line-height:1.5">'
-                            f'{_html.escape(msg["content"])}'
-                            f'</div></div>',
-                            unsafe_allow_html=True)
-                    else:
-                        st.markdown(
-                            f'<div style="display:flex;justify-content:flex-start;margin:8px 0">'
-                            f'<div style="background:var(--mc-surface);border:1px solid var(--mc-border);'
-                            f'border-radius:12px;border-bottom-left-radius:0;'
-                            f'padding:12px 16px;max-width:70%;font-size:14px;line-height:1.6;color:var(--mc-text)">'
-                            f'{_html.escape(msg["content"])}'
-                            f'</div></div>',
-                            unsafe_allow_html=True)
-            else:
-                st.markdown(
-                    '<div style="text-align:center;padding:40px 20px;color:var(--mc-text-3)">'
-                    '<p style="font-size:14px">Faça uma pergunta sobre café, equipamentos, técnicas ou defeitos de extração...</p>'
-                    '</div>', unsafe_allow_html=True)
-
-        # Botão para limpar chat
-        if _chat_msgs:
-            if st.button("🔄 Novo Chat", use_container_width=True):
-                _chat_limpar(user_id)
-                st.rerun()
 
     # ── Tab 1 · Cadastrar café ─────────────────────────────────────────
     with tab1:
@@ -3727,12 +3733,15 @@ def main():
 
                 if st.button("✓ REGISTRAR (Rápido)", type="primary", use_container_width=True, key="btn_rq_save"):
                     _rq_m = CoffeeEngine.calc(_rq_dose, _rq_yield, None, _rq_tempo)
+                    _rq_ey = CoffeeEngine.estimate_ey(
+                        _rq_dose, _rq_yield, _rq_tempo,
+                        torra=_cafe_obj.get("torra", "Média"), metodo=metodo)
                     _run("""INSERT INTO extracoes
                         (coffee_id,data,metodo,gramas,agua_alvo,tempo_extracao,brew_ratio,
                          ey,fluxo,nota_final_stars,classificacao,notas,user_id,data_hora_extracao)
                         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                         (cid, _today_local(), metodo, _rq_dose, _rq_yield, _rq_tempo,
-                         _rq_m.get("ratio", 0), 0, _rq_m.get("fluxo", 0),
+                         _rq_m.get("ratio", 0), _rq_ey, _rq_m.get("fluxo", 0),
                          _rq_nota, _rq_nota, _rq_notas, user_id, _now_local()))
                     st.toast("☕ Extração registrada (modo rápido)", icon="⚡")
                     st.session_state.pop("_recipe_applied", None)
@@ -4578,6 +4587,11 @@ def main():
             with filt_col3:
                 filt_nota = st.slider("Nota mínima", 0, 5, 0, key="h_filt_nota",
                                       help="0 = mostrar todas")
+            _prev_filt = st.session_state.get("_hist_filt_sig")
+            _cur_filt = (tuple(sorted(filt_cafe)), tuple(sorted(filt_metodo)), filt_nota)
+            if _prev_filt != _cur_filt:
+                st.session_state["_hist_page"] = 0
+                st.session_state["_hist_filt_sig"] = _cur_filt
             rows = [r for r in rows
                     if r["cafe_nome"] in filt_cafe
                     and r["metodo"] in filt_metodo
@@ -4634,7 +4648,29 @@ def main():
                     file_name="historico_extracoes.csv", mime="text/csv",
                     use_container_width=True)
 
-            for r in rows:
+            # Paginação
+            _PG = 20
+            _hist_pg = st.session_state.get("_hist_page", 0)
+            _total_pgs = max(1, (len(rows) + _PG - 1) // _PG)
+            _hist_pg = min(_hist_pg, _total_pgs - 1)
+            st.session_state["_hist_page"] = _hist_pg
+            _rows_pg = rows[_hist_pg * _PG: (_hist_pg + 1) * _PG]
+            if _total_pgs > 1:
+                _pg1, _pg2, _pg3 = st.columns([1, 2, 1])
+                with _pg1:
+                    if st.button("← Anterior", disabled=_hist_pg == 0, key="hist_prev"):
+                        st.session_state["_hist_page"] = _hist_pg - 1
+                        st.rerun()
+                with _pg2:
+                    st.markdown(
+                        f'<p style="text-align:center;color:#8A8278;font-size:12px;padding-top:8px">'
+                        f'Página {_hist_pg + 1} de {_total_pgs}</p>', unsafe_allow_html=True)
+                with _pg3:
+                    if st.button("Próxima →", disabled=_hist_pg >= _total_pgs - 1, key="hist_next"):
+                        st.session_state["_hist_page"] = _hist_pg + 1
+                        st.rerun()
+
+            for r in _rows_pg:
                 # Monta header com data relativa + classificações
                 nota = r.get('nota_final_stars') or r['classificacao'] or 0
                 stars_str = ("  ·  " + _stars(int(nota))) if nota else ""
@@ -5024,6 +5060,15 @@ def main():
                             _run("UPDATE capsulas SET quantidade=%s WHERE id=%s AND user_id=%s",
                                  (_nova_qtd, cap["id"], user_id))
                             st.toast(f"✓ {_use_n} cápsula(s) usada(s). Estoque: {_nova_qtd}")
+                            st.rerun()
+                        st.markdown("---")
+                        _add_n = st.number_input("Reabastecer", min_value=1, max_value=500,
+                                                 value=10, step=1, key=f"add_cap_n_{cap['id']}")
+                        if st.button("📦 Reabastecer", key=f"add_cap_btn_{cap['id']}"):
+                            _nova_qtd2 = _qtd_atual + _add_n
+                            _run("UPDATE capsulas SET quantidade=%s WHERE id=%s AND user_id=%s",
+                                 (_nova_qtd2, cap["id"], user_id))
+                            st.toast(f"✅ +{_add_n} cápsula(s). Estoque: {_nova_qtd2}")
                             st.rerun()
                         if cap.get("nota_final_stars"):
                             st.metric("Nota Final", _stars(cap["nota_final_stars"]))
