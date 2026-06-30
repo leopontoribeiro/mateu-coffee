@@ -3489,7 +3489,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.11.0"
+_APP_VERSION = "3.12.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3705,6 +3705,8 @@ def main():
                                  use_container_width=True, key="btn_cadastrar"):
                         if not new_email or not new_senha:
                             st.error("Preencha todos os campos.")
+                        elif not mc_core.valida_email(new_email):
+                            st.error("E-mail inválido. Verifique o formato (nome@dominio.com).")
                         elif new_senha != new_senha_conf:
                             st.error("As senhas não conferem.")
                         elif len(new_senha) < 6:
@@ -4359,6 +4361,16 @@ def main():
                     agua         = st.number_input("Yield / Volumetria na Xícara (g)", 5.0, 2000.0,
                                                    step=1.0, key="ext_agua",
                                                    help="Quantidade real que entrou na xícara (espresso: ~18-50g)")
+                    # Brew ratio ao vivo (recalcula ao digitar dose/yield)
+                    _ratio = mc_core.brew_ratio(gramas, agua)
+                    st.markdown(
+                        f'<div class="mc-zone" style="margin:.3rem 0 .9rem">'
+                        f'<span class="mc-zone-label">Brew ratio</span>'
+                        f'<span style="font-family:\'DM Serif Display\',Georgia,serif;'
+                        f'font-size:24px;color:var(--mc-orange);margin-left:6px">{_ratio}</span>'
+                        f'<span style="color:var(--mc-text-3);font-size:12px;margin-left:10px">'
+                        f'espresso ~1:2 · coado ~1:15–17</span></div>',
+                        unsafe_allow_html=True)
                     tempo        = st.number_input("Tempo Real (s)", 1, 600, step=1, key="ext_tempo")
                     temp_real    = st.number_input("Temperatura Real (°C)", 60.0, 100.0,
                                                    step=0.5, key="ext_temp")
