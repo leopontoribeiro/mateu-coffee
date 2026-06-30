@@ -346,6 +346,19 @@ st.markdown("""
         color: var(--mc-text-3) !important;
         margin: 0 0 12px 0 !important;
     }
+    /* Cabeçalhos de seção — DM Serif com fundo escuro (uniforme) */
+    .stMarkdown p.mc-section-header, .mc-section-header {
+        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-size: 24px !important;
+        font-weight: 400 !important;
+        color: #F2EBE0 !important;
+        background: #3a2f28 !important;
+        padding: 14px 18px !important;
+        margin: 2rem 0 1.5rem 0 !important;
+        border-radius: 6px !important;
+        line-height: 1.3;
+        letter-spacing: -0.01em;
+    }
 
     .stApp { background-color: var(--mc-bg); color: var(--mc-text); }
     .block-container {
@@ -3296,7 +3309,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.7.0"
+_APP_VERSION = "3.8.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3732,7 +3745,7 @@ def main():
 
     # ── Tab 1 · Cadastrar café ─────────────────────────────────────────
     with tab1:
-        st.markdown('<p class="section-label">Cadastrar Novo Café</p>', unsafe_allow_html=True)
+        st.markdown('<p class="mc-section-header">Cadastrar Novo Café</p>', unsafe_allow_html=True)
 
         # Aplica resultado da análise de IA antes de renderizar os widgets
         if "ai_result" in st.session_state:
@@ -3835,7 +3848,7 @@ def main():
         # Modo Rápido / Completo
         _quick = st.toggle("⚡ Modo Rápido", value=False,
                            help="Modo simplificado: apenas os campos essenciais para registrar rápido")
-        st.markdown('<p class="section-label">Registrar Extração</p>', unsafe_allow_html=True)
+        st.markdown('<p class="mc-section-header">Registrar Extração</p>', unsafe_allow_html=True)
 
         # Receita aplicada a partir da aba Receitas
         if st.session_state.get("_recipe_applied"):
@@ -3967,7 +3980,7 @@ def main():
                 st.markdown(
                     '<div style="background:var(--mc-surface);border:1px solid var(--mc-border);'
                     'border-radius:12px;padding:1.25rem 1.5rem 1rem;margin:0.75rem 0 1.75rem">'
-                    '<p class="section-label" style="margin-bottom:1rem">Setup da Sessão</p>',
+                    '<p class="mc-section-header" style="margin-bottom:1rem">Setup da Sessão</p>',
                     unsafe_allow_html=True)
     
                 # Grinder persistence: primeiro busca perfil específico (café+torra+método),
@@ -4323,7 +4336,7 @@ def main():
 
     # ── Tab 3 · Meus cafés ────────────────────────────────────────────
     with tab3:
-        st.markdown('<p class="section-label">Biblioteca de Cafés</p>', unsafe_allow_html=True)
+        st.markdown('<p class="mc-section-header">Biblioteca de Cafés</p>', unsafe_allow_html=True)
 
         cafes = _fetch("""
             SELECT c.*, COUNT(e.id) AS total_ext,
@@ -4558,7 +4571,7 @@ def main():
 
                     # ── Seção de Extrações ─────────────────────────────────────
                     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-                    st.markdown('<p class="section-label">Detalhes das Extrações</p>', unsafe_allow_html=True)
+                    st.markdown('<p class="mc-section-header">Detalhes das Extrações</p>', unsafe_allow_html=True)
 
                     # P6: usa cache pré-carregado em vez de query por café
                     extracts = extracts_by_coffee.get(c["id"], [])
@@ -5019,7 +5032,7 @@ def main():
 
     # ── Tab 5 · Biblioteca de Receitas ────────────────────────────────
     with tab5:
-        st.markdown('<p class="section-label">📖 Biblioteca de Receitas</p>',
+        st.markdown('<p class="mc-section-header">📖 Biblioteca de Receitas</p>',
                     unsafe_allow_html=True)
         st.markdown(
             '<p style="color:#B8B0A8;font-size:14px;line-height:1.6;'
