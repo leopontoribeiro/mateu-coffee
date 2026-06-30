@@ -2237,15 +2237,11 @@ def _backup_restaurar_dados(backup_id: int, user_id: int) -> bool:
 
 
 def _chat_carregar(user_id: int) -> list:
-    """Carrega até 60 mensagens; auto-remove erros técnicos persistidos (429/cota)."""
-    # Limpeza permanente de mensagens de erro que ficaram salvas no histórico
-    try:
-        _run("""DELETE FROM barista_chats WHERE user_id=%s AND role='assistant'
-                AND (content LIKE '%%429%%' OR content LIKE '%%Quota exceeded%%'
-                     OR content LIKE '%%esgotada%%' OR content LIKE '%%erro temporário%%'
-                     OR content LIKE '❌%%')""", (user_id,))
-    except Exception:
-        pass
+    """Carrega até 60 mensagens mais recentes do chat do Barista Expert.
+
+    Erros técnicos antigos (429/cota) são escondidos na renderização por
+    _msg_limpa — sem DELETE no banco (que dispararia _bump/limpeza de cache
+    a cada render e deixava a tela preta)."""
     rows = _fetch(
         "SELECT role, content FROM barista_chats WHERE user_id=%s ORDER BY criado_em ASC LIMIT 60",
         (user_id,), _v=0)
@@ -3451,7 +3447,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.10.3"
+_APP_VERSION = "3.10.4"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
