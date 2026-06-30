@@ -18,10 +18,9 @@ import bcrypt
 from typing import Optional
 import google.generativeai as genai
 import requests as _requests
-try:
-    from streamlit_cookies_controller import CookieController
-except Exception:
-    CookieController = None
+# CookieController desativado: o componente trava o render (iframe não carrega
+# em produção → app em branco). Cookie persiste via iframe JS + query param.
+CookieController = None
 from urllib.parse import urlencode
 from PIL import Image
 import io as _io_mod
@@ -3269,7 +3268,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.6.0"
+_APP_VERSION = "3.6.1"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
