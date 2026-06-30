@@ -18,6 +18,10 @@ import bcrypt
 from typing import Optional
 import google.generativeai as genai
 import requests as _requests
+try:
+    from streamlit_cookies_controller import CookieController
+except Exception:
+    CookieController = None
 from urllib.parse import urlencode
 from PIL import Image
 import io as _io_mod
@@ -1466,7 +1470,19 @@ def _v() -> int:
 _COOKIE_NAME = "mc_remember"
 
 def _read_cookie() -> Optional[str]:
-    """Lê o cookie enviado pelo browser na conexão (st.context, Streamlit 1.37+)."""
+    """Lê o cookie de persistência.
+
+    Prioridade: CookieController (componente confiável, lê/escreve cookie real
+    no browser) > st.context.cookies (fallback, só atualiza em page reload).
+    """
+    ctrl = st.session_state.get('_cookie_ctrl')
+    if ctrl is not None:
+        try:
+            val = ctrl.get(_COOKIE_NAME)
+            if val:
+                return val
+        except Exception:
+            pass
     try:
         return st.context.cookies.get(_COOKIE_NAME)
     except Exception:
@@ -3249,7 +3265,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.5.4"
+_APP_VERSION = "3.5.5"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3300,16 +3316,38 @@ def main():
     # elementos em todos os runs). Se aparecesse/sumisse condicionalmente,
     # o Streamlit remontaria os st.tabs e voltaria para a 1ª aba a cada
     # primeira interação após login/logout.
+    # CookieController: componente confiável para ler/escrever cookie real no
+    # browser (sobrevive a fechar/reabrir). Instanciado SEMPRE na mesma posição
+    # da árvore para não remontar st.tabs. Fallback para iframe JS se indisponível.
+    _ctrl = None
+    if CookieController is not None:
+        try:
+            _ctrl = CookieController(key="mc_cookie_ctrl")
+            st.session_state['_cookie_ctrl'] = _ctrl
+        except Exception:
+            _ctrl = None
+
     _pend  = st.session_state.pop('_pending_cookie', None)
     _clear = st.session_state.pop('_clear_cookie', False)
-    if _pend:
-        _js = (f"window.parent.document.cookie='{_COOKIE_NAME}={_pend[0]}; "
-               f"max-age={30*86400}; path=/; SameSite=Lax';")
-    elif _clear:
-        _js = f"window.parent.document.cookie='{_COOKIE_NAME}=; max-age=0; path=/';"
+    if _ctrl is not None:
+        try:
+            if _pend:
+                _ctrl.set(_COOKIE_NAME, _pend[0],
+                          max_age=30*86400, same_site="lax")
+            elif _clear:
+                _ctrl.remove(_COOKIE_NAME)
+        except Exception:
+            pass
     else:
-        _js = ""
-    components.html(f"<script>{_js}</script>", height=0)
+        # Fallback legado (iframe JS) quando o componente não está disponível
+        if _pend:
+            _js = (f"window.parent.document.cookie='{_COOKIE_NAME}={_pend[0]}; "
+                   f"max-age={30*86400}; path=/; SameSite=Lax';")
+        elif _clear:
+            _js = f"window.parent.document.cookie='{_COOKIE_NAME}=; max-age=0; path=/';"
+        else:
+            _js = ""
+        components.html(f"<script>{_js}</script>", height=0)
 
     # Dialog "Recuperar senha"
     if st.session_state.get("_show_forgot"):
