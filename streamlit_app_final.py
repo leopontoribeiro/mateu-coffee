@@ -28,6 +28,9 @@ import base64 as _b64mod
 import mc_core  # lógica pura (auth, helpers) + observabilidade
 
 _log = mc_core.get_logger()  # logs → stdout (capturado pelo Render)
+import mc_data  # dados estáticos extraídos do monólito
+from mc_data import (METODOS, _LOCAIS_COMPRA, _MOEDORES,
+                     CLASSIFICACOES_CAFE, RECIPES)
 
 # ── Gemini helper ──────────────────────────────────────────────────────
 def _get_gemini_key() -> str:
@@ -2395,14 +2398,6 @@ def _ph() -> str:
             'border-radius:10px;display:flex;align-items:center;justify-content:center;'
             'color:#3A3A3A;font-size:36px;">☕</div>')
 
-METODOS = ["Espresso","Pour Over","French Press","Aeropress",
-           "Chemex","Moka Pot","Cold Brew","Sifão","Drip","Outro"]
-
-_LOCAIS_COMPRA = ["Amazon", "Mercado Livre", "Shopee", "Guanabara",
-                  "Mundial", "Megabox", "Outros"]
-
-_MOEDORES = ["Starseeker e55Pro", "Acoplado Oster", "Comandante",
-             "Hamilton Beach", "Outros"]
 
 # ── IA helpers ─────────────────────────────────────────────────────────
 
@@ -2656,386 +2651,11 @@ def _render_recipe(r: dict) -> None:
         st.success("✓ Receita aplicada! Vá para ⚡ Nova Extração.")
 
 # Classificação oficial do café (substitui o campo Fazenda na UI)
-CLASSIFICACOES_CAFE = [
-    "Especial (>80 pts)",
-    "Gourmet",
-    "Superior",
-    "Tradicional",
-    "Extraforte",
-]
 
 # ─── Biblioteca de Receitas ────────────────────────────────────────────
 # 10 métodos clássicos baseados nas referências mais comentadas:
 # James Hoffmann (V60 / French Press / Moka), Campeonato Mundial de
 # AeroPress, SCA, padrões clássicos italianos.
-RECIPES = [
-    {
-        "id": "espresso",
-        "nome": "Espresso Italiano",
-        "metodo": "Espresso",
-        "categoria": "Pressão",
-        "icon": "⚡",
-        "dificuldade": "Intermediário",
-        "tempo": "≈30 s extração",
-        "rendimento": "Dose dupla · 36 g",
-        "ratio": "1 : 2",
-        "moagem": "Fina — textura de sal de mesa",
-        "descricao": "Base de quase todas as bebidas de café. Padrão moderno do "
-                     "campeonato mundial e da maioria das cafeterias.",
-        "equipamentos": [
-            "Máquina de espresso (9 bar)",
-            "Moedor com discos planos ou cônicos",
-            "Tamper 58 mm nivelador",
-            "Balança 0,1 g",
-            "Cronômetro",
-        ],
-        "ingredientes": [
-            "18 g de café especialidade torra média/escura, moído na hora",
-            "Água da máquina a 93 °C",
-        ],
-        "passos": [
-            "Pré-aqueça a máquina por ao menos 20 min.",
-            "Moa 18 g de café com moagem fina (textura de sal de mesa).",
-            "Distribua o pó uniformemente no porta-filtro (WDT com agulha ajuda).",
-            "Tampe firme e nivelado (≈15 kg de pressão).",
-            "Limpe o resíduo da borda do porta-filtro.",
-            "Encaixe e dispare imediatamente. Inicie o cronômetro.",
-            "Alvo: 36 g na xícara entre 25 e 30 s.",
-            "Tempo curto (<25 s) → moa mais fino. Tempo longo (>30 s) → moa mais grosso.",
-        ],
-        "fonte": "Padrão WBC moderno (1 : 2 em ≈30 s)",
-    },
-    {
-        "id": "v60",
-        "nome": "V60 — The Ultimate Technique",
-        "metodo": "Pour Over",
-        "categoria": "Filtrado",
-        "icon": "💧",
-        "dificuldade": "Intermediário",
-        "tempo": "≈4 min",
-        "rendimento": "1 xícara · 250 ml",
-        "ratio": "1 : 16,7",
-        "moagem": "Média-fina (um pouco mais fina que sal grosso)",
-        "descricao": "Receita do James Hoffmann — o tutorial mais assistido sobre V60. "
-                     "Resulta em uma xícara doce, limpa e equilibrada.",
-        "equipamentos": [
-            "Hario V60 02 (cerâmica ou plástico)",
-            "Papel filtro V60 02",
-            "Chaleira de bico fino (gooseneck)",
-            "Balança 0,1 g com cronômetro",
-            "Recipiente / chávena",
-        ],
-        "ingredientes": [
-            "15 g de café especialidade torra clara/média, moído na hora",
-            "250 g de água a 95 °C (filtrada)",
-        ],
-        "passos": [
-            "Esquente a água até 95 °C.",
-            "Coloque o filtro no V60 e enxágue com água quente para tirar o "
-            "gosto de papel e aquecer o coador. Descarte a água.",
-            "Adicione 15 g de café moído médio-fino. Faça um pequeno furo no centro.",
-            "T = 0 s: Despeje 50 g de água em movimento circular do centro para fora.",
-            "Logo após, gire suavemente o V60 (Rao Swirl) para nivelar a cama.",
-            "T = 0:45: Comece o pour principal. Vá até 100 g em 10 s.",
-            "T = 1:15: Despeje até 200 g em 10 s, com movimento circular.",
-            "T = 1:45: Despeje até 250 g em 10 s. Gire suavemente.",
-            "T ≈ 3:30: drawdown completo. Bata levemente para nivelar a cama final.",
-            "Gire para servir. Beba imediatamente.",
-        ],
-        "fonte": "James Hoffmann — Ultimate V60 Technique",
-    },
-    {
-        "id": "aeropress",
-        "nome": "AeroPress Invertido — Estilo Campeonato",
-        "metodo": "Aeropress",
-        "categoria": "Imersão",
-        "icon": "🚀",
-        "dificuldade": "Iniciante",
-        "tempo": "≈2 min",
-        "rendimento": "1 xícara · 130 ml",
-        "ratio": "1 : 7 + diluição",
-        "moagem": "Média (textura de areia)",
-        "descricao": "Receita do estilo campeonato mundial de AeroPress: extração "
-                     "concentrada, depois diluída. Saída suave e brilhante.",
-        "equipamentos": [
-            "AeroPress + filtro de papel",
-            "Moedor",
-            "Balança e cronômetro",
-            "Chaleira",
-        ],
-        "ingredientes": [
-            "18 g de café moído na hora (moagem média)",
-            "100 g de água a 85 °C para extração",
-            "30 g de água quente para diluição",
-        ],
-        "passos": [
-            "Posição invertida: coloque o êmbolo na marca 4 do cilindro.",
-            "Adicione 18 g de café. Dê uma chacoalhada leve para nivelar.",
-            "T = 0:00: Despeje 50 g de água em ≈6 s, molhando todo o pó.",
-            "T = 0:30: Despeje mais 50 g (total 100 g). Tampe com filtro encharcado.",
-            "T = 1:00: Gire suavemente para misturar e bata na bancada para soltar bolhas.",
-            "T = 1:35: Vire o AeroPress sobre o decanter. Comece a pressionar lentamente.",
-            "Pressão constante por 30-40 s. Pare quando ouvir o chiado.",
-            "Saída: ≈76 g concentrados. Dilua com 30 g de água quente.",
-            "Mexa para integrar e sirva.",
-        ],
-        "fonte": "Padrão World AeroPress Championship",
-    },
-    {
-        "id": "chemex",
-        "nome": "Chemex — Café limpo e cristalino",
-        "metodo": "Chemex",
-        "categoria": "Filtrado",
-        "icon": "🧪",
-        "dificuldade": "Intermediário",
-        "tempo": "≈5 min",
-        "rendimento": "2 xícaras · 500 ml",
-        "ratio": "1 : 15",
-        "moagem": "Média-grossa (textura de areia grossa)",
-        "descricao": "Filtro Chemex é mais espesso que o V60 — retém mais óleos e "
-                     "dá uma xícara excepcionalmente limpa, com acidez bem definida.",
-        "equipamentos": [
-            "Chemex 6 cups",
-            "Filtro Chemex pré-dobrado (bonded)",
-            "Chaleira gooseneck",
-            "Balança e cronômetro",
-        ],
-        "ingredientes": [
-            "33 g de café especialidade torra clara/média",
-            "500 g de água a 94 °C",
-        ],
-        "passos": [
-            "Abra o filtro com a parte tripla apoiada no bico de vazão.",
-            "Enxágue bem com água quente (importante por causa da espessura).",
-            "Descarte a água sem mexer no filtro.",
-            "Adicione 33 g de café moído médio-grosso.",
-            "T = 0: Despeje 70 g (bloom) em espiral. Espere 45 s.",
-            "T = 0:45: Vá até 250 g em 30 s, em pours circulares lentos.",
-            "T = 1:30: Vá até 400 g em 30 s.",
-            "T = 2:15: Vá até 500 g.",
-            "Drawdown total entre 4:00 e 5:00. Remova o filtro com cuidado.",
-            "Sirva quente — sem balançar a Chemex (a sedimentação dá clareza).",
-        ],
-        "fonte": "Chemex Coffee Maker — método clássico",
-    },
-    {
-        "id": "french-press",
-        "nome": "French Press — Ultimate Recipe",
-        "metodo": "French Press",
-        "categoria": "Imersão",
-        "icon": "🫖",
-        "dificuldade": "Iniciante",
-        "tempo": "≈9 min",
-        "rendimento": "2 xícaras · 500 ml",
-        "ratio": "1 : 16,6",
-        "moagem": "Média (não grossa, ao contrário do que se diz)",
-        "descricao": "Receita do James Hoffmann que mudou paradigma: moagem média, "
-                     "espera longa, sem mexer com colher. Resultado limpíssimo.",
-        "equipamentos": [
-            "French press 1L",
-            "Moedor",
-            "Balança e cronômetro",
-            "Colher grande (não plástica)",
-        ],
-        "ingredientes": [
-            "30 g de café moído na hora (moagem média)",
-            "500 g de água a 96 °C",
-        ],
-        "passos": [
-            "Pré-aqueça a French press com água quente. Descarte.",
-            "Adicione 30 g de café moído médio.",
-            "T = 0: Despeje 500 g de água quente sobre o pó, de uma vez.",
-            "T = 4:00: Quebre a crosta de pó na superfície mexendo 3-4 vezes "
-            "com a colher. Vão soltar gases.",
-            "Retire a espuma e o pó da superfície com a colher (≈30 s).",
-            "Deixe descansar de 5 a 8 minutos sem mexer (sedimentação).",
-            "Coloque o êmbolo apenas apoiado na superfície — NÃO pressione.",
-            "Sirva delicadamente, deixando os últimos 10% no fundo.",
-        ],
-        "fonte": "James Hoffmann — Ultimate French Press Technique",
-    },
-    {
-        "id": "moka",
-        "nome": "Moka Pot — Cafeteira Italiana",
-        "metodo": "Moka Pot",
-        "categoria": "Pressão",
-        "icon": "♨️",
-        "dificuldade": "Iniciante",
-        "tempo": "≈6 min",
-        "rendimento": "Conforme o tamanho da Moka (3, 6, 9 xícaras)",
-        "ratio": "Padrão da Moka — preenchimento do funil",
-        "moagem": "Média-fina (mais grossa que espresso)",
-        "descricao": "Clássico italiano. Café encorpado e intenso, próximo de um "
-                     "espresso simples. Truque do Hoffmann: água quente desde o início.",
-        "equipamentos": [
-            "Moka Pot Bialetti (3, 6 ou 9 xícaras)",
-            "Moedor",
-            "Chaleira",
-            "Fogão",
-        ],
-        "ingredientes": [
-            "Café moído médio-fino o suficiente para preencher o funil sem compactar",
-            "Água quente até a válvula de segurança (sem cobri-la)",
-        ],
-        "passos": [
-            "Ferva água em uma chaleira separadamente.",
-            "Encha a base da Moka com água quente até logo abaixo da válvula.",
-            "Coloque o funil. Preencha com café moído sem compactar — apenas "
-            "nivele com o dedo. NÃO use tamper.",
-            "Rosqueie a parte de cima com cuidado (atenção: a base está quente).",
-            "Leve ao fogão em fogo baixo-médio. Tampa aberta.",
-            "Quando o café começar a sair amarelado, fique perto.",
-            "Assim que vier um som de chiado e a vazão ficar clara/branca, "
-            "remova IMEDIATAMENTE do fogo.",
-            "Pare a extração colocando a base sob água fria corrente por 5 s.",
-            "Sirva imediatamente — Moka muda muito ao esfriar.",
-        ],
-        "fonte": "James Hoffmann — How to Make Stovetop Espresso",
-    },
-    {
-        "id": "cold-brew",
-        "nome": "Cold Brew — Infusão a Frio",
-        "metodo": "Cold Brew",
-        "categoria": "Imersão",
-        "icon": "🧊",
-        "dificuldade": "Iniciante",
-        "tempo": "12 a 16 h (geladeira)",
-        "rendimento": "1 L de concentrado",
-        "ratio": "1 : 8 (concentrado) ou 1 : 12 (pronto)",
-        "moagem": "Grossa (textura de pimenta-do-reino grossa)",
-        "descricao": "Extração a frio. Doce, baixa acidez, muito refrescante. "
-                     "O concentrado guarda na geladeira por até 2 semanas.",
-        "equipamentos": [
-            "Jarra grande ou frasco de vidro 1,5 L",
-            "Coador de papel ou pano (Chemex serve)",
-            "Geladeira",
-        ],
-        "ingredientes": [
-            "120 g de café moído grosso (1 : 8 = concentrado) "
-            "ou 80 g (1 : 12 = bebida pronta)",
-            "1 L de água fria filtrada",
-        ],
-        "passos": [
-            "Pese 120 g de café e moa grosso.",
-            "Coloque o café no frasco. Adicione 1 L de água fria.",
-            "Mexa bem com uma colher para garantir que todo o pó está molhado.",
-            "Tampe e leve à geladeira por 12 a 16 horas.",
-            "Coe primeiro em uma peneira fina para tirar o pó grosso.",
-            "Filtre o líquido em papel filtro (Chemex/V60) — pode levar 20 min.",
-            "Guarde o concentrado em garrafa fechada na geladeira.",
-            "Para beber: dilua 1 : 1 com água ou leite, com gelo.",
-            "Validade: até 2 semanas na geladeira.",
-        ],
-        "fonte": "Stumptown Roasters — guia clássico de Cold Brew",
-    },
-    {
-        "id": "cappuccino",
-        "nome": "Cappuccino Italiano Clássico",
-        "metodo": "Espresso",
-        "categoria": "Com Leite",
-        "icon": "☁️",
-        "dificuldade": "Avançado",
-        "tempo": "≈3 min total",
-        "rendimento": "150-180 ml",
-        "ratio": "1/3 espresso · 1/3 leite · 1/3 espuma firme",
-        "moagem": "Fina (mesma do espresso)",
-        "descricao": "O clássico italiano: terços iguais de espresso, leite vaporizado "
-                     "e espuma firme e seca. Servido em xícara pequena (180 ml).",
-        "equipamentos": [
-            "Máquina de espresso com vaporizador",
-            "Jarra de leite (350 ml) inox",
-            "Termômetro (opcional) ou mão como referência",
-            "Xícara de cappuccino 180 ml pré-aquecida",
-        ],
-        "ingredientes": [
-            "1 dose de espresso (18 g → 36 g)",
-            "120 ml de leite integral gelado",
-        ],
-        "passos": [
-            "Pré-aqueça a xícara com água quente.",
-            "Extraia 1 dose de espresso direto na xícara aquecida (vide receita Espresso).",
-            "Encha a jarra com 120 ml de leite gelado.",
-            "Posicione o bico do vaporizador 1 cm abaixo da superfície do leite.",
-            "Abra o vapor: incorpore ar por 3-4 s (som de 'tch tch') para criar espuma.",
-            "Afunde o bico no fundo (sem encostar) e crie um vórtice para integrar.",
-            "Pare a 60-65 °C (jarra fica quente demais para segurar).",
-            "Bata a jarra na bancada e gire para alinhar leite e espuma.",
-            "Despeje delicadamente sobre o espresso. Leve a espuma com a colher por cima.",
-            "Sirva imediatamente. Polvilhe cacau ou canela (opcional).",
-        ],
-        "fonte": "Padrão Italiano (180 ml, 1/3 + 1/3 + 1/3)",
-    },
-    {
-        "id": "latte",
-        "nome": "Caffè Latte",
-        "metodo": "Espresso",
-        "categoria": "Com Leite",
-        "icon": "🥛",
-        "dificuldade": "Intermediário",
-        "tempo": "≈3 min",
-        "rendimento": "250-300 ml",
-        "ratio": "1 espresso : 3 leite vaporizado",
-        "moagem": "Fina (mesma do espresso)",
-        "descricao": "Mais leite que o cappuccino, com microfoam suave em vez de "
-                     "espuma firme. Textura aveludada e doce.",
-        "equipamentos": [
-            "Máquina de espresso com vaporizador",
-            "Jarra de leite 500 ml",
-            "Xícara grande ou copo 300 ml",
-        ],
-        "ingredientes": [
-            "1 dose de espresso (18 g → 36 g)",
-            "200 ml de leite integral gelado",
-        ],
-        "passos": [
-            "Extraia 1 dose de espresso na xícara/copo (vide receita Espresso).",
-            "Encha a jarra com 200 ml de leite integral gelado.",
-            "Posicione o vaporizador na superfície e abra. Incorpore ar SÓ por 1-2 s "
-            "(menos que cappuccino — queremos microfoam, não espuma firme).",
-            "Afunde o bico 1 cm e crie um vórtice. Aqueça até 60-65 °C.",
-            "Bata a jarra para estourar bolhas grossas. Gire para integrar.",
-            "Despeje em fluxo contínuo sobre o espresso, alto e fino no início.",
-            "Aproxime a jarra da superfície para começar a desenhar latte art.",
-            "Sirva imediatamente.",
-        ],
-        "fonte": "Padrão SCA — Microfoam latte",
-    },
-    {
-        "id": "flat-white",
-        "nome": "Flat White Australiano",
-        "metodo": "Espresso",
-        "categoria": "Com Leite",
-        "icon": "⚪",
-        "dificuldade": "Avançado",
-        "tempo": "≈3 min",
-        "rendimento": "160-180 ml",
-        "ratio": "2 espresso : 3 leite microfoam",
-        "moagem": "Fina (mesma do espresso)",
-        "descricao": "Estilo australiano/neozelandês: espresso duplo (ristretto) com "
-                     "microfoam fininha. Café mais presente que no latte. Sem espuma alta.",
-        "equipamentos": [
-            "Máquina de espresso com vaporizador",
-            "Jarra de leite 350 ml",
-            "Xícara 160 ml pré-aquecida",
-        ],
-        "ingredientes": [
-            "1 dose dupla ristretto (20 g → 30-35 g)",
-            "120 ml de leite integral gelado",
-        ],
-        "passos": [
-            "Pré-aqueça a xícara.",
-            "Extraia 1 dose dupla ristretto (20 g de pó → 30-35 g na xícara em 25-30 s).",
-            "Encha a jarra com 120 ml de leite gelado.",
-            "Vaporize com MUITO POUCO ar (1 s só) — buscamos textura de tinta acetinada.",
-            "Aqueça até 55-60 °C. Microfoam quase invisível.",
-            "Bata a jarra. Gire muito até virar uma 'tinta' homogênea.",
-            "Despeje em fluxo único e contínuo, baixo na superfície.",
-            "Termine com um corte fino — sem 'topo' de espuma.",
-            "Diferença para o latte: menos volume, menos espuma, mais café.",
-        ],
-        "fonte": "Padrão australiano/neozelandês moderno",
-    },
-]
 
 # ── Coffee Engine ──────────────────────────────────────────────────────
 class CoffeeEngine:
@@ -3489,7 +3109,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.12.0"
+_APP_VERSION = "3.13.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -4371,6 +3991,35 @@ def main():
                         f'<span style="color:var(--mc-text-3);font-size:12px;margin-left:10px">'
                         f'espresso ~1:2 · coado ~1:15–17</span></div>',
                         unsafe_allow_html=True)
+                    # Timer de extração — cronômetro JS isolado (iframe, sem rerun)
+                    components.html(
+                        """
+<div style="font-family:Inter,system-ui,sans-serif;background:#161210;
+border:1px solid #2E2820;border-radius:12px;padding:12px 14px;text-align:center">
+  <div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:#D97732;font-weight:700;margin-bottom:4px">Timer de extração</div>
+  <div id="t" style="font-family:'DM Serif Display',Georgia,serif;font-size:42px;
+  color:#F2EBE0;line-height:1;margin:2px 0 10px">0.0<span style="font-size:18px">s</span></div>
+  <div style="display:flex;gap:8px;justify-content:center">
+    <button id="s" style="flex:1;max-width:130px;padding:9px;border-radius:8px;border:none;
+    background:#D97732;color:#0D0B09;font-weight:700;font-size:13px;cursor:pointer">Iniciar</button>
+    <button id="r" style="flex:1;max-width:130px;padding:9px;border-radius:8px;
+    border:1px solid #3E3630;background:transparent;color:#B4ACA4;font-weight:600;
+    font-size:13px;cursor:pointer">Zerar</button>
+  </div>
+  <div style="font-size:11px;color:#8A8278;margin-top:7px">Leia o tempo e registre em "Tempo Real" abaixo</div>
+</div>
+<script>
+(function(){var t0=null,raf=null,acc=0,
+el=document.getElementById('t'),sb=document.getElementById('s'),rb=document.getElementById('r');
+function fmt(ms){return (ms/1000).toFixed(1)+'<span style="font-size:18px">s</span>';}
+function tick(){el.innerHTML=fmt(acc+(performance.now()-t0));raf=requestAnimationFrame(tick);}
+sb.onclick=function(){if(t0===null){t0=performance.now();sb.textContent='Pausar';tick();}
+else{acc+=performance.now()-t0;t0=null;sb.textContent='Continuar';cancelAnimationFrame(raf);}};
+rb.onclick=function(){cancelAnimationFrame(raf);t0=null;acc=0;
+el.innerHTML='0.0<span style="font-size:18px">s</span>';sb.textContent='Iniciar';};})();
+</script>
+""", height=150)
                     tempo        = st.number_input("Tempo Real (s)", 1, 600, step=1, key="ext_tempo")
                     temp_real    = st.number_input("Temperatura Real (°C)", 60.0, 100.0,
                                                    step=0.5, key="ext_temp")
@@ -4979,6 +4628,59 @@ def main():
             _mh4.metric("Método Favorito", _top_metodo,
                         help=f"{_metodos_count.get(_top_metodo, 0)} extrações")
             st.markdown("")
+
+            # ── Comparar duas extrações (lado a lado) ────────────────────
+            if len(rows) >= 2:
+                with st.expander("Comparar duas extrações"):
+                    _opts = {f"{r['cafe_nome']} · {r['data'].strftime('%d/%m/%Y')} · {r['metodo']} · #{r['id']}": r
+                             for r in rows}
+                    _keys = list(_opts.keys())
+                    _ca, _cb = st.columns(2, gap="medium")
+                    _ka = _ca.selectbox("Extração A", _keys, index=0, key="cmp_a")
+                    _kb = _cb.selectbox("Extração B", _keys,
+                                        index=min(1, len(_keys) - 1), key="cmp_b")
+                    _A, _B = _opts[_ka], _opts[_kb]
+
+                    def _num(x):
+                        try:
+                            return float(x)
+                        except (TypeError, ValueError):
+                            return None
+
+                    _fields = [("Dose", "gramas", "g", 1), ("Yield", "agua_alvo", "g", 1),
+                               ("Ratio", None, "", None), ("Tempo", "tempo_extracao", "s", 0),
+                               ("Temp.", "temp_real", "°C", 1), ("Pressão", "pressao_real", "bar", 1),
+                               ("TDS", "tds", "%", 2), ("EY", "ey", "%", 1),
+                               ("Nota", "nota_final_stars", "/5", 0)]
+                    _trs = ""
+                    for _lbl, _f, _u, _dec in _fields:
+                        if _f is None:  # ratio calculado
+                            _va = mc_core.brew_ratio(_A.get("gramas"), _A.get("agua_alvo"))
+                            _vb = mc_core.brew_ratio(_B.get("gramas"), _B.get("agua_alvo"))
+                            _delta = "—"
+                        else:
+                            _na, _nb = _num(_A.get(_f)), _num(_B.get(_f))
+                            _va = f"{_na:.{_dec}f}{_u}" if _na is not None else "—"
+                            _vb = f"{_nb:.{_dec}f}{_u}" if _nb is not None else "—"
+                            if _na is not None and _nb is not None:
+                                _d = _nb - _na
+                                _cor = "#3DD68C" if _d > 0 else "#E85D5D" if _d < 0 else "var(--mc-text-3)"
+                                _delta = f"<span style='color:{_cor}'>{'+' if _d > 0 else ''}{_d:.{_dec}f}</span>"
+                            else:
+                                _delta = "—"
+                        _trs += (f"<tr><td style='padding:6px 10px;color:var(--mc-text-2)'>{_lbl}</td>"
+                                 f"<td style='padding:6px 10px;text-align:right'>{_va}</td>"
+                                 f"<td style='padding:6px 10px;text-align:right'>{_vb}</td>"
+                                 f"<td style='padding:6px 10px;text-align:right'>{_delta}</td></tr>")
+                    st.markdown(
+                        "<table style='width:100%;border-collapse:collapse;font-size:13px'>"
+                        "<thead><tr style='color:var(--mc-orange);font-size:11px;"
+                        "text-transform:uppercase;letter-spacing:.1em'>"
+                        "<th style='text-align:left;padding:6px 10px'>Métrica</th>"
+                        "<th style='text-align:right;padding:6px 10px'>A</th>"
+                        "<th style='text-align:right;padding:6px 10px'>B</th>"
+                        "<th style='text-align:right;padding:6px 10px'>Δ (B−A)</th></tr></thead>"
+                        f"<tbody>{_trs}</tbody></table>", unsafe_allow_html=True)
 
             # ── Filtros ──────────────────────────────────────────────────
             _nomes_cafe = sorted({r["cafe_nome"] for r in rows})
