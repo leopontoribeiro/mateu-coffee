@@ -83,7 +83,8 @@ def ask_barista_expert(pergunta: str, history: list | None = None) -> str:
             _err = str(e)
             if "429" in _err or "quota" in _err.lower() or "exhausted" in _err.lower():
                 continue  # tenta próximo modelo
-            return f"❌ Erro: {_err}"
+            return ("No momento o assistente atingiu um erro temporário. "
+                    "Tente novamente em alguns instantes.")
 
     return (
         "⚠️ Cota da API Gemini esgotada em todos os modelos disponíveis. "
@@ -3442,7 +3443,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.10.1"
+_APP_VERSION = "3.10.2"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3734,22 +3735,15 @@ def main():
 
     st.markdown("---")
 
-    # Ícones Material Symbols (linha, um tom só) — nativos do Streamlit
     tab1, tab2, tab3, tab4, tab_barista, tab5, tab6, tab7 = st.tabs([
-        ":material/local_cafe: Novo Café",
-        ":material/bolt: Nova Extração",
-        ":material/inventory_2: Meus Cafés",
-        ":material/history: Histórico",
-        ":material/auto_awesome: Barista Expert",
-        ":material/menu_book: Receitas",
-        ":material/grain: Cápsulas",
-        ":material/backup: Backup"])
+        "Novo Café", "Nova Extração", "Meus Cafés", "Histórico",
+        "Barista Expert", "Receitas", "Cápsulas", "Backup"])
 
     user_id = st.session_state['user_id']
 
     # ── Tab Barista Expert ─────────────────────────────────────────────
     with tab_barista:
-        st.markdown('<p class="section-label">✨ Barista Expert</p>', unsafe_allow_html=True)
+        st.markdown('<p class="mc-section-header">Barista Expert</p>', unsafe_allow_html=True)
 
         # ── Seção superior: Café Melhor Avaliado + Promoções (2 colunas)
         col_cafe, col_promo = st.columns(2, gap="large")
@@ -3825,6 +3819,18 @@ def main():
         # Carregar histórico persistido do DB
         _chat_msgs = _chat_carregar(user_id)
 
+        # Limpa mensagens de erro técnico persistidas (429/quota antigas)
+        def _msg_limpa(m):
+            c = m.get("content", "")
+            if m.get("role") == "assistant" and (
+                "429" in c or "Quota exceeded" in c or "quota" in c.lower()
+                or c.strip().startswith("❌")):
+                return {**m, "content": (
+                    "No momento o assistente atingiu o limite de uso da IA. "
+                    "Tente novamente em alguns instantes.")}
+            return m
+        _chat_msgs = [_msg_limpa(m) for m in (_chat_msgs or [])]
+
         # Histórico de mensagens (acima do input)
         if _chat_msgs:
             for msg in _chat_msgs:
@@ -3860,7 +3866,7 @@ def main():
 
         # Botão para limpar chat
         if _chat_msgs:
-            if st.button("🔄 Novo Chat", use_container_width=True):
+            if st.button("Novo Chat", use_container_width=True):
                 _chat_limpar(user_id)
                 st.rerun()
 
@@ -3873,16 +3879,16 @@ def main():
                 key="barista_input"
             )
         with col_send:
-            send_btn = st.button("📨", use_container_width=True, key="barista_send")
+            send_btn = st.button("Enviar", use_container_width=True, key="barista_send")
 
         # Processar resposta
         if send_btn and pergunta.strip():
             _chat_salvar(user_id, "user", pergunta)
-            with st.spinner("🤔 Barista Expert pensando..."):
+            with st.spinner("Barista Expert pensando..."):
                 resposta = ask_barista_expert(pergunta, history=_chat_msgs)
             # Detecta erro 429 (quota) e mostra UX amigável
             if "429" in resposta:
-                st.error("⏰ Limite de requisições atingido. Tente novamente em alguns instantes.")
+                st.error("Limite de requisições atingido. Tente novamente em alguns instantes.")
                 st.info("💡 Dica: cada pergunta consome créditos. Tente ser específico para melhor uso.")
             else:
                 _chat_salvar(user_id, "assistant", resposta)
@@ -4866,7 +4872,7 @@ def main():
 
     # ── Tab 4 · Histórico ─────────────────────────────────────────────
     with tab4:
-        st.markdown('<p class="section-label">Histórico de Extrações</p>', unsafe_allow_html=True)
+        st.markdown('<p class="mc-section-header">Histórico de Extrações</p>', unsafe_allow_html=True)
 
         rows = _fetch("""
             SELECT e.*, c.nome AS cafe_nome, c.torra FROM extracoes e
@@ -5027,7 +5033,7 @@ def main():
 
                     # Classificações por Estrelas
                     st.markdown("---")
-                    st.markdown("**⭐ Classificação Detalhada:**")
+                    st.markdown("**Classificação Detalhada:**")
                     cols = st.columns(4, gap="small")
                     classificacoes = [
                         ("CREMA", r.get('crema_stars', 0)),
@@ -5131,7 +5137,7 @@ def main():
                         ed_foto_b64 = _b64(ed_foto_f) if ed_foto_f else r.get("foto_caneca")
 
                         # 2) Classificação detalhada em estrelas (editável)
-                        st.markdown('<p class="section-label">⭐ Classificação Detalhada</p>',
+                        st.markdown('<p class="section-label">Classificação Detalhada</p>',
                                     unsafe_allow_html=True)
                         STAR_OPTS = [1, 2, 3, 4, 5]
                         es1, es2, es3, es4 = st.columns(4, gap="large")
@@ -5177,7 +5183,7 @@ def main():
 
     # ── Tab 5 · Biblioteca de Receitas ────────────────────────────────
     with tab5:
-        st.markdown('<p class="mc-section-header">📖 Biblioteca de Receitas</p>',
+        st.markdown('<p class="mc-section-header">Biblioteca de Receitas</p>',
                     unsafe_allow_html=True)
         st.markdown(
             '<p style="color:#B8B0A8;font-size:14px;line-height:1.6;'
@@ -5237,7 +5243,7 @@ def main():
         MAQUINAS_CAPSULAS = ["Nespresso", "Dolce Gusto", "Três Corações", "DeltaQ", "Outra"]
         VOLUMES_CAPSULAS  = {25: "Ristretto · 25ml", 40: "Espresso · 40ml", 110: "Lungo · 110ml"}
 
-        st.markdown('<p class="section-label">Cadastrar Cápsula</p>', unsafe_allow_html=True)
+        st.markdown('<p class="mc-section-header">Cadastrar Cápsula</p>', unsafe_allow_html=True)
 
         # Aplica resultado da análise de IA nas cápsulas
         if "ai_cap_result" in st.session_state:
@@ -5281,7 +5287,7 @@ def main():
 
         # ── Classificação sensorial da cápsula ────────────────────────
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-        st.markdown('<p class="section-label">⭐ Classificação Sensorial</p>', unsafe_allow_html=True)
+        st.markdown('<p class="section-label">Classificação Sensorial</p>', unsafe_allow_html=True)
         _SC = [1, 2, 3, 4, 5]
         csx1, csx2, csx3, csx4 = st.columns(4, gap="large")
         with csx1:
@@ -5415,7 +5421,7 @@ def main():
                     ]
                     if any(v for _, v in _cls_cap):
                         st.markdown("---")
-                        st.markdown("**⭐ Classificação Sensorial:**")
+                        st.markdown("**Classificação Sensorial:**")
                         _cls_cols = st.columns(4, gap="small")
                         for _idx, (_lbl, _sv) in enumerate(_cls_cap):
                             with _cls_cols[_idx % 4]:
@@ -5456,7 +5462,7 @@ def main():
                                                   index=_vol_idx, horizontal=True,
                                                   key=f"cedit_vol_{cap['id']}")
 
-                        st.markdown('<p class="section-label">⭐ Classificação Sensorial</p>', unsafe_allow_html=True)
+                        st.markdown('<p class="section-label">Classificação Sensorial</p>', unsafe_allow_html=True)
                         _SC2 = [1, 2, 3, 4, 5]
                         ces1, ces2, ces3, ces4 = st.columns(4, gap="large")
                         with ces1:
@@ -5528,7 +5534,7 @@ def main():
 
     # ── Tab 7 · Backup ────────────────────────────────────────────────
     with tab7:
-        st.markdown('<p class="section-label">Sistema de Backup</p>', unsafe_allow_html=True)
+        st.markdown('<p class="mc-section-header">Sistema de Backup</p>', unsafe_allow_html=True)
 
         st.info(
             "**Backups automáticos semanais** são criados toda vez que você acessa o app "
