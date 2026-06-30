@@ -438,10 +438,11 @@ st.markdown("""
     .stTabs [data-baseweb="tab-panel"]  { padding-top: 1.5rem !important; }
 
     /* ─── Section labels (eyebrow) ──────────────────────────────── */
+    .stMarkdown p.section-label,
     .section-label {
         font-size: 11px;
         font-weight: 600;
-        color: var(--mc-orange);
+        color: var(--mc-orange) !important;
         letter-spacing: 0.14em;
         text-transform: uppercase;
         margin: 0 0 1.25rem 0;
