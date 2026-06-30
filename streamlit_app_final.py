@@ -328,6 +328,24 @@ st.markdown("""
         max-width: 400px;
         margin: 0.75rem auto 0;
     }
+    /* Card de café — estilo carta de menu (nome serifado + origem eyebrow) */
+    .stMarkdown p.mc-cafe-name, .mc-cafe-name {
+        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-size: 26px !important;
+        font-weight: 400 !important;
+        line-height: 1.15;
+        color: var(--mc-text) !important;
+        margin: 0 0 2px 0 !important;
+        letter-spacing: -0.01em;
+    }
+    .stMarkdown p.mc-cafe-origin, .mc-cafe-origin {
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.12em !important;
+        text-transform: uppercase;
+        color: var(--mc-text-3) !important;
+        margin: 0 0 12px 0 !important;
+    }
 
     .stApp { background-color: var(--mc-bg); color: var(--mc-text); }
     .block-container {
@@ -3278,7 +3296,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.6.3"
+_APP_VERSION = "3.7.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3668,10 +3686,16 @@ def main():
                         unsafe_allow_html=True)
                 else:
                     st.markdown(
-                        f'<div style="display:flex;justify-content:flex-start;margin:8px 0">'
+                        f'<div style="display:flex;justify-content:flex-start;gap:10px;margin:8px 0">'
+                        f'<div style="width:30px;height:30px;border-radius:50%;flex-shrink:0;'
+                        f'background:var(--mc-orange-soft);border:1px solid var(--mc-orange);'
+                        f'display:flex;align-items:center;justify-content:center;'
+                        f'font-family:\'DM Serif Display\',serif;font-size:15px;color:var(--mc-orange)">B</div>'
                         f'<div style="background:var(--mc-surface);border:1px solid var(--mc-border);'
                         f'border-radius:12px;border-bottom-left-radius:0;'
-                        f'padding:12px 16px;max-width:70%;font-size:14px;line-height:1.6;color:var(--mc-text)">'
+                        f'padding:10px 16px;max-width:74%;font-size:14px;line-height:1.6;color:var(--mc-text)">'
+                        f'<div style="font-size:10px;font-weight:700;letter-spacing:0.06em;'
+                        f'text-transform:uppercase;color:var(--mc-orange);margin-bottom:4px">Barista Expert</div>'
                         f'{_html.escape(msg["content"])}'
                         f'</div></div>',
                         unsafe_allow_html=True)
@@ -4355,6 +4379,13 @@ def main():
                         else:
                             st.markdown(_ph(), unsafe_allow_html=True)
                     with cb:
+                        _orig = "  ·  ".join(filter(None, [
+                            c.get('regiao'), c.get('torra'),
+                            c.get('classificacao_cafe')]))
+                        st.markdown(
+                            f'<p class="mc-cafe-name">{_html.escape(c["nome"] or "—")}</p>'
+                            f'<p class="mc-cafe-origin">{_html.escape(_orig) or "—"}</p>',
+                            unsafe_allow_html=True)
                         tags = (_tag(c['tipo']) + _tag(c['torra']) +
                                 _tag(f"{c['tamanho_pacote']}g") +
                                 (_tag("Torra " + c['data_torra'].strftime('%d/%m/%Y'), True)
