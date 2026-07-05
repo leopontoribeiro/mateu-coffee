@@ -22,6 +22,54 @@ CLASSIFICACOES_CAFE = [
     "Extraforte",
 ]
 
+# Perfil de referência por método de preparo. Cada extração tem dose, ratio,
+# tempo, temperatura e moagem próprios — e só o espresso usa pressão (bar).
+# 'pressure': None marca métodos filtrados/imersão → o campo de bar é
+# DESATIVADO na interface (não se aplica). 'yield' é calculado (dose*ratio).
+#   dose      g de pó (base 1 xícara)
+#   ratio     água ÷ pó
+#   time      s alvo de extração (referência p/ o timer)
+#   temp      °C da água
+#   pressure  bar (None = método não usa pressão)
+#   grind     moagem sugerida
+#   yield_label  rótulo do campo de saída (varia: "Yield na xícara" vs "Água total")
+#   dose_max/water_max  limites dos campos numéricos
+METHOD_PROFILES = {
+    "Espresso":     {"dose": 18.0, "ratio": 2.0,  "time": 28,  "temp": 92.0, "pressure": 9.0,
+                     "grind": "Fina (textura de sal fino)",
+                     "yield_label": "Yield na xícara (g)", "dose_max": 30.0, "water_max": 80.0},
+    "V60":          {"dose": 15.0, "ratio": 16.7, "time": 210, "temp": 94.0, "pressure": None,
+                     "grind": "Média-fina (mais grossa que espresso)",
+                     "yield_label": "Água total (g)", "dose_max": 40.0, "water_max": 700.0},
+    "Pour Over":    {"dose": 18.0, "ratio": 16.0, "time": 180, "temp": 93.0, "pressure": None,
+                     "grind": "Média",
+                     "yield_label": "Água total (g)", "dose_max": 40.0, "water_max": 700.0},
+    "French Press": {"dose": 30.0, "ratio": 16.0, "time": 240, "temp": 96.0, "pressure": None,
+                     "grind": "Grossa (imersão longa)",
+                     "yield_label": "Água total (g)", "dose_max": 60.0, "water_max": 1000.0},
+    "Aeropress":    {"dose": 15.0, "ratio": 15.0, "time": 150, "temp": 85.0, "pressure": None,
+                     "grind": "Média (textura de areia)",
+                     "yield_label": "Água total (g)", "dose_max": 30.0, "water_max": 300.0},
+    "Chemex":       {"dose": 33.0, "ratio": 15.0, "time": 270, "temp": 94.0, "pressure": None,
+                     "grind": "Média-grossa",
+                     "yield_label": "Água total (g)", "dose_max": 60.0, "water_max": 1000.0},
+    "Moka Pot":     {"dose": 18.0, "ratio": 10.0, "time": 300, "temp": 100.0, "pressure": None,
+                     "grind": "Média-fina (sem compactar)",
+                     "yield_label": "Água na base (g)", "dose_max": 40.0, "water_max": 500.0},
+    "Cold Brew":    {"dose": 100.0, "ratio": 10.0, "time": 240, "temp": 22.0, "pressure": None,
+                     "grind": "Grossa (pimenta-do-reino grossa)",
+                     "yield_label": "Água total (g)", "dose_max": 200.0, "water_max": 2000.0},
+    "Sifão":        {"dose": 20.0, "ratio": 15.0, "time": 150, "temp": 92.0, "pressure": None,
+                     "grind": "Média",
+                     "yield_label": "Água total (g)", "dose_max": 40.0, "water_max": 600.0},
+    "Drip":         {"dose": 20.0, "ratio": 16.0, "time": 300, "temp": 94.0, "pressure": None,
+                     "grind": "Média",
+                     "yield_label": "Água total (g)", "dose_max": 60.0, "water_max": 1500.0},
+    "Outro":        {"dose": 18.0, "ratio": 2.0,  "time": 30,  "temp": 92.0, "pressure": None,
+                     "grind": "—",
+                     "yield_label": "Yield / Água (g)", "dose_max": 60.0, "water_max": 2000.0},
+}
+
 RECIPES = [
     {
         "id": "espresso",

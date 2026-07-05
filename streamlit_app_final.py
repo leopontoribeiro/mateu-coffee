@@ -30,7 +30,7 @@ import mc_core  # lógica pura (auth, helpers) + observabilidade
 _log = mc_core.get_logger()  # logs → stdout (capturado pelo Render)
 import mc_data  # dados estáticos extraídos do monólito
 from mc_data import (METODOS, _LOCAIS_COMPRA, _MOEDORES,
-                     CLASSIFICACOES_CAFE, RECIPES)
+                     CLASSIFICACOES_CAFE, RECIPES, METHOD_PROFILES)
 
 # ── Gemini helper ──────────────────────────────────────────────────────
 def _get_gemini_key() -> str:
@@ -2410,6 +2410,8 @@ def _comentario_motor_barista(coffee_info: dict, params: dict) -> str:
     if not _get_gemini_key():
         return ""
     try:
+        _pp = (f"{params['pressure']} bar" if params.get('pressure') is not None
+               else "sem pressão (método filtrado/imersão)")
         prompt = (
             "Você é um barista sênior. Em 2–3 frases curtas e diretas, "
             "descreva o que esperar na xícara com este café e estes parâmetros. "
@@ -2420,7 +2422,7 @@ def _comentario_motor_barista(coffee_info: dict, params: dict) -> str:
             f"Notas: {coffee_info.get('notas','não informadas') or 'não informadas'}\n"
             f"Intensidade: {coffee_info.get('intensidade',5)}/12\n\n"
             f"Parâmetros Motor Barista: Dose {params['dose']}g | Yield {params['yield']}g | "
-            f"{params['time']}s | {params['temp']}°C | {params['pressure']} bar\n\n"
+            f"{params['time']}s | {params['temp']}°C | {_pp}\n\n"
             "Responda em português. Máximo 70 palavras."
         )
         genai.configure(api_key=_get_gemini_key())
@@ -2439,6 +2441,9 @@ def _comentario_motor_barista(coffee_info: dict, params: dict) -> str:
 def _diagnostico_barista_ia(coffee_info: dict, params: dict,
                              real: dict, m_real: dict) -> str:
     """Análise minuciosa como barista sênior — variáveis, resultados e dicas."""
+    _sem_press = params.get('pressure') is None
+    _pp = "sem pressão (método filtrado)" if _sem_press else f"Pressão {params['pressure']} bar"
+    _rp = "sem pressão" if _sem_press else f"Pressão {real['pressao_real']} bar"
     prompt = f"""Você é um barista sênior com 15 anos de experiência em cafés especiais.
 
 Analise esta extração de forma minuciosa como se estivesse treinando um barista.
@@ -2451,10 +2456,10 @@ Analise esta extração de forma minuciosa como se estivesse treinando um barist
 - Intensidade: {coffee_info.get('intensidade','?')}/12
 
 ## PARÂMETROS PLANEJADOS (Motor Barista)
-Dose {params['dose']}g | Yield {params['yield']}g | Tempo {params['time']}s | Temp {params['temp']}°C | Pressão {params['pressure']} bar
+Dose {params['dose']}g | Yield {params['yield']}g | Tempo {params['time']}s | Temp {params['temp']}°C | {_pp}
 
 ## O QUE ACONTECEU DE VERDADE
-Dose {real['gramas']}g | Yield {real['agua']}g | Tempo {real['tempo']}s | Temp {real['temp_real']}°C | Pressão {real['pressao_real']} bar
+Dose {real['gramas']}g | Yield {real['agua']}g | Tempo {real['tempo']}s | Temp {real['temp_real']}°C | {_rp}
 TDS: {f"{real['tds']}% (medido)" if real['tds'] > 0 else 'não medido'}
 
 ## RESULTADOS CALCULADOS
@@ -2809,38 +2814,48 @@ def _dial_in_recomendacao(coffee_id: int, metodo: str, user_id: int) -> dict:
     }
 
 
-def _motor_barista_params(torra: str, tipo: str) -> dict:
+def _motor_barista_params(metodo: str, torra: str, tipo: str) -> dict:
     """
-    Retorna parâmetros pré-definidos para o Motor Barista baseado em torra e tipo,
-    buscando um café adocicado com equilíbrio de notas.
+    Parâmetros sugeridos ADAPTADOS ao método de preparo + torra + tipo.
 
-    Torra Clara: Extração longa para sacar açúcares, temperatura alta
-    Torra Média: Extração equilibrada, temperatura padrão
-    Torra Escura: Extração curta para não queimar, temperatura moderada
+    Cada método tem seu perfil (dose, ratio, tempo, temperatura e moagem) em
+    mc_data.METHOD_PROFILES. Só o espresso usa pressão da bomba (bar); métodos
+    filtrados/imersão (V60, coado, prensa, Chemex, Moka, Cold Brew…) NÃO usam —
+    nesse caso 'pressure' vem None e o campo de bar fica desativado na interface.
+
+    Torra Clara: extração um pouco mais longa/quente (saca açúcares).
+    Torra Escura: mais curta/fria (não queima). Café já moído extrai mais rápido.
     """
-    # Padrão: dose=18, yield=36, tempo=28, temp=92, pressão=9 (1:2 ratio)
-    params = {"dose": 18.0, "yield": 36.0, "time": 28, "temp": 92.0, "pressure": 9.0}
+    prof = METHOD_PROFILES.get(metodo, METHOD_PROFILES["Outro"])
+    dose, ratio = float(prof["dose"]), float(prof["ratio"])
+    p = {
+        "dose": dose,
+        "ratio": ratio,
+        "yield": round(dose * ratio, 1),
+        "time": int(prof["time"]),
+        "temp": float(prof["temp"]),
+        "pressure": prof["pressure"],          # None = método não usa pressão
+        "grind": prof["grind"],
+        "yield_label": prof["yield_label"],
+        "dose_max": float(prof["dose_max"]),
+        "water_max": float(prof["water_max"]),
+    }
 
-    # Ajustes por torra (visando doçura)
+    # Ajuste por torra (visando doçura)
     if torra == "Clara":
-        params["time"] = 32  # Tempo maior para extrair mais açúcares
-        params["temp"] = 94.0  # Temperatura maior
-        params["yield"] = 38  # Yield um pouco maior
-    elif torra == "Média":
-        params["time"] = 28
-        params["temp"] = 92.0
-        params["yield"] = 36
+        p["temp"] = round(p["temp"] + 2.0, 1)
+        p["time"] = int(p["time"] * 1.05)
     elif torra == "Escura":
-        params["time"] = 26  # Tempo menor para não queimar
-        params["temp"] = 90.0  # Temperatura menor
-        params["yield"] = 34  # Yield menor
+        p["temp"] = round(p["temp"] - 2.0, 1)
+        p["time"] = int(p["time"] * 0.95)
 
-    # Ajustes adicionais por tipo
+    # Café já moído extrai mais rápido; no espresso reduz um pouco a pressão
     if tipo == "Moído":
-        params["time"] -= 2  # Café moído extrai mais rápido
-        params["pressure"] = 8.5
+        p["time"] = max(5, p["time"] - 2)
+        if p["pressure"] is not None:
+            p["pressure"] = 8.5
 
-    return params
+    return p
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _radar(profile: tuple) -> go.Figure:
@@ -2910,29 +2925,29 @@ _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
 
     <div class="cg">
       <div class="cl"><label>Massa de Café (Dose)</label><span id="vd">18.0 g</span></div>
-      <input type="range" id="id" min="14" max="22" step="0.5" value="18">
+      <input type="range" id="id" min="5" max="120" step="0.5" value="18">
       <div class="ht">Quantidade de pó no porta-filtro. Impacta o corpo e resistência ao fluxo.</div>
     </div>
 
     <div class="cg">
-      <div class="cl"><label>Volumetria na Xícara (Yield)</label><span id="vy">36.0 g</span></div>
-      <input type="range" id="iy" min="20" max="300" step="1" value="36">
+      <div class="cl"><label>Volumetria / Água (Yield)</label><span id="vy">36.0 g</span></div>
+      <input type="range" id="iy" min="20" max="1200" step="1" value="36">
       <div class="ht">Peso final do líquido extraído. Define a taxa de concentração (Ratio).</div>
     </div>
 
     <div class="cg">
       <div class="cl"><label>Tempo de Extração</label><span id="vt">28 s</span></div>
-      <input type="range" id="it" min="10" max="180" step="1" value="28">
+      <input type="range" id="it" min="10" max="600" step="1" value="28">
       <div class="ht">Tempos baixos subextraem; altos superextraem.</div>
     </div>
 
     <div class="cg">
       <div class="cl"><label>Temperatura da Água</label><span id="vp">92.0 °C</span></div>
-      <input type="range" id="ip" min="85" max="98" step="0.5" value="92">
+      <input type="range" id="ip" min="15" max="99" step="0.5" value="92">
       <div class="ht">Temperaturas elevadas dissolvem mais amargor; baixas geram acidez crua.</div>
     </div>
 
-    <div class="cg">
+    <div class="cg" id="pg">
       <div class="cl"><label>Pressão da Bomba</label><span id="vb">9.0 bar</span></div>
       <input type="range" id="ib" min="1" max="20" step="0.5" value="9">
       <div class="ht">Fora de 8–10 bar gera canalizações ou falta de crema.</div>
@@ -3092,10 +3107,11 @@ function reset(){clearInterval(iv);iv=null;ms=0;laps=[];document.getElementById(
 </html>"""
 
 # ── Timer de extração com alarmes por etapa (usado na Nova Extração) ────
-# Cronômetro isolado em iframe (sem rerun). Toca um som (Web Audio, sem
-# arquivo externo) em cada etapa do método e no tempo alvo, com vibração
-# no mobile. Placeholders __TARGET__/__STAGES__/__CHECKED__/__HASSTAGES__
-# são injetados em Python via .replace().
+# Cronômetro isolado em iframe (sem rerun). Ao atingir cada etapa do método
+# (e o tempo alvo), toca um ALARME PROLONGADO (~5s, Web Audio, sem arquivo
+# externo) + vibração, e PAUSA automaticamente até o usuário tocar "Continuar"
+# para a próxima etapa. Placeholders __TARGET__/__STAGES__/__CHECKED__/
+# __SWDISP__/__NSTAGES__ são injetados em Python via .replace().
 _EXT_TIMER_TPL = """
 <div style="font-family:Inter,system-ui,sans-serif;background:#161210;
 border:1px solid #2E2820;border-radius:12px;padding:12px 14px">
@@ -3105,71 +3121,86 @@ border:1px solid #2E2820;border-radius:12px;padding:12px 14px">
     <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#B4ACA4">
       <span>Alvo</span>
       <input id="tg" type="number" min="1" max="900" value="__TARGET__"
-      style="width:56px;background:#0D0B09;border:1px solid #3E3630;border-radius:6px;
-      color:#F2EBE0;font-size:13px;font-weight:700;padding:4px 6px;text-align:center">
+      style="width:58px;background:#0D0B09;border:1px solid #3E3630;border-radius:6px;
+      color:#F2EBE0;font-size:13px;font-weight:700;padding:5px 6px;text-align:center">
       <span>s</span>
       <button id="tb" title="Testar som" style="background:transparent;border:1px solid #3E3630;
-      border-radius:6px;color:#D97732;font-size:13px;padding:3px 7px;cursor:pointer">&#128276;</button>
+      border-radius:6px;color:#D97732;font-size:14px;padding:4px 8px;cursor:pointer">&#128276;</button>
     </div>
   </div>
-  <div id="t" style="font-family:'DM Serif Display',Georgia,serif;font-size:44px;
-  color:#F2EBE0;line-height:1;margin:8px 0 10px;text-align:center;transition:color .2s">0.0<span style="font-size:18px">s</span></div>
+  <div id="t" style="font-family:'DM Serif Display',Georgia,serif;font-size:48px;
+  color:#F2EBE0;line-height:1;margin:10px 0 12px;text-align:center;transition:color .2s">0.0<span style="font-size:19px">s</span></div>
   <div style="display:flex;gap:8px;justify-content:center">
-    <button id="s" style="flex:1;max-width:150px;padding:9px;border-radius:8px;border:none;
-    background:#D97732;color:#0D0B09;font-weight:700;font-size:13px;cursor:pointer">Iniciar</button>
-    <button id="r" style="flex:1;max-width:150px;padding:9px;border-radius:8px;
+    <button id="s" style="flex:1;max-width:200px;padding:12px;border-radius:9px;border:none;
+    background:#D97732;color:#0D0B09;font-weight:700;font-size:15px;cursor:pointer">Iniciar</button>
+    <button id="r" style="flex:0 0 auto;padding:12px 18px;border-radius:9px;
     border:1px solid #3E3630;background:transparent;color:#B4ACA4;font-weight:600;
-    font-size:13px;cursor:pointer">Zerar</button>
+    font-size:15px;cursor:pointer">Zerar</button>
   </div>
-  <label id="swrap" style="display:__SWDISP__;align-items:center;gap:7px;margin-top:10px;
+  <div id="banner" style="font-size:15px;font-weight:600;line-height:1.4;color:#8A8278;
+  margin-top:13px;text-align:center;min-height:42px">Toque em Iniciar — o timer para em cada etapa até você tocar Continuar.</div>
+  <label id="swrap" style="display:__SWDISP__;align-items:center;justify-content:center;gap:7px;margin-top:4px;
   font-size:12px;color:#B4ACA4;cursor:pointer;user-select:none">
     <input id="sw" type="checkbox" __CHECKED__ style="width:15px;height:15px;accent-color:#D97732">
-    Alarmes por etapa <span style="color:#8A8278">(__NSTAGES__ etapas do método)</span>
+    Parar e alarmar em cada etapa <span style="color:#8A8278">(__NSTAGES__ etapas)</span>
   </label>
-  <div id="stg" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px"></div>
-  <div id="note" style="font-size:11px;color:#8A8278;margin-top:8px;text-align:center">
-  Toque em Iniciar — um som avisa cada etapa e o tempo alvo.</div>
+  <div id="stg" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;justify-content:center"></div>
 </div>
 <script>
 (function(){
 var TARGET=__TARGET__, STAGES=__STAGES__;
-var t0=null,raf=null,acc=0,fired={};
+var t0=null,raf=null,acc=0,running=false,fired={};
 var el=document.getElementById('t'),sb=document.getElementById('s'),rb=document.getElementById('r'),
     tg=document.getElementById('tg'),sw=document.getElementById('sw'),tb=document.getElementById('tb'),
-    stg=document.getElementById('stg'),note=document.getElementById('note');
-var actx=null;
+    stg=document.getElementById('stg'),banner=document.getElementById('banner');
+var actx=null,alarmOsc=null,alarmTO=null;
 function au(){try{if(!actx)actx=new (window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume();}catch(e){}return actx;}
-function beep(freq,dur,reps){var a=au();if(!a)return;reps=reps||1;var t=a.currentTime;
-  for(var i=0;i<reps;i++){var o=a.createOscillator(),g=a.createGain();o.type='sine';o.frequency.value=freq;
-  var s=t+i*(dur+0.13);g.gain.setValueAtTime(0.0001,s);g.gain.exponentialRampToValueAtTime(0.6,s+0.015);
-  g.gain.exponentialRampToValueAtTime(0.0001,s+dur);o.connect(g);g.connect(a.destination);o.start(s);o.stop(s+dur+0.02);}}
-function buzz(p){if(navigator.vibrate)navigator.vibrate(p);}
+function stopAlarm(){if(alarmOsc){try{alarmOsc.stop();}catch(e){}alarmOsc=null;}if(alarmTO){clearTimeout(alarmTO);alarmTO=null;}}
+function longAlarm(sec){var a=au();if(!a)return;stopAlarm();var o=a.createOscillator(),g=a.createGain();
+  o.type='square';o.connect(g);g.connect(a.destination);var t=a.currentTime,end=t+sec,beat=0.34,i=0;
+  for(var x=t;x<end-0.001;x+=beat){o.frequency.setValueAtTime(i%2?988:784,x);
+    g.gain.setValueAtTime(0.0001,x);g.gain.exponentialRampToValueAtTime(0.5,x+0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001,x+beat*0.62);i++;}
+  g.gain.setValueAtTime(0.0001,end);o.start(t);o.stop(end+0.05);alarmOsc=o;
+  alarmTO=setTimeout(function(){alarmOsc=null;alarmTO=null;},sec*1000+200);}
+function buzz(p){if(navigator.vibrate){try{navigator.vibrate(p);}catch(e){}}}
 function nowMs(){return acc+(t0===null?0:(performance.now()-t0));}
 function es(){return nowMs()/1000;}
 function fmtT(s){var m=Math.floor(s/60),x=Math.floor(s%60);return m>0?(m+':'+(x<10?'0':'')+x):(x+'s');}
 function alarms(){var l=[];if(sw.checked){STAGES.forEach(function(s){if(s.t<TARGET&&s.t>0)l.push({t:s.t,label:s.label,k:'e'});});}
-  l.push({t:TARGET,label:'Tempo alvo — pare',k:'f'});l.sort(function(a,b){return a.t-b.t;});return l;}
+  l.push({t:TARGET,label:'Tempo alvo',k:'f'});l.sort(function(a,b){return a.t-b.t;});return l;}
+function setBtn(txt,bg){sb.textContent=txt;sb.style.background=bg;sb.style.color=(bg==='transparent'?'#B4ACA4':'#0D0B09');}
+function say(html,color){banner.innerHTML=html;banner.style.color=color||'#F2EBE0';}
 function renderChips(){var al=alarms();stg.innerHTML=al.map(function(a){
   return '<span class="mchip" data-t="'+a.t+'" data-k="'+a.k+'" style="border:1px solid '
-  +(a.k==='f'?'#D97732':'#3E3630')+';border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;color:'
-  +(a.k==='f'?'#D97732':'#8A8278')+'">'+fmtT(a.t)+' · '+a.label+'</span>';}).join('');}
+  +(a.k==='f'?'#D97732':'#3E3630')+';border-radius:7px;padding:5px 11px;font-size:13px;font-weight:600;color:'
+  +(a.k==='f'?'#D97732':'#B4ACA4')+'">'+fmtT(a.t)+' · '+a.label+'</span>';}).join('');}
 function paint(){var e=es(),al=alarms(),nx=null;
-  for(var i=0;i<al.length;i++){if(e<al[i].t){nx=al[i].t;break;}}
-  document.querySelectorAll('#stg .mchip').forEach(function(c){var t=+c.getAttribute('data-t'),k=c.getAttribute('data-k');
-    if(e>=t){c.style.opacity='0.4';c.style.textDecoration='line-through';}
-    else{c.style.opacity='1';c.style.textDecoration='none';}
-    if(t===nx&&e<t){c.style.background='rgba(217,119,50,.14)';c.style.color='#F2EBE0';c.style.borderColor='#D97732';}
-    else{c.style.background='transparent';}});}
-function flash(big){el.style.color=big?'#D97732':'#F08842';setTimeout(function(){el.style.color='#F2EBE0';},big?700:300);}
-function check(){var e=es();alarms().forEach(function(a){var key=a.k+a.t;if(!fired[key]&&e>=a.t){fired[key]=1;
-  if(a.k==='f'){beep(1046,0.22,3);buzz([180,90,180,90,280]);flash(true);note.textContent='\\u23f8 Tempo alvo atingido — pare a extração!';note.style.color='#D97732';}
-  else{beep(880,0.16,1);buzz(160);flash(false);note.textContent='Etapa: '+a.label;note.style.color='#B4ACA4';}}});}
-function tick(){el.innerHTML=(nowMs()/1000).toFixed(1)+'<span style="font-size:18px">s</span>';check();paint();raf=requestAnimationFrame(tick);}
-sb.onclick=function(){au();if(t0===null){t0=performance.now();sb.textContent='Pausar';note.textContent='Cronometrando\\u2026';note.style.color='#8A8278';tick();}
-  else{acc+=performance.now()-t0;t0=null;sb.textContent='Continuar';cancelAnimationFrame(raf);note.textContent='Pausado \\u2014 '+(nowMs()/1000).toFixed(1)+'s';}};
-rb.onclick=function(){cancelAnimationFrame(raf);t0=null;acc=0;fired={};el.innerHTML='0.0<span style="font-size:18px">s</span>';
-  el.style.color='#F2EBE0';sb.textContent='Iniciar';note.textContent='Toque em Iniciar \\u2014 um som avisa cada etapa e o tempo alvo.';note.style.color='#8A8278';renderChips();paint();};
-tb.onclick=function(){au();beep(880,0.16,1);};
+  for(var i=0;i<al.length;i++){if(!fired[al[i].k+al[i].t]){nx=al[i].t;break;}}
+  var cs=document.querySelectorAll('#stg .mchip');
+  for(var j=0;j<cs.length;j++){var c=cs[j],t=+c.getAttribute('data-t');
+    if(fired[c.getAttribute('data-k')+t]){c.style.opacity='0.4';c.style.textDecoration='line-through';c.style.background='transparent';}
+    else if(t===nx){c.style.opacity='1';c.style.textDecoration='none';c.style.background='rgba(217,119,50,.16)';c.style.color='#F2EBE0';c.style.borderColor='#D97732';}
+    else{c.style.opacity='1';c.style.textDecoration='none';c.style.background='transparent';}}}
+function flash(big){el.style.color=big?'#3DD68C':'#F08842';setTimeout(function(){el.style.color='#F2EBE0';},big?900:400);}
+function nextUnfired(after){var al=alarms();for(var i=0;i<al.length;i++){if(al[i].t>after&&!fired[al[i].k+al[i].t])return al[i];}return null;}
+function fireStage(a){fired[a.k+a.t]=1;longAlarm(5);buzz([500,170,500,170,500,170,600]);flash(a.k==='f');
+  acc=a.t*1000;t0=null;running=false;cancelAnimationFrame(raf);
+  el.innerHTML=a.t.toFixed(1)+'<span style="font-size:19px">s</span>';
+  if(a.k==='f'){setBtn('Concluído ✓','#3DD68C');say('✓ Tempo alvo <b>'+fmtT(a.t)+'</b> atingido — <b>pare a extração!</b>','#3DD68C');}
+  else{var nx=nextUnfired(a.t);setBtn('▶ Continuar','#3DD68C');
+    say('Etapa <b>'+fmtT(a.t)+'</b>: '+a.label+(nx?'<br><span style="color:#8A8278">próxima: '+fmtT(nx.t)+' · '+nx.label+'</span>':''),'#F2EBE0');}
+  paint();}
+function check(){var e=es(),al=alarms();for(var i=0;i<al.length;i++){var a=al[i];if(!fired[a.k+a.t]&&e>=a.t){fireStage(a);return;}}}
+function tick(){el.innerHTML=(nowMs()/1000).toFixed(1)+'<span style="font-size:19px">s</span>';check();paint();if(running)raf=requestAnimationFrame(tick);}
+function startRun(){au();stopAlarm();if(t0===null)t0=performance.now();running=true;setBtn('Pausar','#D97732');
+  var nx=nextUnfired(-1);say(nx?'Cronometrando… próxima: <b>'+fmtT(nx.t)+'</b> · '+nx.label:'Cronometrando…','#8A8278');tick();}
+sb.onclick=function(){if(running){acc=nowMs();t0=null;running=false;cancelAnimationFrame(raf);stopAlarm();
+  setBtn('▶ Continuar','#3DD68C');say('Pausado — '+(nowMs()/1000).toFixed(1)+'s','#8A8278');}else{startRun();}};
+rb.onclick=function(){cancelAnimationFrame(raf);stopAlarm();t0=null;acc=0;running=false;fired={};
+  el.innerHTML='0.0<span style="font-size:19px">s</span>';el.style.color='#F2EBE0';setBtn('Iniciar','#D97732');
+  say('Toque em Iniciar — o timer para em cada etapa até você tocar Continuar.','#8A8278');renderChips();paint();};
+tb.onclick=function(){au();longAlarm(1.5);};
 tg.addEventListener('input',function(){var v=parseInt(this.value)||0;TARGET=Math.max(1,v);fired={};renderChips();paint();});
 sw.addEventListener('change',function(){fired={};renderChips();paint();});
 renderChips();paint();
@@ -3211,7 +3242,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.14.0"
+_APP_VERSION = "3.15.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3862,6 +3893,7 @@ def main():
                 # Guia de ratio por método — referência rápida de entusiasta
                 _RATIO_GUIDE = {
                     "Espresso":     "1:2 (18g → 36g) · 25–32s · moagem fina",
+                    "V60":          "1:16–1:17 (15g → 250g) · 3:00–3:30 · moagem média-fina",
                     "Pour Over":    "1:15–1:16 · 2:30–3:30 · moagem média-fina",
                     "Coado":        "1:15 (ex: 20g → 300g) · moagem média",
                     "French Press": "1:14 · 4 min de imersão · moagem grossa",
@@ -3909,6 +3941,7 @@ def main():
                 cafe_info = _fetch("SELECT tipo, torra FROM coffees WHERE id=%s AND user_id=%s LIMIT 1",
                                   (cid, user_id), _v=_v())
                 params = _motor_barista_params(
+                    metodo,
                     cafe_info[0]["torra"] if cafe_info else "Média",
                     cafe_info[0]["tipo"]  if cafe_info else "Grãos")
     
@@ -4012,26 +4045,31 @@ def main():
                     f'border-radius:12px;padding:14px 18px;margin:0 0 1rem">'
                     f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange);'
                     f'text-transform:uppercase;letter-spacing:.1em">🎯 Receita sugerida para este grão</span>'
+                    f'<span style="font-size:11px;color:var(--mc-text-3);margin-left:8px">· {metodo}</span>'
                     f'<div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:8px;font-size:14px;'
                     f'color:var(--mc-text)">'
-                    f'<span><b>{_rs["dose"]}g</b> dose</span>'
-                    f'<span><b>{_rs["yield"]}g</b> yield (1:{_rs["yield"]/_rs["dose"]:.1f})</span>'
+                    f'<span><b>{_rs["dose"]:.0f}g</b> dose</span>'
+                    f'<span><b>{_rs["yield"]:.0f}g</b> água (1:{_rs["ratio"]:.1f})</span>'
                     f'<span><b>{_rs["time"]}s</b> tempo</span>'
                     f'<span><b>{_rs["temp"]}°C</b> água</span>'
-                    f'<span><b>{_rs["pressure"]} bar</b> pressão</span>'
-                    f'</div>'
+                    + (f'<span><b>{_rs["pressure"]} bar</b> pressão</span>'
+                       if _rs.get("pressure") is not None
+                       else '<span style="color:var(--mc-text-3)">sem pressão (bar)</span>')
+                    + f'<span><b>{_rs["grind"]}</b> · moagem</span>'
+                    + f'</div>'
                     + (
                         f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
                         f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
                         f'☕☕ <b>Ajuste para 2 xícaras:</b> dose <b>{_rs["dose"]*2:.1f}g</b> · '
-                        f'yield total <b>{_rs["yield"]*2:.0f}g</b> dividido em '
-                        f'<b>{_rs["yield"]:.0f}g por xícara</b> — mesmo ratio (1:{_rs["yield"]/_rs["dose"]:.1f}) '
+                        f'água total <b>{_rs["yield"]*2:.0f}g</b> dividido em '
+                        f'<b>{_rs["yield"]:.0f}g por xícara</b> — mesmo ratio (1:{_rs["ratio"]:.1f}) '
                         f'e mesma concentração, tempo alvo {_rs["time"]}s.</div>'
                         if xicaras == 2 else
                         f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
                         f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
-                        f'☕ <b>1 xícara:</b> volume integral de <b>{_rs["yield"]}g</b> na xícara — '
-                        f'máxima concentração e corpo.</div>'
+                        f'☕ <b>1 xícara:</b> <b>{_rs["dose"]:.0f}g</b> de pó para '
+                        f'<b>{_rs["yield"]:.0f}g</b> de água (1:{_rs["ratio"]:.1f}) — '
+                        f'moagem {_rs["grind"].lower()}.</div>'
                       )
                     + '</div>', unsafe_allow_html=True)
     
@@ -4039,9 +4077,14 @@ def main():
                     .replace('value="18"', f'value="{params["dose"]}"')
                     .replace('value="36"', f'value="{params["yield"]}"')
                     .replace('value="28"', f'value="{params["time"]}"')
-                    .replace('value="92"', f'value="{params["temp"]}"')
-                    .replace('value="9"',  f'value="{params["pressure"]}"'))
-                components.html(motor_html, height=660, scrolling=False)
+                    .replace('value="92"', f'value="{params["temp"]}"'))
+                if params.get("pressure") is not None:
+                    motor_html = motor_html.replace('value="9"', f'value="{params["pressure"]}"')
+                else:
+                    # Método filtrado/imersão: pressão não se aplica → controle apagado
+                    motor_html = motor_html.replace('id="pg"', 'id="pg" style="display:none"')
+                _motor_h = 660 if params.get("pressure") is not None else 600
+                components.html(motor_html, height=_motor_h, scrolling=False)
     
                 # Botão para propagar sugestão do Motor Barista → campos reais abaixo
                 if st.button("↩ Redefinir campos com sugestão do Motor Barista",
@@ -4050,7 +4093,7 @@ def main():
                     st.session_state["ext_agua"]   = round(float(params["yield"]) * multiplier, 1)
                     st.session_state["ext_tempo"]  = int(params["time"])
                     st.session_state["ext_temp"]   = float(params["temp"])
-                    st.session_state["ext_press"]  = float(params["pressure"])
+                    st.session_state["ext_press"]  = float(params["pressure"]) if params.get("pressure") is not None else 0.0
                     st.session_state["_ext_seed"]  = None  # força reseed
                     st.rerun()
     
@@ -4067,31 +4110,43 @@ def main():
                     # que as abas voltem para a 1ª ao trocar xícaras/café).
                     # Os defaults são semeados via session_state quando café ou
                     # nº de xícaras mudam.
-                    _seed_sig = (cid, multiplier)
+                    _seed_sig = (cid, multiplier, metodo)
                     if st.session_state.get("_ext_seed") != _seed_sig:
                         st.session_state["_ext_seed"]  = _seed_sig
                         st.session_state["ext_gramas"] = round(float(params["dose"])  * multiplier, 1)
                         st.session_state["ext_agua"]   = round(float(params["yield"]) * multiplier, 1)
                         st.session_state["ext_tempo"]  = int(params["time"])
                         st.session_state["ext_temp"]   = float(params["temp"])
-                        st.session_state["ext_press"]  = float(params["pressure"])
+                        st.session_state["ext_press"]  = float(params["pressure"]) if params.get("pressure") is not None else 0.0
                         st.session_state.setdefault("ext_tds", 0.0)
     
-                    gramas       = st.number_input("Dose Real (g)", 1.0, 160.0,
+                    # Limites dos campos adaptados ao método (cold brew usa muito
+                    # mais pó/água que espresso, etc.)
+                    _dose_max = max(60.0, round(float(params["dose_max"]) * multiplier))
+                    _agua_max = max(80.0, round(float(params["water_max"]) * multiplier))
+                    gramas       = st.number_input("Dose Real (g)", 1.0, _dose_max,
                                                    step=0.1, key="ext_gramas",
                                                    help="Peso do pó medido na balança")
-                    agua         = st.number_input("Yield / Volumetria na Xícara (g)", 5.0, 2000.0,
+                    agua         = st.number_input(f"{params['yield_label']} — real", 5.0, _agua_max,
                                                    step=1.0, key="ext_agua",
-                                                   help="Quantidade real que entrou na xícara (espresso: ~18-50g)")
-                    # Brew ratio ao vivo (recalcula ao digitar dose/yield)
+                                                   help=f"Água/bebida real ({metodo}). Sugerido: "
+                                                        f"{params['yield']*multiplier:.0f}g")
+                    # Brew ratio ao vivo (recalcula ao digitar dose/água)
                     _ratio = mc_core.brew_ratio(gramas, agua)
                     st.markdown(
-                        f'<div class="mc-zone" style="margin:.3rem 0 .9rem">'
+                        f'<div class="mc-zone" style="margin:.3rem 0 .5rem">'
                         f'<span class="mc-zone-label">Brew ratio</span>'
                         f'<span style="font-family:\'DM Serif Display\',Georgia,serif;'
                         f'font-size:24px;color:var(--mc-orange);margin-left:6px">{_ratio}</span>'
                         f'<span style="color:var(--mc-text-3);font-size:12px;margin-left:10px">'
-                        f'espresso ~1:2 · coado ~1:15–17</span></div>',
+                        f'alvo {metodo} ~1:{params["ratio"]:.1f}</span></div>',
+                        unsafe_allow_html=True)
+                    # Moagem sugerida para o método (V60/coados são mais grossos que espresso)
+                    st.markdown(
+                        f'<div class="mc-zone" style="margin:.1rem 0 .9rem">'
+                        f'<span class="mc-zone-label">Moagem sugerida</span>'
+                        f'<span style="color:var(--mc-text);margin-left:8px;font-size:14px;'
+                        f'font-weight:600">{params["grind"]}</span></div>',
                         unsafe_allow_html=True)
                     # Timer de extração — cronômetro JS isolado (iframe, sem rerun).
                     # Alarme sonoro por etapa do método + no tempo alvo (editável).
@@ -4103,12 +4158,22 @@ def main():
                         .replace("__CHECKED__", "checked" if _stages else "")
                         .replace("__SWDISP__",  "flex" if _stages else "none")
                         .replace("__NSTAGES__", str(len(_stages))))
-                    components.html(_timer_html, height=(258 if _stages else 196))
-                    tempo        = st.number_input("Tempo Real (s)", 1, 600, step=1, key="ext_tempo")
-                    temp_real    = st.number_input("Temperatura Real (°C)", 60.0, 100.0,
+                    components.html(_timer_html, height=(340 if _stages else 258))
+                    tempo        = st.number_input("Tempo Real (s)", 1, 900, step=1, key="ext_tempo")
+                    temp_real    = st.number_input("Temperatura Real (°C)", 15.0, 100.0,
                                                    step=0.5, key="ext_temp")
-                    pressao_real = st.number_input("Pressão Real (bar)", 1.0, 20.0,
-                                                   step=0.5, key="ext_press")
+                    if params.get("pressure") is not None:
+                        pressao_real = st.number_input("Pressão Real (bar)", 1.0, 20.0,
+                                                       step=0.5, key="ext_press")
+                    else:
+                        # Método filtrado/imersão: sem pressão da bomba → campo apagado
+                        st.markdown(
+                            f'<div class="mc-zone" style="margin:.3rem 0 .9rem;opacity:.55">'
+                            f'<span class="mc-zone-label">Pressão da bomba (bar)</span>'
+                            f'<span style="color:var(--mc-text-3);margin-left:8px;font-size:13px">'
+                            f'não se aplica ao {metodo} — extração sem pressão</span></div>',
+                            unsafe_allow_html=True)
+                        pressao_real = 0.0
                     tds          = st.number_input("TDS Medido (%)", 0.0, 5.0,
                                                    step=0.01, key="ext_tds",
                                                    help="Opcional — refratômetro. Deixe 0 se não usar.")
@@ -4181,13 +4246,14 @@ def main():
                             f"🌡 <b>Temperatura {dir_tmp} do target:</b> planejou "
                             f"{params['temp']}°C, real {temp_real:.1f}°C (Δ {dt_temp:+.1f}°C).")
     
-                    dt_press = pressao_real - params["pressure"]
-                    if abs(dt_press) >= 0.8:
-                        dir_p = "abaixo" if dt_press < 0 else "acima"
-                        diagnosticos.append(
-                            f"📊 <b>Pressão {dir_p} do target:</b> planejou "
-                            f"{params['pressure']:.1f} bar, real {pressao_real:.1f} bar "
-                            f"(Δ {dt_press:+.1f} bar).")
+                    if params.get("pressure") is not None:
+                        dt_press = pressao_real - params["pressure"]
+                        if abs(dt_press) >= 0.8:
+                            dir_p = "abaixo" if dt_press < 0 else "acima"
+                            diagnosticos.append(
+                                f"📊 <b>Pressão {dir_p} do target:</b> planejou "
+                                f"{params['pressure']:.1f} bar, real {pressao_real:.1f} bar "
+                                f"(Δ {dt_press:+.1f} bar).")
     
                     if ey_real > 0:
                         if ey_real < CoffeeEngine.EY_LOW:
