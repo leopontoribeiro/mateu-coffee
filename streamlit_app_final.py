@@ -2672,8 +2672,14 @@ class CoffeeEngine:
     EY_LOW   = 18.0
     EY_HIGH  = 22.0
 
+    # Retenção de líquido no pó por método (g absorvidos ≈ fator × g de pó)
+    RETENCAO = {"Espresso": 1.5, "Moka Pot": 1.8}
+    # Métodos em que o campo 'água' já é a BEBIDA na xícara (yield), não a água total
+    YIELD_BASED = {"Espresso"}
+
     @staticmethod
-    def calc(coffee_g: float, water_g: float, tds: Optional[float], time_s: int) -> dict:
+    def calc(coffee_g: float, water_g: float, tds: Optional[float],
+             time_s: int, metodo: str = "Espresso") -> dict:
         if coffee_g <= 0:
             return {}
         ratio = water_g / coffee_g
@@ -2686,7 +2692,12 @@ class CoffeeEngine:
             "fluxo": water_g / max(time_s, 1),
         }
         if tds and tds > 0:
-            bev = max(water_g - 2.0 * coffee_g, 0)   # retenção ≈ 2× pó
+            # 'água' já é a bebida na xícara p/ espresso (yield); nos demais é a
+            # água TOTAL → subtrai a retenção do pó para obter a bebida.
+            if metodo in CoffeeEngine.YIELD_BASED:
+                bev = water_g
+            else:
+                bev = max(water_g - CoffeeEngine.RETENCAO.get(metodo, 2.0) * coffee_g, 0)
             ey  = (bev * tds) / coffee_g
             out["ey"] = ey
             if ey < CoffeeEngine.EY_LOW:
@@ -2699,33 +2710,57 @@ class CoffeeEngine:
 
     @staticmethod
     def sensory(ey: float) -> tuple:
-        if ey <= 0:  return (7, 7, 7, 5, 7)
-        if ey < 18:  return (4, 9, 4, 3, 5)
-        if ey > 22:  return (3, 4, 8, 9, 4)
-        return (9, 8, 8, 4, 9)
+        """Perfil sensorial CONTÍNUO a partir do EY (18–22% = janela ideal).
+        Interpola linearmente entre âncoras → o radar move-se suavemente ao
+        variar dose/água/tempo (via EY estimado), em qualquer método."""
+        if ey <= 0:
+            return (7, 7, 7, 5, 7)   # sem dados — neutro
+        ey = max(12.0, min(28.0, ey))
+
+        def interp(pts, x):
+            if x <= pts[0][0]:
+                return pts[0][1]
+            for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+                if x <= x1:
+                    return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+            return pts[-1][1]
+
+        # (Doçura, Acidez, Corpo, Amargor, Finalização) — ordem de ATTRS
+        doc = interp([(14, 2), (18, 5), (20, 9), (22, 7), (26, 3)], ey)
+        aci = interp([(14, 10), (18, 8), (20, 7), (22, 5), (26, 3)], ey)
+        cor = interp([(14, 3), (18, 5), (20, 8), (22, 8), (26, 9)], ey)
+        ama = interp([(14, 2), (18, 3), (20, 4), (22, 6), (26, 10)], ey)
+        fin = interp([(14, 3), (18, 6), (20, 9), (22, 7), (26, 4)], ey)
+        return (round(doc, 1), round(aci, 1), round(cor, 1),
+                round(ama, 1), round(fin, 1))
 
     @staticmethod
     def estimate_ey(coffee_g: float, water_g: float, time_s: int,
-                    torra: str = "Média", metodo: str = "Espresso") -> float:
-        """Estima EY sem refratômetro (±2-3% de margem). Baseado em modelo SCA/Hoffmann."""
+                    torra: str = "Média", metodo: str = "Espresso",
+                    temp: float = None) -> float:
+        """Estima o Extraction Yield sem refratômetro, RELATIVO ao alvo do método.
+
+        Centrado em ~20% (janela ideal SCA) quando os parâmetros batem o alvo do
+        método, e sobe/desce conforme os desvios de tempo, ratio, temperatura e
+        torra. Funciona igual para espresso (1:2) e coados (1:16) — cada um usa
+        suas próprias referências em METHOD_PROFILES. ±2-3% de margem.
+        """
         if coffee_g <= 0 or water_g <= 0:
             return 0.0
-        # Retenção por método: espresso retém menos (crema), filtrado retém ~2× pó
-        retencao = {"Espresso": 1.5, "Moka Pot": 1.8}.get(metodo, 2.0)
-        bev = max(water_g - retencao * coffee_g, 0)
-        if bev <= 0:
-            return 0.0
-        # TDS base estimado por torra (estudo SCA)
-        tds_base = {"Clara": 1.35, "Média": 1.45, "Escura": 1.25}.get(torra, 1.45)
-        # Ajuste por método: imersão tende a ter TDS menor
-        tds_base *= {"Espresso": 1.35, "French Press": 0.88,
-                     "Cold Brew": 0.70, "Moka Pot": 1.20}.get(metodo, 1.0)
-        # Ajuste por tempo (cinética de extração, cap em 35s para espresso, 4min para filtrado)
-        ref_time = 30 if metodo == "Espresso" else 180
-        time_factor = min(time_s / ref_time, 1.15)
-        estimated_tds = tds_base * (0.75 + 0.5 * time_factor)
-        ey = (bev * estimated_tds) / coffee_g
-        return round(min(ey, 28.0), 1)
+        prof = METHOD_PROFILES.get(metodo, METHOD_PROFILES["Outro"])
+        ref_ratio = float(prof["ratio"]) or 2.0
+        ref_time  = float(prof["time"]) or 1.0
+        ref_temp  = float(prof["temp"])
+        if temp is None:
+            temp = ref_temp
+        ratio = water_g / coffee_g
+
+        ey = 20.0                                   # base = sweet spot no alvo
+        ey += (time_s / ref_time - 1.0) * 6.0       # mais tempo → mais extração
+        ey += (ratio / ref_ratio - 1.0) * 4.0       # mais água/dose → mais solvente
+        ey += (temp - ref_temp) * 0.35              # mais quente → mais extração
+        ey += {"Clara": -1.0, "Média": 0.0, "Escura": 1.0}.get(torra, 0.0)
+        return round(max(6.0, min(30.0, ey)), 1)
 
 def _dial_in_recomendacao(coffee_id: int, metodo: str, user_id: int) -> dict:
     """Analisa as últimas 3 extrações e retorna recomendação de ajuste de moagem."""
@@ -3249,7 +3284,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.15.1"
+_APP_VERSION = "3.15.2"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -4193,20 +4228,23 @@ def main():
                                                    help="Opcional — refratômetro. Deixe 0 se não usar.")
     
                 with col_radar_real:
-                    m_real  = CoffeeEngine.calc(gramas, agua, tds if tds > 0 else None, tempo)
+                    m_real  = CoffeeEngine.calc(gramas, agua, tds if tds > 0 else None, tempo, metodo)
                     ey_real = m_real.get("ey", 0.0)
-                    # EY estimado quando não há TDS (sem refratômetro)
+                    # EY estimado quando não há TDS (sem refratômetro) — method-aware
+                    _cafe_torra_real = (cafe_info[0]["torra"] if cafe_info else "Média")
                     _ey_estimado = 0.0
-                    if tds == 0 and gramas > 0 and agua > 0:
-                        _cafe_torra_real = (cafe_info[0]["torra"] if cafe_info else "Média")
+                    if gramas > 0 and agua > 0:
                         _ey_estimado = CoffeeEngine.estimate_ey(gramas, agua, tempo,
-                                                                 _cafe_torra_real, metodo)
+                                                                _cafe_torra_real, metodo, temp_real)
+                    # O radar responde às variáveis mesmo SEM refratômetro: usa o EY
+                    # medido se houver, senão o estimado (adapta-se ao método).
+                    _ey_radar = ey_real if ey_real > 0 else _ey_estimado
                     st.markdown(
                         '<p style="font-size:11px;font-weight:700;color:var(--mc-orange);'
                         'letter-spacing:0.12em;text-transform:uppercase;margin-bottom:0.25rem">'
                         'Perfil Sensorial — Extração Real</p>',
                         unsafe_allow_html=True)
-                    st.plotly_chart(_radar(CoffeeEngine.sensory(ey_real)),
+                    st.plotly_chart(_radar(CoffeeEngine.sensory(_ey_radar)),
                                     use_container_width=True, config={'displayModeBar': False})
                     foto_can = st.file_uploader("Foto da Caneca",
                                                 type=["jpg","jpeg","png"],
