@@ -2919,6 +2919,7 @@ _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
 </style>
 </head>
 <body>
+<script>window.MB_REF=__MB_REF__;</script>
 <div class="layout">
   <div class="card">
     <h2>Variáveis de Entrada</h2>
@@ -3003,21 +3004,27 @@ function sim(){
   document.getElementById('vp').innerText=p.toFixed(1)+' °C';
   document.getElementById('vb').innerText=b.toFixed(1)+' bar';
 
-  const ratio=y/d;
+  // Alvos do MÉTODO selecionado (injetados pelo Python). Os desvios são
+  // RELATIVOS ao alvo → o radar funciona tanto p/ espresso (1:2) quanto p/
+  // coados (1:16), Aeropress, etc., em vez de saturar tudo.
+  const REF=(window.MB_REF||{ratio:2,time:28,temp:92,pressure:9});
+  const ratio=y/d, rr=ratio/(REF.ratio||2), rt=t/(REF.time||28), dT=p-(REF.temp||92);
   let ac=5,am=5,co=5,sw=5,as=1;
 
-  if(ratio>2.4){ac-=(ratio-2.4)*1.5;am+=(ratio-2.4)*2;co-=(ratio-2.4)*1.8;sw-=(ratio-2.4)*1.2}
-  else if(ratio<1.7){ac+=(1.7-ratio)*2.5;am-=(1.7-ratio)*2;co+=(1.7-ratio)*2;sw-=(1.7-ratio)*1.5}
+  // Concentração (ratio vs alvo): mais água = mais diluído/leve
+  if(rr>1){ac+=(rr-1)*5;co-=(rr-1)*7;sw-=(rr-1)*3}
+  else{co+=(1-rr)*7;am+=(1-rr)*4;sw+=(1-rr)*2}
 
-  if(t<22){ac+=(22-t)*0.3;am-=(22-t)*0.25;sw-=(22-t)*0.4;co-=(22-t)*0.2}
-  else if(t>34){am+=(t-34)*0.4;ac-=(t-34)*0.2;sw-=(t-34)*0.3;as+=(t-34)*0.5}
+  // Extração (tempo vs alvo): mais tempo = mais amargor/adstringência
+  if(rt>1){am+=(rt-1)*6;ac-=(rt-1)*5;as+=(rt-1)*5;sw-=(rt-1)*3}
+  else{ac+=(1-rt)*6;am-=(1-rt)*4;co-=(1-rt)*3;sw-=(1-rt)*3}
 
-  const dT=p-92;
+  // Temperatura (desvio do alvo do método)
   if(dT>0){am+=dT*0.4;ac-=dT*0.2}
   else{ac+=Math.abs(dT)*0.4;am-=Math.abs(dT)*0.3;sw-=Math.abs(dT)*0.2}
 
-  if(b>10){as+=(b-10)*1;am+=(b-10)*0.4}
-  else if(b<8){co-=(8-b)*1;sw-=(8-b)*0.4}
+  // Pressão só existe no espresso (REF.pressure==null nos coados/imersão)
+  if(REF.pressure!=null){ if(b>10){as+=(b-10);am+=(b-10)*0.4} else if(b<8){co-=(8-b);sw-=(8-b)*0.4} }
 
   const cl=v=>Math.max(0,Math.min(10,v));
   ac=cl(ac);am=cl(am);co=cl(co);sw=cl(sw);as=cl(as);
@@ -3242,7 +3249,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.15.0"
+_APP_VERSION = "3.15.1"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3934,16 +3941,24 @@ def main():
                 # Elemento sempre presente — estrutura estável
                 st.markdown(_last_html, unsafe_allow_html=True)
     
-                xicaras = st.radio("Número de Xícaras", [1, 2], horizontal=True, key="config_xicaras")
-                multiplier = 1 if xicaras == 1 else 2
-    
-                # Parâmetros do Motor Barista (calculados cedo — usados como defaults nos dois lados)
+                # Parâmetros do Motor Barista — adaptados ao MÉTODO + torra + tipo
                 cafe_info = _fetch("SELECT tipo, torra FROM coffees WHERE id=%s AND user_id=%s LIMIT 1",
                                   (cid, user_id), _v=_v())
                 params = _motor_barista_params(
                     metodo,
                     cafe_info[0]["torra"] if cafe_info else "Média",
                     cafe_info[0]["tipo"]  if cafe_info else "Grãos")
+
+                # Rendimento em ML (total) em vez de "xícaras": o café é X ml a partir
+                # de X g de pó + X g de água. multiplier = alvo ÷ rendimento-base do método.
+                _base_yield = float(params["yield"]) or 1.0
+                target_ml = st.number_input(
+                    "Rendimento total (ml)", 10.0, float(params["water_max"]),
+                    value=float(round(_base_yield)), step=5.0, key=f"config_ml_{metodo}",
+                    help=(f"Quanto café pronto você quer. {metodo}: base {params['yield']:.0f} ml "
+                          f"com {params['dose']:.0f} g de pó (ratio 1:{params['ratio']:.1f}). "
+                          f"A dose de pó ajusta-se ao volume."))
+                multiplier = target_ml / _base_yield
     
                 # ─────────────────────────────────────────────────────────────
                 # SETUP DA SESSÃO — Moedor · Clicks · Data · Hora (no topo)
@@ -4060,20 +4075,18 @@ def main():
                     + (
                         f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
                         f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
-                        f'☕☕ <b>Ajuste para 2 xícaras:</b> dose <b>{_rs["dose"]*2:.1f}g</b> · '
-                        f'água total <b>{_rs["yield"]*2:.0f}g</b> dividido em '
-                        f'<b>{_rs["yield"]:.0f}g por xícara</b> — mesmo ratio (1:{_rs["ratio"]:.1f}) '
-                        f'e mesma concentração, tempo alvo {_rs["time"]}s.</div>'
-                        if xicaras == 2 else
-                        f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
-                        f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
-                        f'☕ <b>1 xícara:</b> <b>{_rs["dose"]:.0f}g</b> de pó para '
-                        f'<b>{_rs["yield"]:.0f}g</b> de água (1:{_rs["ratio"]:.1f}) — '
-                        f'moagem {_rs["grind"].lower()}.</div>'
+                        f'🎯 <b>Para {target_ml:.0f} ml de café:</b> use '
+                        f'<b>{_rs["dose"]*multiplier:.1f} g</b> de pó e '
+                        f'<b>{_rs["yield"]*multiplier:.0f} g/ml</b> de água — '
+                        f'mesmo ratio 1:{_rs["ratio"]:.1f}, moagem {_rs["grind"].lower()}, '
+                        f'tempo alvo {_rs["time"]}s.</div>'
                       )
                     + '</div>', unsafe_allow_html=True)
     
+                _mb_ref = json.dumps({"ratio": params["ratio"], "time": params["time"],
+                                      "temp": params["temp"], "pressure": params["pressure"]})
                 motor_html = (_MOTOR_BARISTA_HTML
+                    .replace('__MB_REF__', _mb_ref)
                     .replace('value="18"', f'value="{params["dose"]}"')
                     .replace('value="36"', f'value="{params["yield"]}"')
                     .replace('value="28"', f'value="{params["time"]}"')
@@ -4122,8 +4135,9 @@ def main():
     
                     # Limites dos campos adaptados ao método (cold brew usa muito
                     # mais pó/água que espresso, etc.)
-                    _dose_max = max(60.0, round(float(params["dose_max"]) * multiplier))
-                    _agua_max = max(80.0, round(float(params["water_max"]) * multiplier))
+                    # floats obrigatórios: st.number_input não aceita mistura int/float
+                    _dose_max = float(max(60.0, round(float(params["dose_max"]) * multiplier, 1)))
+                    _agua_max = float(max(80.0, round(float(params["water_max"]) * multiplier, 1)))
                     gramas       = st.number_input("Dose Real (g)", 1.0, _dose_max,
                                                    step=0.1, key="ext_gramas",
                                                    help="Peso do pó medido na balança")
