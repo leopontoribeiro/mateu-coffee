@@ -5,7 +5,7 @@ Extraído do monólito streamlit_app_final.py para modularização.
 Apenas literais — sem Streamlit, DB ou lógica.
 """
 
-METODOS = ["Espresso","Pour Over","French Press","Aeropress",
+METODOS = ["Espresso","V60","Pour Over","French Press","Aeropress",
            "Chemex","Moka Pot","Cold Brew","Sifão","Drip","Outro"]
 
 _LOCAIS_COMPRA = ["Amazon", "Mercado Livre", "Shopee", "Guanabara",

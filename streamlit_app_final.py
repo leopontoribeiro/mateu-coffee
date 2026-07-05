@@ -3027,6 +3027,22 @@ sim();
 </body>
 </html>"""
 
+def _stages_for_metodo(metodo: str) -> list:
+    """Etapas cronometradas da receita-referência do método → alarmes do timer.
+    Mapeia o método selecionado para a receita mais próxima e extrai os
+    marcadores 'T = m:ss' dos passos. [] se o método não tiver receita cronometrada.
+    """
+    rid = {"V60": "v60", "Pour Over": "v60"}.get(metodo)
+    rec = None
+    if rid:
+        rec = next((r for r in RECIPES if r.get("id") == rid), None)
+    if rec is None:
+        rec = next((r for r in RECIPES if r.get("metodo") == metodo), None)
+    if rec is None:
+        return []
+    return [s for s in mc_core.parse_stages(rec.get("passos", [])) if s["t"] > 0]
+
+
 # ── Cronômetro de extração ─────────────────────────────────────────────
 _TIMER_HTML = """<!DOCTYPE html>
 <html lang="pt-BR">
@@ -3075,6 +3091,92 @@ function reset(){clearInterval(iv);iv=null;ms=0;laps=[];document.getElementById(
 </body>
 </html>"""
 
+# ── Timer de extração com alarmes por etapa (usado na Nova Extração) ────
+# Cronômetro isolado em iframe (sem rerun). Toca um som (Web Audio, sem
+# arquivo externo) em cada etapa do método e no tempo alvo, com vibração
+# no mobile. Placeholders __TARGET__/__STAGES__/__CHECKED__/__HASSTAGES__
+# são injetados em Python via .replace().
+_EXT_TIMER_TPL = """
+<div style="font-family:Inter,system-ui,sans-serif;background:#161210;
+border:1px solid #2E2820;border-radius:12px;padding:12px 14px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <span style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:#D97732;font-weight:700">Timer de extração</span>
+    <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#B4ACA4">
+      <span>Alvo</span>
+      <input id="tg" type="number" min="1" max="900" value="__TARGET__"
+      style="width:56px;background:#0D0B09;border:1px solid #3E3630;border-radius:6px;
+      color:#F2EBE0;font-size:13px;font-weight:700;padding:4px 6px;text-align:center">
+      <span>s</span>
+      <button id="tb" title="Testar som" style="background:transparent;border:1px solid #3E3630;
+      border-radius:6px;color:#D97732;font-size:13px;padding:3px 7px;cursor:pointer">&#128276;</button>
+    </div>
+  </div>
+  <div id="t" style="font-family:'DM Serif Display',Georgia,serif;font-size:44px;
+  color:#F2EBE0;line-height:1;margin:8px 0 10px;text-align:center;transition:color .2s">0.0<span style="font-size:18px">s</span></div>
+  <div style="display:flex;gap:8px;justify-content:center">
+    <button id="s" style="flex:1;max-width:150px;padding:9px;border-radius:8px;border:none;
+    background:#D97732;color:#0D0B09;font-weight:700;font-size:13px;cursor:pointer">Iniciar</button>
+    <button id="r" style="flex:1;max-width:150px;padding:9px;border-radius:8px;
+    border:1px solid #3E3630;background:transparent;color:#B4ACA4;font-weight:600;
+    font-size:13px;cursor:pointer">Zerar</button>
+  </div>
+  <label id="swrap" style="display:__SWDISP__;align-items:center;gap:7px;margin-top:10px;
+  font-size:12px;color:#B4ACA4;cursor:pointer;user-select:none">
+    <input id="sw" type="checkbox" __CHECKED__ style="width:15px;height:15px;accent-color:#D97732">
+    Alarmes por etapa <span style="color:#8A8278">(__NSTAGES__ etapas do método)</span>
+  </label>
+  <div id="stg" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px"></div>
+  <div id="note" style="font-size:11px;color:#8A8278;margin-top:8px;text-align:center">
+  Toque em Iniciar — um som avisa cada etapa e o tempo alvo.</div>
+</div>
+<script>
+(function(){
+var TARGET=__TARGET__, STAGES=__STAGES__;
+var t0=null,raf=null,acc=0,fired={};
+var el=document.getElementById('t'),sb=document.getElementById('s'),rb=document.getElementById('r'),
+    tg=document.getElementById('tg'),sw=document.getElementById('sw'),tb=document.getElementById('tb'),
+    stg=document.getElementById('stg'),note=document.getElementById('note');
+var actx=null;
+function au(){try{if(!actx)actx=new (window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume();}catch(e){}return actx;}
+function beep(freq,dur,reps){var a=au();if(!a)return;reps=reps||1;var t=a.currentTime;
+  for(var i=0;i<reps;i++){var o=a.createOscillator(),g=a.createGain();o.type='sine';o.frequency.value=freq;
+  var s=t+i*(dur+0.13);g.gain.setValueAtTime(0.0001,s);g.gain.exponentialRampToValueAtTime(0.6,s+0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001,s+dur);o.connect(g);g.connect(a.destination);o.start(s);o.stop(s+dur+0.02);}}
+function buzz(p){if(navigator.vibrate)navigator.vibrate(p);}
+function nowMs(){return acc+(t0===null?0:(performance.now()-t0));}
+function es(){return nowMs()/1000;}
+function fmtT(s){var m=Math.floor(s/60),x=Math.floor(s%60);return m>0?(m+':'+(x<10?'0':'')+x):(x+'s');}
+function alarms(){var l=[];if(sw.checked){STAGES.forEach(function(s){if(s.t<TARGET&&s.t>0)l.push({t:s.t,label:s.label,k:'e'});});}
+  l.push({t:TARGET,label:'Tempo alvo — pare',k:'f'});l.sort(function(a,b){return a.t-b.t;});return l;}
+function renderChips(){var al=alarms();stg.innerHTML=al.map(function(a){
+  return '<span class="mchip" data-t="'+a.t+'" data-k="'+a.k+'" style="border:1px solid '
+  +(a.k==='f'?'#D97732':'#3E3630')+';border-radius:6px;padding:3px 8px;font-size:11px;font-weight:600;color:'
+  +(a.k==='f'?'#D97732':'#8A8278')+'">'+fmtT(a.t)+' · '+a.label+'</span>';}).join('');}
+function paint(){var e=es(),al=alarms(),nx=null;
+  for(var i=0;i<al.length;i++){if(e<al[i].t){nx=al[i].t;break;}}
+  document.querySelectorAll('#stg .mchip').forEach(function(c){var t=+c.getAttribute('data-t'),k=c.getAttribute('data-k');
+    if(e>=t){c.style.opacity='0.4';c.style.textDecoration='line-through';}
+    else{c.style.opacity='1';c.style.textDecoration='none';}
+    if(t===nx&&e<t){c.style.background='rgba(217,119,50,.14)';c.style.color='#F2EBE0';c.style.borderColor='#D97732';}
+    else{c.style.background='transparent';}});}
+function flash(big){el.style.color=big?'#D97732':'#F08842';setTimeout(function(){el.style.color='#F2EBE0';},big?700:300);}
+function check(){var e=es();alarms().forEach(function(a){var key=a.k+a.t;if(!fired[key]&&e>=a.t){fired[key]=1;
+  if(a.k==='f'){beep(1046,0.22,3);buzz([180,90,180,90,280]);flash(true);note.textContent='\\u23f8 Tempo alvo atingido — pare a extração!';note.style.color='#D97732';}
+  else{beep(880,0.16,1);buzz(160);flash(false);note.textContent='Etapa: '+a.label;note.style.color='#B4ACA4';}}});}
+function tick(){el.innerHTML=(nowMs()/1000).toFixed(1)+'<span style="font-size:18px">s</span>';check();paint();raf=requestAnimationFrame(tick);}
+sb.onclick=function(){au();if(t0===null){t0=performance.now();sb.textContent='Pausar';note.textContent='Cronometrando\\u2026';note.style.color='#8A8278';tick();}
+  else{acc+=performance.now()-t0;t0=null;sb.textContent='Continuar';cancelAnimationFrame(raf);note.textContent='Pausado \\u2014 '+(nowMs()/1000).toFixed(1)+'s';}};
+rb.onclick=function(){cancelAnimationFrame(raf);t0=null;acc=0;fired={};el.innerHTML='0.0<span style="font-size:18px">s</span>';
+  el.style.color='#F2EBE0';sb.textContent='Iniciar';note.textContent='Toque em Iniciar \\u2014 um som avisa cada etapa e o tempo alvo.';note.style.color='#8A8278';renderChips();paint();};
+tb.onclick=function(){au();beep(880,0.16,1);};
+tg.addEventListener('input',function(){var v=parseInt(this.value)||0;TARGET=Math.max(1,v);fired={};renderChips();paint();});
+sw.addEventListener('change',function(){fired={};renderChips();paint();});
+renderChips();paint();
+})();
+</script>
+"""
+
 # ── Vision · leitura de embalagem ──────────────────────────────────────
 def _analisar_embalagem(b64_img: str) -> dict:
     """Analisa foto de embalagem de café usando Gemini Vision."""
@@ -3109,7 +3211,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.13.0"
+_APP_VERSION = "3.14.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3991,35 +4093,17 @@ def main():
                         f'<span style="color:var(--mc-text-3);font-size:12px;margin-left:10px">'
                         f'espresso ~1:2 · coado ~1:15–17</span></div>',
                         unsafe_allow_html=True)
-                    # Timer de extração — cronômetro JS isolado (iframe, sem rerun)
-                    components.html(
-                        """
-<div style="font-family:Inter,system-ui,sans-serif;background:#161210;
-border:1px solid #2E2820;border-radius:12px;padding:12px 14px;text-align:center">
-  <div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-  color:#D97732;font-weight:700;margin-bottom:4px">Timer de extração</div>
-  <div id="t" style="font-family:'DM Serif Display',Georgia,serif;font-size:42px;
-  color:#F2EBE0;line-height:1;margin:2px 0 10px">0.0<span style="font-size:18px">s</span></div>
-  <div style="display:flex;gap:8px;justify-content:center">
-    <button id="s" style="flex:1;max-width:130px;padding:9px;border-radius:8px;border:none;
-    background:#D97732;color:#0D0B09;font-weight:700;font-size:13px;cursor:pointer">Iniciar</button>
-    <button id="r" style="flex:1;max-width:130px;padding:9px;border-radius:8px;
-    border:1px solid #3E3630;background:transparent;color:#B4ACA4;font-weight:600;
-    font-size:13px;cursor:pointer">Zerar</button>
-  </div>
-  <div style="font-size:11px;color:#8A8278;margin-top:7px">Leia o tempo e registre em "Tempo Real" abaixo</div>
-</div>
-<script>
-(function(){var t0=null,raf=null,acc=0,
-el=document.getElementById('t'),sb=document.getElementById('s'),rb=document.getElementById('r');
-function fmt(ms){return (ms/1000).toFixed(1)+'<span style="font-size:18px">s</span>';}
-function tick(){el.innerHTML=fmt(acc+(performance.now()-t0));raf=requestAnimationFrame(tick);}
-sb.onclick=function(){if(t0===null){t0=performance.now();sb.textContent='Pausar';tick();}
-else{acc+=performance.now()-t0;t0=null;sb.textContent='Continuar';cancelAnimationFrame(raf);}};
-rb.onclick=function(){cancelAnimationFrame(raf);t0=null;acc=0;
-el.innerHTML='0.0<span style="font-size:18px">s</span>';sb.textContent='Iniciar';};})();
-</script>
-""", height=150)
+                    # Timer de extração — cronômetro JS isolado (iframe, sem rerun).
+                    # Alarme sonoro por etapa do método + no tempo alvo (editável).
+                    _stages = _stages_for_metodo(metodo)
+                    _tgt = max((s["t"] for s in _stages), default=int(params["time"]))
+                    _timer_html = (_EXT_TIMER_TPL
+                        .replace("__TARGET__",  str(_tgt))
+                        .replace("__STAGES__",  json.dumps(_stages, ensure_ascii=False))
+                        .replace("__CHECKED__", "checked" if _stages else "")
+                        .replace("__SWDISP__",  "flex" if _stages else "none")
+                        .replace("__NSTAGES__", str(len(_stages))))
+                    components.html(_timer_html, height=(258 if _stages else 196))
                     tempo        = st.number_input("Tempo Real (s)", 1, 600, step=1, key="ext_tempo")
                     temp_real    = st.number_input("Temperatura Real (°C)", 60.0, 100.0,
                                                    step=0.5, key="ext_temp")

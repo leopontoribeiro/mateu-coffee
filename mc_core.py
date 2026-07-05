@@ -88,3 +88,34 @@ def freshness_window(dias) -> tuple[str, str] | None:
 def valida_email(email: str) -> bool:
     """Validação simples de formato de e-mail."""
     return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", (email or "").strip()))
+
+
+# ── Etapas cronometradas (para os alarmes do timer) ────────────────────
+_STAGE_RE = re.compile(r"T\s*[=≈]\s*(\d+)(?::(\d+))?\s*s?\s*:\s*(.*)", re.I)
+
+
+def parse_stages(passos) -> list[dict]:
+    """Extrai etapas com marcador de tempo ('T = 0:45: ...') dos passos de
+    uma receita → lista ordenada de {"t": segundos, "label": rótulo curto}.
+
+    Usado para pré-carregar os alarmes multi-etapa do timer de extração.
+    Passos sem marcador de tempo são ignorados. Retorna [] se nenhum.
+    """
+    out = []
+    for p in passos or []:
+        m = _STAGE_RE.match(str(p).strip())
+        if not m:
+            continue
+        mm = int(m.group(1))
+        ss = int(m.group(2)) if m.group(2) else 0
+        # "T = 30 s:" (só um número seguido de 's') → segundos, não minutos
+        if m.group(2) is None and re.search(r"\d+\s*s\s*:", str(p)):
+            secs = mm
+        else:
+            secs = mm * 60 + ss
+        desc = re.sub(r"\s+", " ", m.group(3)).strip().rstrip(".")
+        # Rótulo curto: primeira oração antes de vírgula/travessão, ~34 chars
+        label = re.split(r"[,—.:(]", desc)[0].strip()[:34] or f"{secs}s"
+        out.append({"t": secs, "label": label})
+    out.sort(key=lambda x: x["t"])
+    return out

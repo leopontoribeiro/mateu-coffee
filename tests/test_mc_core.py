@@ -64,6 +64,22 @@ def test_valida_email():
     assert mc_core.valida_email("") is False
 
 
+def test_parse_stages():
+    passos = [
+        "Enxágue o filtro e descarte a água.",          # sem marcador → ignorado
+        "T = 0 s: Despeje 50 g em movimento circular.",  # segundos
+        "T = 0:45: Comece o pour principal, até 100 g.",
+        "T = 1:15: Despeje até 200 g em 10 s.",
+        "T ≈ 3:30: drawdown completo.",                  # '≈' também vale
+    ]
+    st = mc_core.parse_stages(passos)
+    assert [s["t"] for s in st] == [0, 45, 75, 210]     # ordenado, sem os 2 sem tempo
+    assert st[0]["label"].startswith("Despeje 50 g")
+    assert st[3]["label"] == "drawdown completo"
+    assert mc_core.parse_stages([]) == []
+    assert mc_core.parse_stages(None) == []
+
+
 def test_logger_singleton():
     a = mc_core.get_logger("mateu")
     b = mc_core.get_logger("mateu")
