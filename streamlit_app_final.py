@@ -3284,7 +3284,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.15.2"
+_APP_VERSION = "3.15.3"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3861,13 +3861,18 @@ def main():
                            help="Modo simplificado: apenas os campos essenciais para registrar rápido")
         st.markdown('<p class="mc-section-header">Registrar Extração</p>', unsafe_allow_html=True)
 
-        # Receita aplicada a partir da aba Receitas
+        # Receita aplicada a partir da aba Receitas — SEMPRE 1 elemento
+        # (estrutura estável, evita remount do st.tabs).
+        _rap_html = ""
         if st.session_state.get("_recipe_applied"):
             _rap = st.session_state["_recipe_applied"]
-            st.info(
-                f"📖 Receita **{_rap['nome']}** aplicada — "
-                f"dose {_rap['dose']}g · yield {_rap['yield']}g · {_rap['tempo']} · moagem {_rap['moagem']}",
-                icon="✅")
+            _rap_html = (
+                f'<div style="display:flex;align-items:center;gap:8px;background:rgba(61,214,140,.12);'
+                f'border-left:3px solid #3DD68C;border-radius:8px;padding:9px 14px;margin:0 0 .6rem;'
+                f'font-size:13px;color:var(--mc-text)">📖 Receita <b>{_html.escape(str(_rap["nome"]))}</b> '
+                f'aplicada — dose {_rap["dose"]}g · yield {_rap["yield"]}g · '
+                f'{_html.escape(str(_rap["tempo"]))} · moagem {_html.escape(str(_rap["moagem"]))}</div>')
+        st.markdown(_rap_html, unsafe_allow_html=True)
 
         user_id = st.session_state.get('user_id')
         cafes = _fetch("SELECT id, nome, torra, data_torra FROM coffees WHERE user_id=%s ORDER BY nome",
@@ -3883,19 +3888,34 @@ def main():
             _cafe_obj = cafe_map_full[sel]
             cid    = _cafe_obj['id']
 
-            # Indicador de frescura pós-torra — exibido inline
+            # Indicador de frescura pós-torra — SEMPRE 1 elemento (estrutura
+            # estável): renderiza um único st.markdown (vazio quando não há data
+            # ou dias<0). Contagem fixa evita o remount do st.tabs, que jogava
+            # o app de volta para a aba "Novo Café" ao trocar de café.
+            _fresh_html = ""
             if _cafe_obj.get('data_torra'):
                 _dias_torra = (_today_local() - _cafe_obj['data_torra']).days
+                _fbox = ('display:flex;align-items:center;gap:8px;border-radius:8px;'
+                         'padding:9px 14px;margin:0 0 .6rem;font-size:13px;font-weight:600')
                 if _dias_torra < 0:
-                    pass
+                    _fresh_html = ""
                 elif _dias_torra <= 4:
-                    st.warning(f"💨 Este grão está há {_dias_torra}d pós-torra — ainda degaseificando. Ideal após o 5º dia.", icon="⏳")
+                    _fresh_html = (f'<div style="{_fbox};background:rgba(232,163,61,.12);'
+                                   f'border-left:3px solid #E8A33D;color:#E8A33D">⏳ Este grão está há '
+                                   f'{_dias_torra}d pós-torra — ainda degaseificando. Ideal após o 5º dia.</div>')
                 elif _dias_torra <= 21:
-                    st.success(f"✨ Janela ideal! {_dias_torra} dias pós-torra — pico de sabor e aroma.", icon="☕")
+                    _fresh_html = (f'<div style="{_fbox};background:rgba(61,214,140,.12);'
+                                   f'border-left:3px solid #3DD68C;color:#3DD68C">✨ Janela ideal! '
+                                   f'{_dias_torra} dias pós-torra — pico de sabor e aroma.</div>')
                 elif _dias_torra <= 45:
-                    st.info(f"👍 {_dias_torra} dias pós-torra — ainda bom, aromas começando a decair.", icon="📅")
+                    _fresh_html = (f'<div style="{_fbox};background:rgba(74,158,255,.12);'
+                                   f'border-left:3px solid #4A9EFF;color:#4A9EFF">👍 {_dias_torra} dias '
+                                   f'pós-torra — ainda bom, aromas começando a decair.</div>')
                 else:
-                    st.warning(f"⏳ {_dias_torra} dias pós-torra — priorize consumir logo.", icon="⚠️")
+                    _fresh_html = (f'<div style="{_fbox};background:rgba(232,93,93,.12);'
+                                   f'border-left:3px solid #E85D5D;color:#E85D5D">⏳ {_dias_torra} dias '
+                                   f'pós-torra — priorize consumir logo.</div>')
+            st.markdown(_fresh_html, unsafe_allow_html=True)
 
             metodo = st.selectbox("Método de Preparo", METODOS)
 
@@ -4054,6 +4074,10 @@ def main():
                 # DIAL-IN AUTOMÁTICO — recomendação baseada no histórico
                 # ═════════════════════════════════════════════════════════════
                 _dialin = _dial_in_recomendacao(cid, metodo, user_id) if user_id else {"status": "sem_dados"}
+                # SEMPRE 1 elemento (estrutura estável): monta o HTML e renderiza
+                # um único st.markdown (vazio quando não há histórico). Contagem
+                # fixa evita o remount do st.tabs ao trocar de café/método.
+                _di_html = ""
                 if _dialin["status"] == "ok":
                     _di_n     = _dialin["n_extracoes"]
                     _di_data  = _dialin.get("ultima_data", "")
@@ -4071,15 +4095,15 @@ def main():
                             f'<span style="color:var(--mc-text-3)"> — {_di_r["alternativa"]}</span></div>'
                             f'</div>'
                         )
-                    st.markdown(
+                    _di_html = (
                         f'<div style="background:var(--mc-surface);border:1px solid var(--mc-border);'
                         f'border-radius:12px;padding:14px 18px;margin:0 0 1rem">'
                         f'<p style="margin:0 0 8px;font-size:11px;font-weight:700;'
                         f'color:var(--mc-orange);text-transform:uppercase;letter-spacing:.1em">'
                         f'📊 Dial-in Automático — {_di_n} extraç{"ão" if _di_n==1 else "ões"} '
                         f'({metodo}{f", última: {_di_data}" if _di_data else ""})</p>'
-                        f'{_di_cards}</div>',
-                        unsafe_allow_html=True)
+                        f'{_di_cards}</div>')
+                st.markdown(_di_html, unsafe_allow_html=True)
 
                 # ═════════════════════════════════════════════════════════════
                 # 1) MOTOR BARISTA
@@ -4215,13 +4239,11 @@ def main():
                         pressao_real = st.number_input("Pressão Real (bar)", 1.0, 20.0,
                                                        step=0.5, key="ext_press")
                     else:
-                        # Método filtrado/imersão: sem pressão da bomba → campo apagado
-                        st.markdown(
-                            f'<div class="mc-zone" style="margin:.3rem 0 .9rem;opacity:.55">'
-                            f'<span class="mc-zone-label">Pressão da bomba (bar)</span>'
-                            f'<span style="color:var(--mc-text-3);margin-left:8px;font-size:13px">'
-                            f'não se aplica ao {metodo} — extração sem pressão</span></div>',
-                            unsafe_allow_html=True)
+                        # Método filtrado/imersão: sem pressão da bomba → campo
+                        # DESATIVADO (mesmo tipo de widget mantém a estrutura estável
+                        # e evita o remount do st.tabs ao trocar de método).
+                        st.number_input(f"Pressão da bomba — não se aplica ao {metodo}",
+                                        0.0, 20.0, step=0.5, key="ext_press", disabled=True)
                         pressao_real = 0.0
                     tds          = st.number_input("TDS Medido (%)", 0.0, 5.0,
                                                    step=0.01, key="ext_tds",
