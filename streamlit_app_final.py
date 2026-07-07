@@ -1895,9 +1895,8 @@ def _check_remember_token() -> bool:
              _read_cookie() or
              st.session_state.get('remember_token'))
 
-    st.session_state['_token_checked'] = True
-
     if not token:
+        st.session_state['_token_checked'] = True
         return False
 
     try:
@@ -1905,20 +1904,24 @@ def _check_remember_token() -> bool:
             "SELECT id, email, remember_token_expires FROM usuarios WHERE remember_token=%s",
             (token,), _v=0)
         if not result:
+            st.session_state['_token_checked'] = True
             if "mc_token" in st.query_params:
                 del st.query_params["mc_token"]
             return False
         usuario = result[0]
         expiry = usuario['remember_token_expires']
         if expiry and expiry < _now_local():
+            st.session_state['_token_checked'] = True
             if "mc_token" in st.query_params:
                 del st.query_params["mc_token"]
             return False
         st.session_state['user_id']        = usuario['id']
         st.session_state['user_email']     = usuario['email']
         st.session_state['remember_token'] = token
+        st.session_state['_token_checked'] = True
         return True
     except Exception:
+        st.session_state['_token_checked'] = True
         return False
 
 def _logout() -> None:
@@ -3171,7 +3174,7 @@ border:1px solid #2E2820;border-radius:12px;padding:12px 14px">
     </div>
   </div>
   <div id="t" style="font-family:'DM Serif Display',Georgia,serif;font-size:48px;
-  color:#F2EBE0;line-height:1;margin:10px 0 12px;text-align:center;transition:color .2s">0.0<span style="font-size:19px">s</span></div>
+  color:#F2EBE0;line-height:1;margin:10px 0 12px;text-align:center;transition:color .2s">0.0<span style="font-size:19px"> s</span></div>
   <div style="display:flex;gap:8px;justify-content:center">
     <button id="s" style="flex:1;max-width:200px;padding:12px;border-radius:9px;border:none;
     background:#D97732;color:#0D0B09;font-weight:700;font-size:15px;cursor:pointer">Iniciar</button>
@@ -3181,10 +3184,10 @@ border:1px solid #2E2820;border-radius:12px;padding:12px 14px">
   </div>
   <div id="banner" style="font-size:15px;font-weight:600;line-height:1.4;color:#8A8278;
   margin-top:13px;text-align:center;min-height:42px">Toque em Iniciar — o timer para em cada etapa até você tocar Continuar.</div>
-  <label id="swrap" style="display:__SWDISP__;align-items:center;justify-content:center;gap:7px;margin-top:4px;
-  font-size:12px;color:#B4ACA4;cursor:pointer;user-select:none">
+  <label id="swrap" style="display:__SWDISP__;align-items:center;justify-content:center;gap:7px;margin-top:8px;
+  font-size:14px;color:#B4ACA4;cursor:pointer;user-select:none">
     <input id="sw" type="checkbox" __CHECKED__ style="width:15px;height:15px;accent-color:#D97732">
-    Parar e alarmar em cada etapa <span style="color:#8A8278">(__NSTAGES__ etapas)</span>
+    <span style="line-height:1.3">Parar e alarmar em cada etapa <span style="color:#8A8278;display:block;font-size:12px">(__NSTAGES__ etapas)</span></span>
   </label>
   <div id="stg" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;justify-content:center"></div>
 </div>
@@ -3208,7 +3211,7 @@ function longAlarm(sec){var a=au();if(!a)return;stopAlarm();var o=a.createOscill
 function buzz(p){if(navigator.vibrate){try{navigator.vibrate(p);}catch(e){}}}
 function nowMs(){return acc+(t0===null?0:(performance.now()-t0));}
 function es(){return nowMs()/1000;}
-function fmtT(s){var m=Math.floor(s/60),x=Math.floor(s%60);return m>0?(m+':'+(x<10?'0':'')+x):(x+'s');}
+function fmtT(s){var m=Math.floor(s/60),x=Math.floor(s%60);return m>0?(m+':'+(x<10?'0':'')+x):(x+' s');}
 function alarms(){var l=[];if(sw.checked){STAGES.forEach(function(s){if(s.t<TARGET&&s.t>0)l.push({t:s.t,label:s.label,k:'e'});});}
   l.push({t:TARGET,label:'Tempo alvo',k:'f'});l.sort(function(a,b){return a.t-b.t;});return l;}
 function setBtn(txt,bg){sb.textContent=txt;sb.style.background=bg;sb.style.color=(bg==='transparent'?'#B4ACA4':'#0D0B09');}
@@ -3228,13 +3231,13 @@ function flash(big){el.style.color=big?'#3DD68C':'#F08842';setTimeout(function()
 function nextUnfired(after){var al=alarms();for(var i=0;i<al.length;i++){if(al[i].t>after&&!fired[al[i].k+al[i].t])return al[i];}return null;}
 function fireStage(a){fired[a.k+a.t]=1;longAlarm(5);buzz([500,170,500,170,500,170,600]);flash(a.k==='f');
   acc=a.t*1000;t0=null;running=false;cancelAnimationFrame(raf);
-  el.innerHTML=a.t.toFixed(1)+'<span style="font-size:19px">s</span>';
+  el.innerHTML=a.t.toFixed(1)+'<span style="font-size:19px"> s</span>';
   if(a.k==='f'){setBtn('Concluído ✓','#3DD68C');say('✓ Tempo alvo <b>'+fmtT(a.t)+'</b> atingido — <b>pare a extração!</b>','#3DD68C');}
   else{var nx=nextUnfired(a.t);setBtn('▶ Continuar','#3DD68C');
     say('Etapa <b>'+fmtT(a.t)+'</b>: '+a.label+(nx?'<br><span style="color:#8A8278">próxima: '+fmtT(nx.t)+' · '+nx.label+'</span>':''),'#F2EBE0');}
   paint();}
 function check(){var e=es(),al=alarms();for(var i=0;i<al.length;i++){var a=al[i];if(!fired[a.k+a.t]&&e>=a.t){fireStage(a);return;}}}
-function tick(){el.innerHTML=(nowMs()/1000).toFixed(1)+'<span style="font-size:19px">s</span>';check();paint();if(running)raf=requestAnimationFrame(tick);}
+function tick(){el.innerHTML=(nowMs()/1000).toFixed(1)+'<span style="font-size:19px"> s</span>';check();paint();if(running)raf=requestAnimationFrame(tick);}
 function startRun(){au();stopAlarm();if(t0===null)t0=performance.now();running=true;setBtn('Pausar','#D97732');
   var nx=nextUnfired(-1);say(nx?'Cronometrando… próxima: <b>'+fmtT(nx.t)+'</b> · '+nx.label:'Cronometrando…','#8A8278');tick();}
 sb.onclick=function(){if(running){acc=nowMs();t0=null;running=false;cancelAnimationFrame(raf);stopAlarm();
@@ -4429,9 +4432,9 @@ def main():
                         """, (user_id, cid, moedor, _cafe_torra, metodo, clicks))
                     # Limpa hora para próxima extração usar hora atual
                     st.session_state.pop("hora_ext", None)
+                    st.session_state.pop("_recipe_applied", None)
                     st.toast("✓ Extração registrada com sucesso", icon="☕")
                     st.balloons()
-                    st.rerun()
 
     # ── Tab 3 · Meus cafés ────────────────────────────────────────────
     with tab3:
