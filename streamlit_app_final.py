@@ -29,6 +29,7 @@ import mc_core  # lógica pura (auth, helpers) + observabilidade
 
 _log = mc_core.get_logger()  # logs → stdout (capturado pelo Render)
 import mc_data  # dados estáticos extraídos do monólito
+import mc_storage  # armazenamento de imagens (R2 com fallback base64)
 from mc_data import (METODOS, _LOCAIS_COMPRA, _MOEDORES,
                      CLASSIFICACOES_CAFE, RECIPES, METHOD_PROFILES)
 
@@ -261,1355 +262,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=DM+Serif+Display:ital@0;1&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">
-<style>
-    /* ═══════════════════════════════════════════════════════════════
-       MATEU COFFEE — DESIGN TOKENS
-       Paleta extraída do logo oficial: gato + xícara em laranja vibrante
-       sobre preto puro, com "COFFEE" em cinza quente.
-       ═══════════════════════════════════════════════════════════════ */
-    :root {
-        --mc-bg: #0D0B09;
-        --mc-surface: #161210;
-        --mc-surface-2: #1E1A16;
-        --mc-surface-3: #27211B;
-        --mc-border: #2E2820;
-        --mc-border-strong: #3E3630;
-
-        --mc-orange: #D97732;
-        --mc-orange-hover: #E8883A;
-        --mc-orange-soft: #3D1F0D;
-        --mc-orange-glow: rgba(217, 119, 50, 0.16);
-
-        --mc-text: #F2EBE0;
-        --mc-text-2: #B4ACA4;
-        --mc-text-3: #8A8278;
-        --mc-text-muted: #6C6660;
-
-        --mc-success: #4CAF6F;
-        --mc-error: #E55A4C;
-        --mc-warning: #E8A23E;
-        --mc-info: #5BB0E8;
-    }
-
-    /* ─── Light Mode — classe aplicada pelo toggle ────────────────── */
-    .mc-light {
-        --mc-bg: #FAF7F4;
-        --mc-surface: #FFFFFF;
-        --mc-surface-2: #F2EDE8;
-        --mc-surface-3: #EAE4DE;
-        --mc-border: #E0D8D0;
-        --mc-border-strong: #C8BEB4;
-        --mc-orange: #C8541A;
-        --mc-orange-hover: #D96420;
-        --mc-orange-soft: #FDE8D8;
-        --mc-orange-glow: rgba(200, 84, 26, 0.14);
-        --mc-text: #1A1208;
-        --mc-text-2: #4A3C30;
-        --mc-text-3: #7A6A5A;
-        --mc-text-muted: #A89880;
-        --mc-success: #2E7D4A;
-        --mc-error: #C0392B;
-        --mc-warning: #C07000;
-        --mc-info: #1A6EA8;
-    }
-    .mc-light .stApp { background-color: var(--mc-bg) !important; color: var(--mc-text) !important; }
-    .mc-light [data-testid="stSidebar"] { background-color: var(--mc-surface) !important; }
-    .mc-light [data-testid="stHeader"]  { background-color: var(--mc-bg) !important; }
-
-    /* ─── Tipografia base ─────────────────────────────────────────── */
-    html, body, [class*="css"], .stApp, div, p, span, label,
-    h1, h2, h3, h4, h5, h6, button, input, textarea, select {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-    }
-    .mc-serif, .mc-serif * {
-        font-family: 'DM Serif Display', 'Cormorant Garamond', Georgia, serif !important;
-    }
-    .stMarkdown p.mc-login-tagline, .mc-login-tagline {
-        font-family: 'DM Serif Display', Georgia, serif !important;
-        font-style: italic;
-        font-size: 22px !important;
-        line-height: 1.6;
-        text-align: center;
-        color: var(--mc-text-2) !important;
-        max-width: 400px;
-        margin: 0.75rem auto 0;
-    }
-    /* Card de café — estilo carta de menu (nome serifado + origem eyebrow) */
-    .stMarkdown p.mc-cafe-name, .mc-cafe-name {
-        font-family: 'DM Serif Display', Georgia, serif !important;
-        font-size: 26px !important;
-        font-weight: 400 !important;
-        line-height: 1.15;
-        color: var(--mc-text) !important;
-        margin: 0 0 2px 0 !important;
-        letter-spacing: -0.01em;
-    }
-    .stMarkdown p.mc-cafe-origin, .mc-cafe-origin {
-        font-size: 11px !important;
-        font-weight: 700 !important;
-        letter-spacing: 0.12em !important;
-        text-transform: uppercase;
-        color: var(--mc-text-3) !important;
-        margin: 0 0 12px 0 !important;
-    }
-    /* Cabeçalhos de seção — DM Serif com fundo espresso + acento (uniforme) */
-    .stMarkdown p.mc-section-header, .mc-section-header {
-        font-family: 'DM Serif Display', Georgia, serif !important;
-        font-size: 24px !important;
-        font-weight: 400 !important;
-        color: var(--mc-text) !important;
-        background: linear-gradient(135deg, var(--mc-surface-3) 0%, var(--mc-surface-2) 100%) !important;
-        padding: 14px 18px 14px 22px !important;
-        margin: 2rem 0 1.5rem 0 !important;
-        border-radius: 10px !important;
-        border-left: 3px solid var(--mc-orange) !important;
-        line-height: 1.3;
-        letter-spacing: -0.01em;
-        animation: mcFadeUp 0.4s ease both;
-    }
-
-    /* ═══════════════════════════════════════════════════════════════
-       SISTEMA UNIFICADO — cards, zonas, animações e refinamento
-       dos componentes nativos do Streamlit (aplica em TODO o app).
-       Animações são transitions de hover → não re-disparam em rerun,
-       zero impacto de performance.
-       ═══════════════════════════════════════════════════════════════ */
-    @keyframes mcFadeUp { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:translateY(0);} }
-
-    /* ─── Card genérico estilo carta de menu ─── */
-    .mc-card {
-        background: var(--mc-surface) !important;
-        border: 1px solid var(--mc-border);
-        border-radius: 14px;
-        padding: 1.25rem 1.5rem;
-        margin: 0.75rem 0 1.25rem;
-        transition: border-color .25s ease, box-shadow .25s ease, transform .25s ease;
-        animation: mcFadeUp .4s ease both;
-    }
-    .mc-card:hover {
-        border-color: var(--mc-border-strong);
-        box-shadow: 0 10px 30px rgba(0,0,0,.30);
-    }
-
-    /* ─── Zona (padrão das 3 zonas de extração) ─── */
-    .mc-zone {
-        position: relative;
-        background: var(--mc-surface-2);
-        border-left: 3px solid var(--mc-orange);
-        border-radius: 0 10px 10px 0;
-        padding: .65rem 1.1rem .4rem 1.25rem;
-        margin: .5rem 0 1.1rem;
-    }
-    .mc-zone-label {
-        font-family: 'DM Serif Display', Georgia, serif !important;
-        font-size: 13px !important;
-        letter-spacing: .14em;
-        text-transform: uppercase;
-        color: var(--mc-orange) !important;
-        margin: 0 0 .35rem 0 !important;
-    }
-
-    /* ─── Inputs · textarea · date — superfície + glow no foco ─── */
-    [data-testid="stTextInput"] input,
-    [data-testid="stNumberInput"] input,
-    [data-testid="stDateInput"] input,
-    [data-testid="stTextArea"] textarea {
-        background: var(--mc-surface) !important;
-        border: 1px solid var(--mc-border) !important;
-        border-radius: 9px !important;
-        color: var(--mc-text) !important;
-        transition: border-color .2s ease, box-shadow .2s ease !important;
-    }
-    [data-testid="stTextInput"] input:focus,
-    [data-testid="stNumberInput"] input:focus,
-    [data-testid="stDateInput"] input:focus,
-    [data-testid="stTextArea"] textarea:focus {
-        border-color: var(--mc-orange) !important;
-        box-shadow: 0 0 0 3px var(--mc-orange-glow) !important;
-    }
-
-    /* ─── Selectbox / multiselect ─── */
-    [data-baseweb="select"] > div {
-        background: var(--mc-surface) !important;
-        border: 1px solid var(--mc-border) !important;
-        border-radius: 9px !important;
-        transition: border-color .2s ease, box-shadow .2s ease !important;
-    }
-    [data-baseweb="select"] > div:hover { border-color: var(--mc-border-strong) !important; }
-    [data-baseweb="select"]:focus-within > div {
-        border-color: var(--mc-orange) !important;
-        box-shadow: 0 0 0 3px var(--mc-orange-glow) !important;
-    }
-
-    /* ─── Botões — lift + sombra suave (transition, sem replay) ─── */
-    [data-testid="stButton"] button,
-    [data-testid="stFormSubmitButton"] button {
-        border-radius: 9px !important;
-        font-weight: 600 !important;
-        transition: transform .15s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease !important;
-    }
-    [data-testid="stButton"] button:hover,
-    [data-testid="stFormSubmitButton"] button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 20px var(--mc-orange-glow);
-    }
-    [data-testid="stButton"] button:active,
-    [data-testid="stFormSubmitButton"] button:active { transform: translateY(0); }
-
-    /* ─── Expanders → cards de menu (Meus Cafés, Histórico) ─── */
-    [data-testid="stExpander"] {
-        background: var(--mc-surface) !important;
-        border: 1px solid var(--mc-border) !important;
-        border-radius: 12px !important;
-        margin-bottom: .75rem !important;
-        overflow: hidden;
-        transition: border-color .25s ease, box-shadow .25s ease !important;
-    }
-    [data-testid="stExpander"]:hover {
-        border-color: var(--mc-orange) !important;
-        box-shadow: 0 8px 26px rgba(0,0,0,.26);
-    }
-    [data-testid="stExpander"] summary { font-weight: 600 !important; }
-    [data-testid="stExpander"] summary:hover { color: var(--mc-orange) !important; }
-
-    /* ─── Métricas em mini-cards ─── */
-    [data-testid="stMetric"] {
-        background: var(--mc-surface) !important;
-        border: 1px solid var(--mc-border);
-        border-radius: 12px;
-        padding: .85rem 1rem !important;
-        transition: border-color .25s ease, transform .25s ease;
-    }
-    [data-testid="stMetric"]:hover {
-        border-color: var(--mc-border-strong);
-        transform: translateY(-2px);
-    }
-
-    /* ─── Alerts / file uploader / sliders ─── */
-    [data-testid="stAlert"] { border-radius: 10px !important; }
-    [data-testid="stFileUploader"] section {
-        background: var(--mc-surface) !important;
-        border: 1px dashed var(--mc-border-strong) !important;
-        border-radius: 12px !important;
-        transition: border-color .2s ease;
-    }
-    [data-testid="stFileUploader"] section:hover { border-color: var(--mc-orange) !important; }
-    [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
-        box-shadow: 0 0 0 4px var(--mc-orange-glow) !important;
-    }
-
-    /* ═══ REFINO DE DENSIDADE — respiro e ritmo vertical ═══ */
-    /* Mais ar entre blocos verticais (reduz competição visual) */
-    [data-testid="stVerticalBlock"] { gap: 0.85rem !important; }
-    /* Largura de leitura confortável em parágrafos longos */
-    .stMarkdown p { max-width: 68ch; }
-    /* Colunas com gutter generoso */
-    [data-testid="stHorizontalBlock"] { gap: 1.1rem !important; }
-    /* Conteúdo do expander com respiro interno */
-    [data-testid="stExpander"] [data-testid="stExpanderDetails"] {
-        padding: 0.35rem 0.25rem 0.5rem !important;
-    }
-
-    /* ═══ EMPTY STATE — vira convite (card pontilhado + CTA) ═══ */
-    .mc-empty {
-        background: var(--mc-surface) !important;
-        border: 1px dashed var(--mc-border-strong);
-        border-radius: 16px;
-        padding: 2.5rem 1.5rem !important;
-        animation: mcFadeUp .4s ease both;
-    }
-    .mc-empty-hint {
-        display: inline-block;
-        margin-top: 1rem;
-        padding: 8px 16px;
-        border: 1px solid var(--mc-orange);
-        border-radius: 24px;
-        color: var(--mc-orange) !important;
-        font-weight: 600;
-        font-size: 13px;
-    }
-
-    /* ═══ ONBOARDING — card de boas-vindas (1ª sessão) ═══ */
-    .mc-onboard {
-        background: linear-gradient(135deg, var(--mc-surface-3), var(--mc-surface));
-        border: 1px solid var(--mc-border-strong);
-        border-left: 3px solid var(--mc-orange);
-        border-radius: 14px;
-        padding: 1.25rem 1.5rem;
-        margin: 0 0 1.5rem;
-        animation: mcFadeUp .45s ease both;
-    }
-    .mc-onboard h4 {
-        font-family: 'DM Serif Display', Georgia, serif !important;
-        font-size: 20px !important; color: var(--mc-text) !important;
-        margin: 0 0 .5rem !important;
-    }
-    .mc-onboard ul { margin: .25rem 0 0; padding-left: 1.1rem; }
-    .mc-onboard li { color: var(--mc-text-2) !important; font-size: 13.5px; margin: .25rem 0; }
-    .mc-onboard b { color: var(--mc-orange) !important; }
-
-    .stApp { background-color: var(--mc-bg); color: var(--mc-text); }
-    .block-container {
-        padding: 2rem 2.5rem 3rem !important;
-        max-width: 1280px;
-    }
-
-    /* ─── Hierarquia de títulos (h1 > h2 > h3) ──────────────────────
-       Contraste sobre #0A0A0A:
-         #F5EDE8 = 17.3:1 (AAA)
-         #B8B0A8 = 9.4:1  (AAA)
-         #8A8278 = 5.0:1  (AA texto comum)
-         #6C6660 = 3.3:1  (AA texto grande apenas)
-       ──────────────────────────────────────────────────────────── */
-    h1 {
-        font-family: 'DM Serif Display', Georgia, serif !important;
-        font-size: 28px !important;
-        font-weight: 400 !important;
-        color: var(--mc-text) !important;
-        letter-spacing: -0.01em !important;
-        margin: 0 0 1rem 0 !important;
-    }
-    h2 {
-        font-family: 'DM Serif Display', Georgia, serif !important;
-        font-size: 22px !important;
-        font-weight: 400 !important;
-        color: var(--mc-text) !important;
-        letter-spacing: -0.01em !important;
-        margin: 1.5rem 0 0.75rem 0 !important;
-    }
-    h3 {
-        font-size: 17px !important;
-        font-weight: 600 !important;
-        color: var(--mc-text) !important;
-        letter-spacing: -0.01em !important;
-        margin: 1rem 0 0.5rem 0 !important;
-    }
-    h4 {
-        font-size: 14px !important;
-        font-weight: 600 !important;
-        color: var(--mc-text-2) !important;
-        margin: 0.75rem 0 0.4rem 0 !important;
-    }
-
-    /* Markdown geral */
-    .stMarkdown p, .stMarkdown li {
-        color: var(--mc-text) !important;
-        font-size: 14px !important;
-        line-height: 1.65 !important;
-    }
-    .stMarkdown strong { color: var(--mc-text) !important; font-weight: 700 !important; }
-    .stMarkdown em     { color: var(--mc-text-2) !important; }
-
-    /* ─── Header da aplicação ───────────────────────────────────── */
-    .app-header {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        padding: 0 0 1.5rem 0;
-        border-bottom: 0.5px solid var(--mc-border);
-        margin-bottom: 2rem;
-    }
-    .app-header-title {
-        font-family: 'DM Serif Display', Georgia, serif !important;
-        font-size: 26px;
-        font-weight: 400;
-        color: var(--mc-text);
-        letter-spacing: -0.01em;
-        margin: 0;
-    }
-    .app-header-sub {
-        font-size: 11px;
-        color: var(--mc-text-3);
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        margin: 4px 0 0 0;
-        font-weight: 600;
-    }
-
-    /* ─── Tabs (navegação principal) — underline minimalista ────── */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 0;
-        background: transparent;
-        border-radius: 0;
-        padding: 0;
-        border: none;
-        border-bottom: 0.5px solid var(--mc-border);
-        width: 100%;
-        margin-bottom: 1.5rem;
-    }
-    .stTabs [data-baseweb="tab"] {
-        background: transparent;
-        border-radius: 0;
-        color: var(--mc-text-3);
-        font-size: 13px;
-        font-weight: 500;
-        padding: 10px 18px;
-        border: none;
-        border-bottom: 2px solid transparent;
-        margin-bottom: -0.5px;
-        transition: color 0.15s ease, border-color 0.15s ease;
-        letter-spacing: 0;
-    }
-    .stTabs [data-baseweb="tab"]:hover {
-        background: transparent;
-        color: var(--mc-text);
-        border-bottom-color: var(--mc-border-strong);
-    }
-    .stTabs [aria-selected="true"] {
-        background: transparent !important;
-        color: var(--mc-orange) !important;
-        font-weight: 600 !important;
-        border-bottom: 2px solid var(--mc-orange) !important;
-        box-shadow: none !important;
-    }
-    .stTabs [data-baseweb="tab-border"] { display: none !important; }
-    .stTabs [data-baseweb="tab-panel"]  { padding-top: 1.5rem !important; }
-
-    /* ─── Section labels (eyebrow) ──────────────────────────────── */
-    .stMarkdown p.section-label,
-    .section-label {
-        font-family: 'DM Serif Display', Georgia, serif !important;
-        font-size: 11px;
-        font-weight: 600;
-        color: var(--mc-orange) !important;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        margin: 0 0 1.25rem 0;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .section-label::before {
-        content: '';
-        display: inline-block;
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: var(--mc-orange);
-        flex-shrink: 0;
-    }
-    .section-divider {
-        border: none;
-        border-top: 0.5px solid var(--mc-border);
-        margin: 2.25rem 0;
-    }
-
-    /* ─── Tags / chips ─────────────────────────────────────────── */
-    .tag {
-        display: inline-block;
-        background: var(--mc-surface-2);
-        border: 0.5px solid var(--mc-border);
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 600;
-        color: var(--mc-text-2);
-        padding: 4px 10px;
-        margin: 2px 4px 2px 0;
-        letter-spacing: 0.02em;
-    }
-    .tag-accent {
-        border-color: var(--mc-orange);
-        color: var(--mc-orange);
-        background: var(--mc-orange-soft);
-    }
-
-    /* ─── Info rows (label · valor) ────────────────────────────── */
-    .info-row {
-        display: flex;
-        gap: 12px;
-        align-items: baseline;
-        margin: 8px 0;
-        padding: 4px 0;
-    }
-    .info-key {
-        font-size: 11px;
-        color: var(--mc-text-3);
-        font-weight: 700;
-        min-width: 100px;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-    }
-    .info-val {
-        font-size: 14px;
-        color: var(--mc-text);
-        font-weight: 500;
-    }
-
-    /* ─── Métricas (cards de KPI) ──────────────────────────────── */
-    div[data-testid="stMetric"] {
-        background: var(--mc-surface) !important;
-        border: 0.5px solid var(--mc-border) !important;
-        border-radius: 12px !important;
-        padding: 18px 22px !important;
-        transition: border-color 0.18s ease;
-    }
-    div[data-testid="stMetric"]:hover {
-        border-color: var(--mc-border-strong) !important;
-    }
-    div[data-testid="stMetricLabel"] p {
-        font-size: 10px !important;
-        font-weight: 700 !important;
-        color: var(--mc-text-3) !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.12em !important;
-    }
-    div[data-testid="stMetricValue"] {
-        font-family: 'DM Serif Display', Georgia, serif !important;
-        font-size: 24px !important;
-        font-weight: 400 !important;
-        color: var(--mc-orange) !important;
-        letter-spacing: -0.01em !important;
-    }
-    div[data-testid="stMetricDelta"] {
-        font-size: 11px !important;
-        font-weight: 600 !important;
-    }
-
-    /* ─── Inputs (text, number, textarea, date) ────────────────── */
-    .stTextInput input,
-    .stNumberInput input,
-    .stTextArea textarea,
-    .stDateInput input,
-    .stTimeInput input {
-        background: var(--mc-surface) !important;
-        border: 0.5px solid var(--mc-border) !important;
-        border-radius: 8px !important;
-        color: var(--mc-text) !important;
-        font-size: 14px !important;
-        font-weight: 500 !important;
-        padding: 11px 14px !important;
-        transition: border-color 0.18s ease, box-shadow 0.18s ease !important;
-    }
-    .stTextInput input::placeholder,
-    .stNumberInput input::placeholder,
-    .stTextArea textarea::placeholder {
-        color: var(--mc-text-muted) !important;
-        font-weight: 400 !important;
-    }
-    .stTextInput input:focus,
-    .stNumberInput input:focus,
-    .stTextArea textarea:focus,
-    .stDateInput input:focus,
-    .stTimeInput input:focus {
-        border-color: var(--mc-orange) !important;
-        box-shadow: 0 0 0 3px var(--mc-orange-glow) !important;
-        outline: none !important;
-    }
-    .stTextInput input:disabled,
-    .stNumberInput input:disabled {
-        background: var(--mc-surface-2) !important;
-        color: var(--mc-text-3) !important;
-        opacity: 0.7;
-    }
-
-    /* Selects */
-    div[data-baseweb="select"] > div {
-        background: var(--mc-surface) !important;
-        border: 0.5px solid var(--mc-border) !important;
-        border-radius: 8px !important;
-        color: var(--mc-text) !important;
-        min-height: 42px !important;
-    }
-    div[data-baseweb="select"] > div:focus-within {
-        border-color: var(--mc-orange) !important;
-        box-shadow: 0 0 0 3px var(--mc-orange-glow) !important;
-    }
-    div[data-baseweb="popover"] ul {
-        background: var(--mc-surface-2) !important;
-        border: 0.5px solid var(--mc-border) !important;
-    }
-    div[data-baseweb="popover"] li {
-        color: var(--mc-text) !important;
-    }
-    div[data-baseweb="popover"] li:hover {
-        background: var(--mc-orange-soft) !important;
-    }
-
-    /* ─── Labels (acima dos inputs) ─────────────────────────────
-       11px com peso 700 e cor #B8B0A8 — contraste 9.4:1 (AAA).
-       Antes era #6B3A4A com contraste 2.1:1 (falha WCAG).
-       ─────────────────────────────────────────────────────── */
-    .stTextInput label, .stNumberInput label, .stSelectbox label,
-    .stTextArea label, .stDateInput label, .stTimeInput label,
-    .stRadio label, .stFileUploader label, .stSlider label,
-    .stCheckbox label, label[data-testid="stWidgetLabel"] {
-        font-size: 11px !important;
-        font-weight: 700 !important;
-        color: var(--mc-text-2) !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.1em !important;
-        margin-bottom: 6px !important;
-    }
-    .stRadio > label > div:first-child,
-    .stCheckbox > label > div:first-child {
-        color: var(--mc-text-2) !important;
-    }
-
-    /* Helper text dos inputs */
-    .stTextInput div[data-testid="InputInstructions"],
-    .stNumberInput div[data-testid="InputInstructions"] {
-        color: var(--mc-text-3) !important;
-        font-size: 11px !important;
-    }
-
-    /* ─── Botões ────────────────────────────────────────────── */
-    .stButton > button {
-        background: var(--mc-surface-2) !important;
-        border: 0.5px solid var(--mc-border) !important;
-        border-radius: 8px !important;
-        color: var(--mc-text) !important;
-        font-size: 13px !important;
-        font-weight: 600 !important;
-        padding: 10px 22px !important;
-        transition: all 0.18s ease !important;
-        letter-spacing: 0;
-    }
-    .stButton > button:hover {
-        background: var(--mc-surface-3) !important;
-        border-color: var(--mc-border-strong) !important;
-        color: var(--mc-text) !important;
-        transform: translateY(-1px);
-    }
-    .stButton > button:active { transform: translateY(0); }
-
-    .stButton > button[kind="primary"] {
-        background: var(--mc-orange) !important;
-        border-color: var(--mc-orange) !important;
-        color: #0D0B09 !important;
-        font-weight: 700 !important;
-        box-shadow: 0 2px 8px var(--mc-orange-glow) !important;
-    }
-    .stButton > button[kind="primary"]:hover {
-        background: var(--mc-orange-hover) !important;
-        border-color: var(--mc-orange-hover) !important;
-        box-shadow: 0 6px 16px var(--mc-orange-glow) !important;
-        transform: translateY(-1px);
-    }
-
-    /* Download button */
-    .stDownloadButton > button {
-        background: var(--mc-surface-2) !important;
-        border: 0.5px solid var(--mc-border) !important;
-        color: var(--mc-text) !important;
-    }
-
-    /* ─── Radio chips ─────────────────────────────────────────── */
-    .stRadio > div { gap: 8px !important; }
-    .stRadio > div > label {
-        background: var(--mc-surface) !important;
-        border: 0.5px solid var(--mc-border) !important;
-        border-radius: 8px !important;
-        padding: 9px 16px !important;
-        color: var(--mc-text-2) !important;
-        font-size: 13px !important;
-        font-weight: 500 !important;
-        cursor: pointer !important;
-        text-transform: none !important;
-        letter-spacing: 0 !important;
-        transition: all 0.15s ease !important;
-    }
-    .stRadio > div > label:hover {
-        border-color: var(--mc-border-strong) !important;
-        color: var(--mc-text) !important;
-    }
-    .stRadio > div > label:has(input:checked) {
-        background: var(--mc-orange-soft) !important;
-        border-color: var(--mc-orange) !important;
-        color: var(--mc-orange) !important;
-        font-weight: 600 !important;
-    }
-
-    /* ─── Sliders ─────────────────────────────────────────────── */
-    .stSlider [data-baseweb="slider"] [role="slider"] {
-        background: var(--mc-orange) !important;
-        border-color: var(--mc-orange) !important;
-        box-shadow: 0 0 0 4px var(--mc-orange-glow) !important;
-    }
-    .stSlider [data-baseweb="slider"] > div > div > div {
-        background: var(--mc-orange) !important;
-    }
-
-    /* ─── Expanders ───────────────────────────────────────────── */
-    [data-testid="stExpander"] details {
-        background: var(--mc-surface) !important;
-        border: 0.5px solid var(--mc-border) !important;
-        border-radius: 12px !important;
-        margin-bottom: 0.75rem;
-    }
-    [data-testid="stExpander"] summary {
-        color: var(--mc-text) !important;
-        font-size: 14px !important;
-        font-weight: 600 !important;
-        padding: 14px 18px !important;
-    }
-    [data-testid="stExpander"] summary:hover {
-        background: var(--mc-surface-2) !important;
-    }
-    .streamlit-expanderContent,
-    [data-testid="stExpander"] > details > div {
-        background: var(--mc-surface) !important;
-        border-top: 0.5px solid var(--mc-border) !important;
-        padding: 20px !important;
-    }
-
-    /* ─── File uploader ───────────────────────────────────────── */
-    .stFileUploader > div {
-        background: var(--mc-surface) !important;
-        border: 1.5px dashed var(--mc-border-strong) !important;
-        border-radius: 10px !important;
-        transition: border-color 0.18s ease;
-    }
-    .stFileUploader > div:hover {
-        border-color: var(--mc-orange) !important;
-    }
-    .stFileUploader [data-testid="stFileUploaderDropzone"] {
-        color: var(--mc-text-2) !important;
-    }
-    .stFileUploader small { color: var(--mc-text-3) !important; }
-
-    /* ─── Alerts (success / error / warning / info) ───────────── */
-    div[data-testid="stAlert"] {
-        border-radius: 10px !important;
-        border-left-width: 4px !important;
-        font-size: 13px !important;
-        padding: 14px 18px !important;
-    }
-    div[data-testid="stAlert"][data-baseweb="notification"] > div:first-child {
-        font-weight: 600 !important;
-    }
-
-    /* ─── Divider ─────────────────────────────────────────────── */
-    hr {
-        border-color: var(--mc-border) !important;
-        margin: 1.75rem 0 !important;
-    }
-
-    /* ─── Dataframe ───────────────────────────────────────────── */
-    .stDataFrame {
-        background: var(--mc-surface) !important;
-        border-radius: 10px !important;
-        border: 0.5px solid var(--mc-border) !important;
-    }
-
-    /* ─── Tooltips ────────────────────────────────────────────── */
-    div[role="tooltip"] {
-        background: var(--mc-surface-3) !important;
-        color: var(--mc-text) !important;
-        border: 0.5px solid var(--mc-border-strong) !important;
-        font-size: 12px !important;
-    }
-
-    /* ─── Streamlit padrão: melhorias finais ──────────────────── */
-    [data-testid="stHeader"] { background: transparent !important; }
-    [data-testid="stToolbar"] { display: none !important; }
-
-    /* Scrollbar */
-    ::-webkit-scrollbar       { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: var(--mc-bg); }
-    ::-webkit-scrollbar-thumb { background: var(--mc-border-strong); border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--mc-orange); }
-
-    /* ─── Hero / logo na página inicial ───────────────────────── */
-    .mc-hero-full {
-        text-align: center;
-        padding: 2rem 0 1rem;
-    }
-    .mc-hero-full img {
-        max-width: 320px;
-        width: 100%;
-        height: auto;
-    }
-    .mc-tagline {
-        color: var(--mc-text-2);
-        font-size: 13px;
-        font-weight: 500;
-        letter-spacing: 0.03em;
-        margin: 1rem 0 0 0;
-        line-height: 1.6;
-    }
-
-    /* ═══════════════════════════════════════════════════════════
-       PADRÕES DE EXPERIÊNCIA — Componentes reutilizáveis
-       ═══════════════════════════════════════════════════════════ */
-
-    /* Stepper de seção (1 ⚪ título) */
-    .mc-step {
-        display: flex;
-        align-items: flex-start;
-        gap: 14px;
-        margin: 2.5rem 0 1.25rem;
-        padding-bottom: 0.5rem;
-    }
-    .mc-step-num {
-        flex-shrink: 0;
-        width: 32px; height: 32px;
-        background: var(--mc-orange);
-        color: #0A0A0A;
-        border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        font-weight: 800;
-        font-size: 14px;
-        box-shadow: 0 2px 8px var(--mc-orange-glow);
-    }
-    .mc-step-num.muted {
-        background: var(--mc-surface-3);
-        color: var(--mc-text-3);
-        box-shadow: none;
-    }
-    .mc-step-body { flex: 1; min-width: 0; }
-    .mc-step-title {
-        font-family: 'DM Serif Display', Georgia, serif !important;
-        font-size: 21px;
-        font-weight: 400;
-        color: var(--mc-text);
-        letter-spacing: -0.01em;
-        margin: 0;
-        line-height: 1.25;
-    }
-    .mc-step-sub {
-        font-size: 12px;
-        color: var(--mc-text-3);
-        margin: 4px 0 0;
-        line-height: 1.4;
-    }
-
-    /* Empty-state card (sem dados) */
-    .mc-empty {
-        text-align: center;
-        padding: 3rem 1.5rem;
-        background: var(--mc-surface);
-        border: 0.5px dashed var(--mc-border-strong);
-        border-radius: 14px;
-        margin: 1rem 0;
-    }
-    .mc-empty-icon {
-        font-size: 56px;
-        line-height: 1;
-        margin-bottom: 1rem;
-        opacity: 0.85;
-    }
-    .mc-empty-title {
-        font-family: 'DM Serif Display', Georgia, serif !important;
-        font-size: 22px;
-        font-weight: 400;
-        color: var(--mc-text);
-        margin: 0 0 0.5rem 0;
-    }
-    .mc-empty-sub {
-        font-size: 13px;
-        color: var(--mc-text-2);
-        max-width: 420px;
-        margin: 0 auto 1.5rem;
-        line-height: 1.55;
-    }
-    .mc-empty-hint {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 14px;
-        background: var(--mc-orange-soft);
-        border: 0.5px solid var(--mc-orange);
-        color: var(--mc-orange);
-        border-radius: 24px;
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-    }
-
-    /* ═══════════════════════════════════════════════════════════
-       BRAND WORDMARK — Replica fiel do logo "MATEU COFFEE"
-       Fonte: Cormorant Garamond (serif transicional)
-       MATEU em laranja vibrante · COFFEE em cinza quente
-       ═══════════════════════════════════════════════════════════ */
-    .mc-mark {
-        font-family: 'Cormorant Garamond', 'Playfair Display', Georgia, serif !important;
-        text-align: center;
-        line-height: 0.95;
-        letter-spacing: 0.04em;
-    }
-    .mc-mark-row {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5em;
-        line-height: 0.95;
-    }
-    .mc-mark-mateu {
-        font-family: 'Cormorant Garamond', Georgia, serif !important;
-        font-weight: 600;
-        color: var(--mc-orange);
-        letter-spacing: 0.08em;
-    }
-    .mc-mark-coffee {
-        font-family: 'Cormorant Garamond', Georgia, serif !important;
-        font-weight: 600;
-        color: var(--mc-text-2);
-        letter-spacing: 0.08em;
-    }
-    .mc-mark-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--mc-orange);
-        line-height: 1;
-    }
-    .mc-mark-tag {
-        font-family: 'Cormorant Garamond', Georgia, serif !important;
-        font-weight: 500;
-        font-style: italic;
-        color: var(--mc-text-3);
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        margin-top: 0.4em;
-    }
-
-    /* Tamanho HERO (login) */
-    .mc-mark-hero .mc-mark-mateu,
-    .mc-mark-hero .mc-mark-coffee { font-size: 56px; }
-    .mc-mark-hero .mc-mark-icon  { font-size: 64px; margin-right: 8px; }
-    .mc-mark-hero .mc-mark-tag   { font-size: 11px; }
-    @media (max-width: 640px) {
-        .mc-mark-hero .mc-mark-mateu,
-        .mc-mark-hero .mc-mark-coffee { font-size: 40px; }
-        .mc-mark-hero .mc-mark-icon  { font-size: 46px; }
-    }
-
-    /* Tamanho COMPACT (topbar) */
-    .mc-mark-compact .mc-mark-mateu,
-    .mc-mark-compact .mc-mark-coffee { font-size: 22px; }
-    .mc-mark-compact .mc-mark-icon  { font-size: 24px; margin-right: 4px; }
-    .mc-mark-compact .mc-mark-tag   { font-size: 9px; }
-
-    /* Tamanho TINY (footer/atalhos) */
-    .mc-mark-tiny .mc-mark-mateu,
-    .mc-mark-tiny .mc-mark-coffee { font-size: 15px; }
-    .mc-mark-tiny .mc-mark-icon  { font-size: 16px; }
-
-    /* Hero de login — logo em destaque máximo */
-    .mc-login-hero {
-        text-align: center;
-        padding: 2.5rem 0 2rem;
-        border-bottom: 0.5px solid var(--mc-border);
-        margin-bottom: 1.75rem;
-    }
-    .mc-login-hero img {
-        max-width: 480px !important;
-        width: 90% !important;
-        filter: drop-shadow(0 8px 32px rgba(232, 114, 46, 0.28));
-        transition: filter 0.3s ease;
-    }
-    .mc-login-title {
-        font-size: 26px;
-        font-weight: 800;
-        color: var(--mc-text);
-        margin: 1.75rem 0 0.4rem 0;
-        letter-spacing: -0.03em;
-    }
-    .mc-login-sub {
-        font-size: 14px;
-        color: var(--mc-text-2);
-        margin: 0;
-        line-height: 1.6;
-        max-width: 380px;
-        margin: 0 auto;
-    }
-
-    /* ─── Oculta o iframe do CookieManager (extra-streamlit-components)
-       que renderiza no canto da tela durante o carregamento ─────── */
-    iframe[title*="cookie"],
-    iframe[title*="Cookie"],
-    .stCustomComponentV1:has(iframe[title*="cookie"]) {
-        position: fixed !important;
-        top: -9999px !important;
-        left: -9999px !important;
-        width: 0 !important;
-        height: 0 !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-    }
-    /* Previne flash de layout parcial durante hidratação */
-    .stApp [data-testid="stAppViewContainer"] > section:first-child {
-        min-height: 100vh;
-    }
-
-    /* Compact header (logo · email · sair) */
-    .mc-topbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 0.5rem 0 1.25rem;
-        border-bottom: 1px solid var(--mc-border);
-        margin-bottom: 1.5rem;
-    }
-    .mc-topbar-brand {
-        display: flex; align-items: center; gap: 10px;
-    }
-    .mc-topbar-brand-text {
-        font-size: 14px;
-        font-weight: 800;
-        color: var(--mc-text);
-        letter-spacing: -0.01em;
-    }
-    .mc-topbar-brand-tag {
-        font-size: 10px;
-        color: var(--mc-orange);
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        font-weight: 700;
-        margin: -2px 0 0;
-    }
-    .mc-topbar-user {
-        display: flex; align-items: center; gap: 8px;
-        font-size: 12px;
-        color: var(--mc-text-2);
-        font-weight: 600;
-    }
-    .mc-topbar-user-avatar {
-        width: 28px; height: 28px; border-radius: 50%;
-        background: var(--mc-orange-soft);
-        border: 1px solid var(--mc-orange);
-        color: var(--mc-orange);
-        display: flex; align-items: center; justify-content: center;
-        font-weight: 800;
-        font-size: 12px;
-    }
-
-    /* Stat trio do widget consumo */
-    .mc-consumo {
-        display: flex;
-        gap: 0;
-        align-items: stretch;
-        background: linear-gradient(135deg, var(--mc-surface) 0%, var(--mc-surface-2) 100%);
-        border: 1px solid var(--mc-border);
-        border-left: 4px solid var(--mc-orange);
-        border-radius: 12px;
-        padding: 14px 18px;
-        margin: 0 0 1.5rem;
-        flex-wrap: wrap;
-    }
-    .mc-consumo-cell {
-        flex: 1 1 0;
-        min-width: 100px;
-        padding: 0 12px;
-        border-right: 1px solid var(--mc-border);
-    }
-    .mc-consumo-cell:last-child { border-right: none; }
-    .mc-consumo-label {
-        font-size: 10px;
-        color: var(--mc-text-3);
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        margin: 0 0 4px;
-    }
-    .mc-consumo-value {
-        font-size: 18px;
-        color: var(--mc-text);
-        font-weight: 800;
-        letter-spacing: -0.02em;
-        margin: 0;
-    }
-    .mc-consumo-value.accent { color: var(--mc-orange); }
-    .mc-consumo-sub {
-        font-size: 11px;
-        color: var(--mc-text-3);
-        margin: 2px 0 0;
-    }
-    @media (max-width: 640px) {
-        .mc-consumo-cell { border-right: none; border-bottom: 1px solid var(--mc-border); padding: 8px 0; }
-        .mc-consumo-cell:last-child { border-bottom: none; }
-    }
-
-    /* ═══════════════════════════════════════════════════════════
-       RECEITAS — Cards, badges e lista numerada
-       ═══════════════════════════════════════════════════════════ */
-    .mc-recipe-meta {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 12px;
-        margin: 1rem 0 1.5rem;
-    }
-    @media (max-width: 640px) {
-        .mc-recipe-meta { grid-template-columns: repeat(2, 1fr); }
-    }
-    .mc-recipe-meta-cell {
-        background: var(--mc-surface-2);
-        border: 1px solid var(--mc-border);
-        border-radius: 10px;
-        padding: 12px 14px;
-        text-align: left;
-    }
-    .mc-recipe-meta-label {
-        font-size: 10px;
-        color: var(--mc-text-3);
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        margin: 0 0 4px;
-    }
-    .mc-recipe-meta-value {
-        font-size: 14px;
-        color: var(--mc-text);
-        font-weight: 700;
-        margin: 0;
-        letter-spacing: -0.01em;
-    }
-    .mc-recipe-meta-value.accent { color: var(--mc-orange); }
-
-    /* Badges/chips de filtro */
-    .mc-recipe-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 4px 10px;
-        background: var(--mc-orange-soft);
-        border: 1px solid var(--mc-orange);
-        color: var(--mc-orange);
-        border-radius: 100px;
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        margin-right: 6px;
-    }
-    .mc-recipe-badge.neutral {
-        background: var(--mc-surface-2);
-        border-color: var(--mc-border);
-        color: var(--mc-text-2);
-    }
-
-    /* Lista de equipamentos como chips */
-    .mc-equip {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin: 0.5rem 0 1rem;
-    }
-    .mc-equip-chip {
-        background: var(--mc-surface-2);
-        border: 1px solid var(--mc-border);
-        color: var(--mc-text-2);
-        font-size: 12px;
-        font-weight: 600;
-        padding: 5px 10px;
-        border-radius: 6px;
-    }
-
-    /* Lista numerada de passos */
-    .mc-steps { counter-reset: stp; padding: 0; margin: 0; list-style: none; }
-    .mc-steps li {
-        counter-increment: stp;
-        position: relative;
-        padding: 12px 14px 12px 48px;
-        margin: 0 0 8px;
-        background: var(--mc-surface);
-        border: 1px solid var(--mc-border);
-        border-radius: 10px;
-        font-size: 13.5px;
-        line-height: 1.55;
-        color: var(--mc-text);
-    }
-    .mc-steps li::before {
-        content: counter(stp);
-        position: absolute;
-        left: 12px; top: 11px;
-        width: 26px; height: 26px;
-        background: var(--mc-orange);
-        color: #0A0A0A;
-        border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        font-weight: 800;
-        font-size: 12px;
-        font-family: 'Inter', sans-serif;
-    }
-
-    /* Lista de ingredientes (visual mais quente) */
-    .mc-ingredients {
-        background: linear-gradient(135deg, var(--mc-surface) 0%, var(--mc-orange-soft) 200%);
-        border: 1px solid var(--mc-border);
-        border-left: 4px solid var(--mc-orange);
-        border-radius: 10px;
-        padding: 14px 18px;
-        margin: 0.5rem 0 1rem;
-    }
-    .mc-ingredients ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
-    .mc-ingredients li {
-        font-size: 14px;
-        color: var(--mc-text);
-        font-weight: 500;
-        line-height: 1.6;
-        padding: 4px 0 4px 20px;
-        position: relative;
-    }
-    .mc-ingredients li::before {
-        content: "•";
-        color: var(--mc-orange);
-        font-weight: 800;
-        font-size: 16px;
-        position: absolute;
-        left: 4px;
-    }
-
-    /* Fonte */
-    .mc-recipe-source {
-        font-size: 11px;
-        color: var(--mc-text-3);
-        font-style: italic;
-        margin-top: 1rem;
-        padding-top: 0.75rem;
-        border-top: 1px solid var(--mc-border);
-    }
-
-    /* Pill de data relativa */
-    .mc-when {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 3px 10px;
-        background: var(--mc-surface-2);
-        border: 0.5px solid var(--mc-border);
-        border-radius: 100px;
-        font-size: 11px;
-        font-weight: 600;
-        color: var(--mc-text-2);
-        letter-spacing: 0.02em;
-    }
-    .mc-when.today { background: var(--mc-orange-soft); border-color: var(--mc-orange); color: var(--mc-orange); }
-
-    /* ─── Mobile ──────────────────────────────────────────────── */
-    @media (max-width: 640px) {
-        .block-container { padding: 0.75rem 0.85rem 9rem !important; }
-        h1 { font-size: 22px !important; }
-        h2 { font-size: 18px !important; }
-        h3 { font-size: 16px !important; }
-
-        /* Tabs mobile: underline scrollável */
-        .stTabs [data-baseweb="tab-list"] {
-            width: 100% !important;
-            overflow-x: auto !important;
-            flex-wrap: nowrap !important;
-            position: sticky;
-            top: 0;
-            z-index: 999;
-            background: var(--mc-bg) !important;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none;
-            gap: 0;
-            padding: 0;
-        }
-        .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar { display: none; }
-        .stTabs [data-baseweb="tab"] {
-            padding: 10px 14px;
-            font-size: 12px;
-            white-space: nowrap;
-            flex-shrink: 0;
-            min-height: 42px;
-        }
-        .stTabs [data-baseweb="tab-panel"] { padding-top: 1.1rem !important; }
-
-        /* Alvos de toque ≥44px (recomendação Apple/Google) */
-        .stButton > button {
-            width: 100%;
-            min-height: 46px;
-            font-size: 15px !important;
-        }
-        .stDownloadButton > button { width: 100%; min-height: 46px; }
-        [data-testid="stExpander"] summary { min-height: 46px; padding: 10px 12px; }
-        .stCheckbox { min-height: 40px; }
-
-        /* font-size 16px nos inputs impede o zoom automático do iOS */
-        .stTextInput input, .stTextArea textarea,
-        .stNumberInput input, .stDateInput input,
-        .stSelectbox [data-baseweb="select"] div { font-size: 16px !important; }
-        .stTextInput input, .stNumberInput input, .stDateInput input { min-height: 44px; }
-
-        /* Colunas empilham em vez de espremer */
-        [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; gap: 0.5rem !important; }
-        [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
-            flex: 1 1 calc(50% - 0.5rem) !important;
-            min-width: calc(50% - 0.5rem) !important;
-        }
-        /* Formulários longos: 1 coluna só */
-        [data-testid="stForm"] [data-testid="stColumn"],
-        [data-testid="stExpander"] [data-testid="stColumn"] {
-            flex: 1 1 100% !important;
-            min-width: 100% !important;
-        }
-
-        /* Métricas compactas */
-        [data-testid="stMetric"] { padding: 8px 10px !important; }
-        [data-testid="stMetricValue"] { font-size: 20px !important; }
-        [data-testid="stMetricLabel"] { font-size: 11px !important; }
-
-        /* Sliders: área de toque maior */
-        .stSlider, [data-testid="stSelectSlider"] { padding: 6px 4px; }
-        .stSlider [role="slider"] { width: 22px !important; height: 22px !important; }
-
-        /* Imagens nunca estouram a largura */
-        img { max-width: 100% !important; height: auto !important; }
-
-        /* Login: hero em destaque */
-        .mc-login-hero img { max-width: 360px !important; }
-        .mc-login-sub { font-size: 13px !important; }
-
-        /* Logo da topbar: tamanho controlado no mobile */
-        .mc-topbar-logo { height: 73px !important; width: auto !important; }
-
-        /* Login: a coluna central ocupa a tela toda (corrige meia-tela) */
-        [data-testid="stColumn"]:has(.mc-login-hero) {
-            flex: 1 1 100% !important;
-            min-width: 100% !important;
-        }
-
-        /* Login mobile: conteúdo no alto da tela, sem vão */
-        .block-container:has(.mc-login-hero) { padding-top: 0.75rem !important; }
-        .mc-login-hero { padding-top: 0 !important; }
-
-        /* Topbar mobile: marca centralizada em linha própria, e-mail abaixo */
-        [data-testid="stColumn"]:has(.mc-topbar-logo) {
-            flex: 1 1 100% !important;
-            min-width: 100% !important;
-        }
-        .mc-topbar-logo { margin: 0 auto !important; }
-        .mc-topbar-user { justify-content: center !important; }
-
-        /* Indicador de que há mais abas à direita (fade + seta) */
-        .stTabs { position: relative; }
-        .stTabs::after {
-            content: "›";
-            position: absolute;
-            top: 8px; right: 0;
-            height: 44px; width: 34px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 22px; font-weight: 700;
-            color: var(--mc-orange);
-            background: linear-gradient(to right, transparent, var(--mc-bg) 55%);
-            pointer-events: none;
-            z-index: 5;
-        }
-    }
-
-    /* Slot invisível do cookie: não ocupa espaço nem vira "sombra" */
-    [data-testid="stElementContainer"]:has(iframe[height="0"]) {
-        display: none !important;
-    }
-
-    /* Login: centraliza o conteúdo sem colunas (sem skeleton) */
-    .block-container:has(.mc-login-hero) {
-        max-width: 680px !important;
-        margin: 0 auto !important;
-    }
-</style>
-""", unsafe_allow_html=True)
+_MAIN_CSS_PATH = os.path.join(_DIR, ".streamlit", "static", "mateu_coffee_main.css")
+try:
+    with open(_MAIN_CSS_PATH, encoding="utf-8") as _f:
+        _MAIN_CSS = _f.read()
+except Exception:
+    _MAIN_CSS = ""
+    _log.warning("CSS principal não carregado: %s", _MAIN_CSS_PATH, exc_info=True)
+st.markdown(
+    '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=DM+Serif+Display:ital@0;1&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">'
+    f"<style>{_MAIN_CSS}</style>",
+    unsafe_allow_html=True)
 
 # ── Database layer ─────────────────────────────────────────────────────
 @st.cache_resource
@@ -1720,7 +383,7 @@ def _read_cookie() -> Optional[str]:
             if val:
                 return val
         except Exception:
-            pass
+            _log.warning("cookie: leitura falhou", exc_info=True)
     try:
         return st.context.cookies.get(_COOKIE_NAME)
     except Exception:
@@ -1748,6 +411,35 @@ _GOOGLE_SCOPES     = "openid email profile"
 def _google_redirect_uri() -> str:
     return os.environ.get("GOOGLE_REDIRECT_URI", "https://mateucoffee.souleandroribeiro.com.br")
 
+def _new_oauth_state() -> str:
+    """Gera um nonce anti-CSRF persistido em DB (session_state não sobrevive ao
+    redirect do Google). Single-use, expira em 15 min. Reusa o mesmo por render."""
+    st_val = st.session_state.get("_oauth_state")
+    if st_val:
+        return st_val
+    st_val = secrets.token_urlsafe(24)
+    try:
+        _run("DELETE FROM oauth_states WHERE created_at < NOW() - INTERVAL '15 minutes'")
+        _run("INSERT INTO oauth_states (state) VALUES (%s)", (st_val,))
+        st.session_state["_oauth_state"] = st_val
+    except Exception:
+        _log.warning("oauth_state: persistência falhou", exc_info=True)
+    return st_val
+
+def _consume_oauth_state(state: str) -> bool:
+    """Valida e invalida (single-use) o state retornado pelo Google."""
+    if not state:
+        return False
+    try:
+        rows = _fetch("""SELECT 1 FROM oauth_states
+                         WHERE state=%s AND created_at > NOW() - INTERVAL '15 minutes'""",
+                      (state,), _v=0)
+        _run("DELETE FROM oauth_states WHERE state=%s", (state,))
+        return bool(rows)
+    except Exception:
+        _log.warning("oauth_state: validação falhou", exc_info=True)
+        return False
+
 def _google_auth_url() -> str:
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
     if not client_id:
@@ -1759,6 +451,7 @@ def _google_auth_url() -> str:
         "scope":         _GOOGLE_SCOPES,
         "access_type":   "online",
         "prompt":        "select_account",
+        "state":         _new_oauth_state(),
     })
     return f"{_GOOGLE_AUTH_URL}?{params}"
 
@@ -1839,7 +532,7 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
             _run("INSERT INTO login_attempts (email, attempted_at) VALUES (LOWER(%s), NOW())",
                  (email.strip(),))
         except Exception:
-            pass
+            _log.warning("login_attempts: insert falhou", exc_info=True)
         return LoginResult.INVALID
     usuario = result[0]
     if not _verify_senha(senha, usuario['senha_hash']):
@@ -1849,7 +542,7 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
             _run("INSERT INTO login_attempts (email, attempted_at) VALUES (LOWER(%s), NOW())",
                  (email.strip(),))
         except Exception:
-            pass
+            _log.warning("login_attempts: insert falhou", exc_info=True)
         return LoginResult.INVALID
 
     # Migração silenciosa: re-hash SHA-256 legado → bcrypt
@@ -1858,7 +551,7 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
             _run("UPDATE usuarios SET senha_hash=%s WHERE id=%s",
                  (_hash_senha(senha), usuario['id']))
         except Exception:
-            pass
+            _log.warning("auth: re-hash bcrypt do legado falhou", exc_info=True)
 
     st.session_state['user_id'] = usuario['id']
     st.session_state['user_email'] = usuario['email']
@@ -1931,7 +624,7 @@ def _logout() -> None:
         try:
             _run("UPDATE usuarios SET remember_token=NULL, remember_token_expires=NULL WHERE id=%s", (user_id,))
         except Exception:
-            pass
+            _log.warning("logout: limpar remember_token no DB falhou", exc_info=True)
     st.session_state['_clear_cookie'] = True
     if "mc_token" in st.query_params:
         del st.query_params["mc_token"]
@@ -2142,6 +835,12 @@ def _init_db() -> None:
                 );
                 CREATE INDEX IF NOT EXISTS idx_grinder_profiles_user ON grinder_profiles(user_id, coffee_id);
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS oauth_states (
+                    state      TEXT PRIMARY KEY,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+            """)
 
             conn.commit()
             _DB_READY = True
@@ -2319,7 +1018,7 @@ def _auto_backup_check(user_id: int) -> None:
         if not rows or (now - rows[0]["criado_em"]).days >= 7:
             _backup_criar("semanal", "Backup automático semanal", user_id)
     except Exception:
-        pass
+        _log.warning("backup semanal automatico falhou", exc_info=True)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -2337,7 +1036,7 @@ def _compress_image_bytes(raw_bytes: bytes, max_width: int = 1200,
             from PIL import ImageOps
             img = ImageOps.exif_transpose(img)
         except Exception:
-            pass
+            _log.warning("imagem: exif_transpose falhou", exc_info=True)
         if img.width > max_width:
             new_h = int(img.height * max_width / img.width)
             img = img.resize((max_width, new_h), Image.LANCZOS)
@@ -2357,31 +1056,35 @@ def _b64(f) -> Optional[str]:  # f: UploadedFile | None
         return None
     raw = f.read()
     f.seek(0)
-    return _compress_image_bytes(raw, max_width=1200, quality=80)
+    # Comprime → (se R2 ligado) sobe pro bucket e guarda a URL; senão, base64.
+    return mc_storage.put_b64(_compress_image_bytes(raw, max_width=1200, quality=80))
 
 @st.cache_data(show_spinner=False, max_entries=300)
 def _thumbnail(b64_in: Optional[str], max_width: int = 400) -> Optional[str]:
     """Gera thumbnail a partir de base64 existente (cacheado por hash).
 
     Indispensável para fotos antigas salvas no banco SEM compressão,
-    que podem ter vários MB cada. Cacheamos para não reprocessar."""
+    que podem ter vários MB cada. Cacheamos para não reprocessar.
+    Fotos hospedadas (URL do R2) passam direto, sem reprocessar."""
     if not b64_in:
         return None
+    if b64_in.startswith("http") or b64_in.startswith("data:"):
+        return b64_in
     try:
         raw = base64.b64decode(b64_in)
         return _compress_image_bytes(raw, max_width=max_width, quality=70)
     except Exception:
         return b64_in
 
-def _img(b64: Optional[str], w: int = 170) -> None:
-    """Renderiza imagem como <img> embutido. Usa thumbnail para
-    manter a mensagem WebSocket pequena (~30-80 KB por imagem)."""
-    if not b64:
+def _img(ref: Optional[str], w: int = 170) -> None:
+    """Renderiza imagem como <img>. Fotos em base64 viram thumbnail (mensagem
+    WebSocket pequena); fotos hospedadas (URL R2) usam a própria URL."""
+    if not ref:
         return
     # 2x para telas Retina, com limite máximo
-    thumb = _thumbnail(b64, max_width=min(max(w * 2, 320), 800))
+    thumb = _thumbnail(ref, max_width=min(max(w * 2, 320), 800))
     st.markdown(
-        f'<img src="data:image/jpeg;base64,{thumb}" width="{w}" '
+        f'<img src="{mc_storage.img_src(thumb)}" width="{w}" '
         f'style="border-radius:10px;margin-top:4px;display:block;">',
         unsafe_allow_html=True)
 
@@ -2638,7 +1341,7 @@ def _render_recipe(r: dict) -> None:
             _dose_match  = float(_ratio_parts[0]) if _ratio_parts[0].replace(".","").isdigit() else None
             _yield_match = float(_ratio_parts[1]) if _ratio_parts[1].replace(".","").isdigit() else None
     except Exception:
-        pass
+        _log.warning("receita: parse de yield falhou", exc_info=True)
     _moagem_match = r.get("moagem", "")
     _tempo_str = r.get("tempo", "")
     try:
@@ -2766,17 +1469,20 @@ class CoffeeEngine:
         return round(max(6.0, min(30.0, ey)), 1)
 
 def _dial_in_recomendacao(coffee_id: int, metodo: str, user_id: int) -> dict:
-    """Analisa as últimas 3 extrações e retorna recomendação de ajuste de moagem."""
-    recentes = _fetch("""
-        SELECT gramas, agua_alvo, tempo_extracao, ey, tds, nota_final_stars, clicks_moedor, data
+    """Analisa o histórico e retorna recomendação de ajuste de moagem, incluindo
+    o 'ponto doce' em clicks absolutos (a moagem que deu o melhor resultado)."""
+    hist = _fetch("""
+        SELECT gramas, agua_alvo, tempo_extracao, ey, tds, nota_final_stars,
+               clicks_moedor, moedor, data
         FROM extracoes
         WHERE coffee_id=%s AND metodo=%s AND user_id=%s
-        ORDER BY data DESC, created_at DESC LIMIT 5
+        ORDER BY data DESC, created_at DESC LIMIT 20
     """, (coffee_id, metodo, user_id), _v=_v())
 
-    if not recentes:
+    if not hist:
         return {"status": "sem_dados"}
 
+    recentes = hist[:5]   # tendência recente para médias
     # Calcula médias apenas das extrações com dados válidos
     com_ey  = [r for r in recentes if r.get("ey") and float(r["ey"]) > 0]
     com_nota = [r for r in recentes if r.get("nota_final_stars") and int(r["nota_final_stars"]) > 0]
@@ -2788,6 +1494,37 @@ def _dial_in_recomendacao(coffee_id: int, metodo: str, user_id: int) -> dict:
     last_clicks = int(recentes[0].get("clicks_moedor") or 0)
 
     recs = []
+
+    # ── Ponto doce em clicks absolutos ────────────────────────────────────
+    # Melhor extração do histórico (clicks registrados): prioriza EY na janela
+    # ideal, depois nota sensorial, depois proximidade de 20% de EY.
+    def _score(r):
+        ey = float(r.get("ey") or 0)
+        nota = int(r.get("nota_final_stars") or 0)
+        ideal = 1 if 18.0 <= ey <= 22.0 else 0
+        return (ideal, nota, -abs(ey - 20.0) if ey > 0 else -99)
+    _cand = [r for r in hist if int(r.get("clicks_moedor") or 0) > 0]
+    _best = max(_cand, key=_score) if _cand else None
+    sweet_clicks = None
+    if _best is not None:
+        _bs = _score(_best)
+        # só confia se houver sinal real (EY ideal OU nota >= 4)
+        if _bs[0] == 1 or _bs[1] >= 4:
+            sweet_clicks = int(_best["clicks_moedor"])
+            _moedor = (_best.get("moedor") or "").strip()
+            _por = (f"EY {float(_best['ey']):.1f}%" if float(_best.get("ey") or 0) > 0
+                    else f"{int(_best.get('nota_final_stars') or 0)}★")
+            if last_clicks and last_clicks != sweet_clicks:
+                _dir = "afine" if sweet_clicks < last_clicks else "abra"
+                _alt = f"você está em {last_clicks} — {_dir} para {sweet_clicks}"
+            else:
+                _alt = "repita esse ajuste"
+            recs.append({
+                "icone": "🎯", "cor": "#D97732",
+                "titulo": f"Ponto doce: {sweet_clicks} clicks" + (f" ({_moedor})" if _moedor else ""),
+                "acao": f"Melhor resultado desse café ({_por})",
+                "alternativa": _alt,
+            })
 
     # Diagnóstico EY (prioridade máxima)
     if avg_ey > 0:
@@ -2847,6 +1584,7 @@ def _dial_in_recomendacao(coffee_id: int, metodo: str, user_id: int) -> dict:
         "avg_tempo": avg_tempo,
         "avg_nota": avg_nota,
         "last_clicks": last_clicks,
+        "sweet_clicks": sweet_clicks,
         "ultima_data": ultima_data,
         "recomendacoes": recs,
     }
@@ -3287,7 +2025,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.15.3"
+_APP_VERSION = "3.16.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -3383,9 +2121,14 @@ def main():
 
     # ── Google OAuth callback ────────────────────────────────────────────
     _g_code  = st.query_params.get("code")
+    _g_state = st.query_params.get("state")
     _g_error = st.query_params.get("error")
     if _g_code and 'user_id' not in st.session_state:
         st.query_params.clear()
+        st.session_state.pop("_oauth_state", None)
+        if not _consume_oauth_state(_g_state):
+            st.error("Sessão de login expirada ou inválida. Tente novamente.")
+            st.stop()
         _g_result = _login_google(_g_code)
         if _g_result == LoginResult.OK:
             uid = st.session_state.get('user_id')
@@ -3399,7 +2142,7 @@ def main():
                     st.session_state['_pending_cookie'] = (_tok, _exp)
                     st.query_params["mc_token"] = _tok
                 except Exception:
-                    pass
+                    _log.warning("cookie: gravar mc_token falhou", exc_info=True)
             st.toast("Login com Google realizado!", icon="✅")
             st.rerun()
         else:

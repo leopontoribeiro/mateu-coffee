@@ -52,3 +52,4 @@ logs/
 .env
 .env.local
 *.bak
+*.backup
