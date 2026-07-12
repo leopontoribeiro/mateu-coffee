@@ -2025,7 +2025,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.16.0"
+_APP_VERSION = "3.16.1"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -2069,284 +2069,8 @@ def _forgot_password_dialog():
                 st.caption("Copie e use para entrar. Troque a senha depois nas configurações.")
 
 # ── Main ───────────────────────────────────────────────────────────────
-def main():
-    _init_db()
-
-    # Slot fixo de cookie: SEMPRE renderizado (mesma posição na árvore de
-    # elementos em todos os runs). Se aparecesse/sumisse condicionalmente,
-    # o Streamlit remontaria os st.tabs e voltaria para a 1ª aba a cada
-    # primeira interação após login/logout.
-    # CookieController: componente confiável para ler/escrever cookie real no
-    # browser (sobrevive a fechar/reabrir). Instanciado SEMPRE na mesma posição
-    # da árvore para não remontar st.tabs. Fallback para iframe JS se indisponível.
-    _ctrl = None
-    if CookieController is not None:
-        try:
-            _ctrl = CookieController(key="mc_cookie_ctrl")
-            st.session_state['_cookie_ctrl'] = _ctrl
-        except Exception:
-            _ctrl = None
-
-    _pend  = st.session_state.pop('_pending_cookie', None)
-    _clear = st.session_state.pop('_clear_cookie', False)
-    if _ctrl is not None:
-        try:
-            if _pend:
-                _ctrl.set(_COOKIE_NAME, _pend[0],
-                          max_age=30*86400, same_site="lax")
-            elif _clear:
-                _ctrl.remove(_COOKIE_NAME)
-        except Exception:
-            pass
-    else:
-        # Fallback legado (iframe JS) quando o componente não está disponível
-        if _pend:
-            _js = (f"window.parent.document.cookie='{_COOKIE_NAME}={_pend[0]}; "
-                   f"max-age={30*86400}; path=/; SameSite=Lax';")
-        elif _clear:
-            _js = f"window.parent.document.cookie='{_COOKIE_NAME}=; max-age=0; path=/';"
-        else:
-            _js = ""
-        components.html(f"<script>{_js}</script>", height=0)
-
-    # Dialog "Recuperar senha"
-    if st.session_state.get("_show_forgot"):
-        st.session_state.pop("_show_forgot")
-        _forgot_password_dialog()
-
-    # Dialog "Sobre" — aberto pelo clique na marca (?about=1), em qualquer estado
-    if "about" in st.query_params:
-        del st.query_params["about"]
-        _about_dialog()
-
-    # ── Google OAuth callback ────────────────────────────────────────────
-    _g_code  = st.query_params.get("code")
-    _g_state = st.query_params.get("state")
-    _g_error = st.query_params.get("error")
-    if _g_code and 'user_id' not in st.session_state:
-        st.query_params.clear()
-        st.session_state.pop("_oauth_state", None)
-        if not _consume_oauth_state(_g_state):
-            st.error("Sessão de login expirada ou inválida. Tente novamente.")
-            st.stop()
-        _g_result = _login_google(_g_code)
-        if _g_result == LoginResult.OK:
-            uid = st.session_state.get('user_id')
-            if uid:
-                try:
-                    _tok = secrets.token_urlsafe(32)
-                    _exp = _now_local() + timedelta(days=30)
-                    _run("UPDATE usuarios SET remember_token=%s, remember_token_expires=%s WHERE id=%s",
-                         (_tok, _exp, uid))
-                    st.session_state['remember_token'] = _tok
-                    st.session_state['_pending_cookie'] = (_tok, _exp)
-                    st.query_params["mc_token"] = _tok
-                except Exception:
-                    _log.warning("cookie: gravar mc_token falhou", exc_info=True)
-            st.toast("Login com Google realizado!", icon="✅")
-            st.rerun()
-        else:
-            st.error("Falha no login com Google. Tente novamente.")
-    elif _g_error:
-        st.query_params.clear()
-
-    # ── Autenticação ────────────────────────────────────────────────────
-    if 'user_id' not in st.session_state:
-        if not _check_remember_token():
-            # Container único — centralização via CSS (sem skeleton de colunas)
-            col_main = st.container()
-            with col_main:
-                # Logo + slogan da marca (apenas no login)
-                st.markdown('<div class="mc-login-hero">', unsafe_allow_html=True)
-                _load_logo(max_width=560)
-                st.markdown(
-                    '<p class="mc-login-tagline">'
-                    'Para baristas, entusiastas e apaixonados por café. '
-                    'Para mim e para você também.</p>'
-                    '</div>',
-                    unsafe_allow_html=True)
-
-                tab_login, tab_cadastro = st.tabs(["  Entrar  ", "  Criar Conta  "])
-
-                with tab_login:
-                    st.markdown(
-                        '<p class="mc-step-title" style="margin:0.5rem 0 1.25rem">'
-                        'Bem-vindo de volta</p>',
-                        unsafe_allow_html=True)
-
-                    # Botão Google OAuth (só aparece se GOOGLE_CLIENT_ID configurado)
-                    _g_url = _google_auth_url()
-                    if _g_url:
-                        st.markdown(
-                            f'<a href="{_g_url}" target="_self" style="text-decoration:none">'
-                            f'<div style="display:flex;align-items:center;justify-content:center;'
-                            f'gap:10px;background:#fff;border:1.5px solid #dadce0;border-radius:8px;'
-                            f'padding:10px 16px;cursor:pointer;font-size:15px;font-weight:500;'
-                            f'color:#3c4043;margin-bottom:0.75rem;transition:box-shadow .2s">'
-                            f'<svg width="20" height="20" viewBox="0 0 48 48">'
-                            f'<path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.8 6.1C12.3 13 17.7 9.5 24 9.5z"/>'
-                            f'<path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/>'
-                            f'<path fill="#FBBC05" d="M10.4 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.9-4.6L2.6 13.3A23.9 23.9 0 0 0 0 24c0 3.8.9 7.4 2.6 10.7l7.8-6.1z"/>'
-                            f'<path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.3-7.7 2.3-6.3 0-11.6-4.2-13.6-10l-7.8 6.1C6.6 42.6 14.6 48 24 48z"/>'
-                            f'</svg>'
-                            f'Entrar com Google</div></a>',
-                            unsafe_allow_html=True)
-                        st.markdown(
-                            '<div style="display:flex;align-items:center;gap:8px;margin:0.5rem 0">'
-                            '<hr style="flex:1;border:none;border-top:0.5px solid var(--mc-border);margin:0">'
-                            '<span style="color:var(--mc-text-3);font-size:12px;letter-spacing:.08em">ou</span>'
-                            '<hr style="flex:1;border:none;border-top:0.5px solid var(--mc-border);margin:0">'
-                            '</div>',
-                            unsafe_allow_html=True)
-
-                    email = st.text_input("E-mail", key="login_email",
-                                          placeholder="seu@email.com")
-                    senha = st.text_input("Senha", type="password", key="login_senha",
-                                          placeholder="••••••••")
-                    remember_me = st.checkbox("Manter-me conectado por 30 dias",
-                                              value=True, key="login_remember")
-
-                    if st.button("Entrar", type="primary",
-                                 use_container_width=True, key="btn_login"):
-                        outcome = _login(email, senha, remember=remember_me)
-                        if outcome == LoginResult.OK:
-                            if remember_me and st.session_state.get('remember_token'):
-                                st.query_params["mc_token"] = st.session_state['remember_token']
-                            st.toast("Login realizado", icon="✅")
-                            st.rerun()
-                        elif outcome == LoginResult.RATE_LIMITED:
-                            st.error("Muitas tentativas. Aguarde 10 minutos antes de tentar novamente.")
-                        elif outcome == LoginResult.INVALID:
-                            st.error("E-mail ou senha incorretos. Verifique e tente de novo.")
-                        else:
-                            st.error("Erro ao acessar o banco de dados. Tente novamente em instantes.")
-
-                    if st.button("Esqueci minha senha", use_container_width=True, key="btn_forgot"):
-                        st.session_state["_show_forgot"] = True
-                        st.rerun()
-
-                with tab_cadastro:
-                    st.markdown(
-                        '<p class="mc-step-title" style="margin:0.5rem 0 0.25rem">'
-                        'Crie sua conta</p>'
-                        '<p class="mc-step-sub" style="margin:0 0 1.25rem">'
-                        'É grátis e leva 30 segundos. Seus cafés ficam guardados '
-                        'só para você.</p>',
-                        unsafe_allow_html=True)
-                    new_email = st.text_input("E-mail", key="cadastro_email",
-                                              placeholder="seu@email.com")
-                    new_senha = st.text_input("Senha (mínimo 6 caracteres)",
-                                              type="password", key="cadastro_senha",
-                                              placeholder="••••••••")
-                    new_senha_conf = st.text_input("Confirmar senha", type="password",
-                                                   key="cadastro_senha_conf",
-                                                   placeholder="••••••••")
-
-                    if st.button("Criar conta", type="primary",
-                                 use_container_width=True, key="btn_cadastrar"):
-                        if not new_email or not new_senha:
-                            st.error("Preencha todos os campos.")
-                        elif not mc_core.valida_email(new_email):
-                            st.error("E-mail inválido. Verifique o formato (nome@dominio.com).")
-                        elif new_senha != new_senha_conf:
-                            st.error("As senhas não conferem.")
-                        elif len(new_senha) < 6:
-                            st.error("A senha precisa ter pelo menos 6 caracteres.")
-                        else:
-                            try:
-                                hash_pwd = _hash_senha(new_senha)
-                                _run("INSERT INTO usuarios (email, senha_hash) VALUES (%s, %s)",
-                                     (new_email.strip().lower(), hash_pwd))
-                                st.toast("Conta criada com sucesso", icon="✅")
-                                st.success("Pronto! Vá na aba **Entrar** para começar.")
-                            except Exception:
-                                st.error("Esse e-mail já está cadastrado.")
-        return
-
-    # ── App Logado ──────────────────────────────────────────────────────
-    # Topbar compacta: logo · email · sair (uma linha só)
-    user_email_display = st.session_state.get('user_email', '')
-    initial = (user_email_display[:1] or "?").upper()
-
-    # Toggle Dark/Light mode — persiste na sessão
-    _light_mode = st.session_state.get('_light_mode', False)
-
-    col_brand, col_user, col_theme, col_logout = st.columns([0.60, 0.25, 0.07, 0.08], gap="small")
-    with col_brand:
-        # Marca oficial — usa o PNG real do logo (cacheado em base64)
-        logo_b64 = _logo_b64()
-        if logo_b64:
-            st.markdown(
-                f'<div style="padding-top:4px">'
-                f'<a href="?about=1" target="_self" title="Sobre o Mateu Coffee">'
-                f'<img src="data:image/webp;base64,{logo_b64}" alt="Mateu Coffee" '
-                f'class="mc-topbar-logo" style="height:94px;width:auto;display:block;'
-                f'cursor:pointer"></a>'
-                f'</div>',
-                unsafe_allow_html=True)
-        else:
-            # Fallback elegante caso o PNG não esteja disponível
-            st.markdown(
-                '<div style="padding-top:4px">'
-                + _wordmark_html("compact", with_tag=False) +
-                '</div>',
-                unsafe_allow_html=True)
-    with col_user:
-        st.markdown(
-            f'<div class="mc-topbar-user" style="justify-content:flex-end;padding-top:6px">'
-            f'<div class="mc-topbar-user-avatar">{initial}</div>'
-            f'<span>{user_email_display}</span>'
-            f'</div>',
-            unsafe_allow_html=True)
-    with col_theme:
-        _theme_label = "☀️" if _light_mode else "🌙"
-        if st.button(_theme_label, use_container_width=True, key="btn_theme",
-                     help="Alternar entre modo escuro e claro"):
-            st.session_state['_light_mode'] = not _light_mode
-            st.rerun()
-    with col_logout:
-        if st.button("Sair", use_container_width=True, key="btn_logout",
-                     help="Sair da conta"):
-            _logout()
-            st.rerun()
-
-    # Aplica classe light mode no body via JS
-    if _light_mode:
-        st.markdown(
-            '<script>document.body.classList.add("mc-light");</script>'
-            '<style>body, .stApp, .block-container { background-color: #FAF7F4 !important; }</style>',
-            unsafe_allow_html=True)
-
-    # Widget de consumo (hoje · semana · média · total)
-    _show_daily_consumption()
-
-    _auto_backup_check(st.session_state['user_id'])
-
-    st.markdown("---")
-
-    # ── Onboarding (1ª sessão) — apresenta os diferenciais escondidos ──
-    if not st.session_state.get("_onboard_dismiss"):
-        st.markdown(
-            '<div class="mc-onboard">'
-            '<h4>Bem-vindo ao Mateu Coffee</h4>'
-            '<ul>'
-            '<li>Comece em <b>Novo Café</b> — a foto da embalagem vira ficha por IA.</li>'
-            '<li>Em <b>Nova Extração</b>, o <b>dial-in automático</b> sugere clicks e dose pelo seu histórico.</li>'
-            '<li>O <b>Barista Expert</b> tira dúvidas de técnica, defeitos de extração e receitas.</li>'
-            '</ul></div>', unsafe_allow_html=True)
-        if st.button("Entendi, começar", key="_onboard_btn"):
-            st.session_state["_onboard_dismiss"] = True
-            _log.info("Onboarding dispensado (user=%s)", st.session_state.get('user_id'))
-            st.rerun()
-
-    tab1, tab2, tab3, tab4, tab_barista, tab5, tab6, tab7 = st.tabs([
-        "Novo Café", "Nova Extração", "Meus Cafés", "Histórico",
-        "Barista Expert", "Receitas", "Cápsulas", "Backup"])
-
-    user_id = st.session_state['user_id']
-
-    # ── Tab Barista Expert ─────────────────────────────────────────────
-    with tab_barista:
+# ── Views das abas (extraídas de main para modularização) ──────────────
+def _view_barista(user_id):
         st.markdown('<p class="mc-section-header">Barista Expert</p>', unsafe_allow_html=True)
 
         # ── Seção superior: Café Melhor Avaliado + Promoções (2 colunas)
@@ -2500,8 +2224,7 @@ def main():
                 _chat_salvar(user_id, "assistant", resposta)
                 st.rerun()
 
-    # ── Tab 1 · Cadastrar café ─────────────────────────────────────────
-    with tab1:
+def _view_novo_cafe(user_id):
         st.markdown('<p class="mc-section-header">Cadastrar Novo Café</p>', unsafe_allow_html=True)
 
         # Aplica resultado da análise de IA antes de renderizar os widgets
@@ -2600,8 +2323,7 @@ def main():
                 st.balloons()
                 st.rerun()  # reseta formulário e revalida lista sem duplicação
 
-    # ── Tab 2 · Nova extração ──────────────────────────────────────────
-    with tab2:
+def _view_nova_extracao(user_id):
         # Modo Rápido / Completo
         _quick = st.toggle("⚡ Modo Rápido", value=False,
                            help="Modo simplificado: apenas os campos essenciais para registrar rápido")
@@ -3179,8 +2901,7 @@ def main():
                     st.toast("✓ Extração registrada com sucesso", icon="☕")
                     st.balloons()
 
-    # ── Tab 3 · Meus cafés ────────────────────────────────────────────
-    with tab3:
+def _view_meus_cafes(user_id):
         st.markdown('<p class="mc-section-header">Biblioteca de Cafés</p>', unsafe_allow_html=True)
 
         cafes = _fetch("""
@@ -3564,8 +3285,7 @@ def main():
                                 st.session_state.pop(f"confirm_del_c_{c['id']}", None)
                                 st.rerun()
 
-    # ── Tab 4 · Histórico ─────────────────────────────────────────────
-    with tab4:
+def _view_historico(user_id):
         st.markdown('<p class="mc-section-header">Histórico de Extrações</p>', unsafe_allow_html=True)
 
         rows = _fetch("""
@@ -3928,8 +3648,7 @@ def main():
                             st.toast("Alterações salvas", icon="✅")
                             st.rerun()
 
-    # ── Tab 5 · Biblioteca de Receitas ────────────────────────────────
-    with tab5:
+def _view_receitas(user_id):
         st.markdown('<p class="mc-section-header">Biblioteca de Receitas</p>',
                     unsafe_allow_html=True)
         st.markdown(
@@ -3985,8 +3704,7 @@ def main():
                 'depois registre suas próprias variações em <strong>Nova Extração</strong>.</p>',
                 unsafe_allow_html=True)
 
-    # ── Tab 6 · Cápsulas ─────────────────────────────────────────────
-    with tab6:
+def _view_capsulas(user_id):
         MAQUINAS_CAPSULAS = ["Nespresso", "Dolce Gusto", "Três Corações", "DeltaQ", "Outra"]
         VOLUMES_CAPSULAS  = {25: "Ristretto · 25ml", 40: "Espresso · 40ml", 110: "Lungo · 110ml"}
 
@@ -4278,9 +3996,7 @@ def main():
                                 st.session_state.pop(f"confirm_del_cap_{cap['id']}", None)
                                 st.rerun()
 
-
-    # ── Tab 7 · Backup ────────────────────────────────────────────────
-    with tab7:
+def _view_backup(user_id):
         st.markdown('<p class="mc-section-header">Sistema de Backup</p>', unsafe_allow_html=True)
 
         st.info(
@@ -4351,6 +4067,316 @@ def main():
                                      use_container_width=True):
                             st.session_state[f"confirm_restore_{bk['id']}"] = True
                             st.rerun()
+
+
+def main():
+    _init_db()
+
+    # Slot fixo de cookie: SEMPRE renderizado (mesma posição na árvore de
+    # elementos em todos os runs). Se aparecesse/sumisse condicionalmente,
+    # o Streamlit remontaria os st.tabs e voltaria para a 1ª aba a cada
+    # primeira interação após login/logout.
+    # CookieController: componente confiável para ler/escrever cookie real no
+    # browser (sobrevive a fechar/reabrir). Instanciado SEMPRE na mesma posição
+    # da árvore para não remontar st.tabs. Fallback para iframe JS se indisponível.
+    _ctrl = None
+    if CookieController is not None:
+        try:
+            _ctrl = CookieController(key="mc_cookie_ctrl")
+            st.session_state['_cookie_ctrl'] = _ctrl
+        except Exception:
+            _ctrl = None
+
+    _pend  = st.session_state.pop('_pending_cookie', None)
+    _clear = st.session_state.pop('_clear_cookie', False)
+    if _ctrl is not None:
+        try:
+            if _pend:
+                _ctrl.set(_COOKIE_NAME, _pend[0],
+                          max_age=30*86400, same_site="lax")
+            elif _clear:
+                _ctrl.remove(_COOKIE_NAME)
+        except Exception:
+            pass
+    else:
+        # Fallback legado (iframe JS) quando o componente não está disponível
+        if _pend:
+            _js = (f"window.parent.document.cookie='{_COOKIE_NAME}={_pend[0]}; "
+                   f"max-age={30*86400}; path=/; SameSite=Lax';")
+        elif _clear:
+            _js = f"window.parent.document.cookie='{_COOKIE_NAME}=; max-age=0; path=/';"
+        else:
+            _js = ""
+        components.html(f"<script>{_js}</script>", height=0)
+
+    # Dialog "Recuperar senha"
+    if st.session_state.get("_show_forgot"):
+        st.session_state.pop("_show_forgot")
+        _forgot_password_dialog()
+
+    # Dialog "Sobre" — aberto pelo clique na marca (?about=1), em qualquer estado
+    if "about" in st.query_params:
+        del st.query_params["about"]
+        _about_dialog()
+
+    # ── Google OAuth callback ────────────────────────────────────────────
+    _g_code  = st.query_params.get("code")
+    _g_state = st.query_params.get("state")
+    _g_error = st.query_params.get("error")
+    if _g_code and 'user_id' not in st.session_state:
+        st.query_params.clear()
+        st.session_state.pop("_oauth_state", None)
+        if not _consume_oauth_state(_g_state):
+            st.error("Sessão de login expirada ou inválida. Tente novamente.")
+            st.stop()
+        _g_result = _login_google(_g_code)
+        if _g_result == LoginResult.OK:
+            uid = st.session_state.get('user_id')
+            if uid:
+                try:
+                    _tok = secrets.token_urlsafe(32)
+                    _exp = _now_local() + timedelta(days=30)
+                    _run("UPDATE usuarios SET remember_token=%s, remember_token_expires=%s WHERE id=%s",
+                         (_tok, _exp, uid))
+                    st.session_state['remember_token'] = _tok
+                    st.session_state['_pending_cookie'] = (_tok, _exp)
+                    st.query_params["mc_token"] = _tok
+                except Exception:
+                    _log.warning("cookie: gravar mc_token falhou", exc_info=True)
+            st.toast("Login com Google realizado!", icon="✅")
+            st.rerun()
+        else:
+            st.error("Falha no login com Google. Tente novamente.")
+    elif _g_error:
+        st.query_params.clear()
+
+    # ── Autenticação ────────────────────────────────────────────────────
+    if 'user_id' not in st.session_state:
+        if not _check_remember_token():
+            # Container único — centralização via CSS (sem skeleton de colunas)
+            col_main = st.container()
+            with col_main:
+                # Logo + slogan da marca (apenas no login)
+                st.markdown('<div class="mc-login-hero">', unsafe_allow_html=True)
+                _load_logo(max_width=560)
+                st.markdown(
+                    '<p class="mc-login-tagline">'
+                    'Para baristas, entusiastas e apaixonados por café. '
+                    'Para mim e para você também.</p>'
+                    '</div>',
+                    unsafe_allow_html=True)
+
+                tab_login, tab_cadastro = st.tabs(["  Entrar  ", "  Criar Conta  "])
+
+                with tab_login:
+                    st.markdown(
+                        '<p class="mc-step-title" style="margin:0.5rem 0 1.25rem">'
+                        'Bem-vindo de volta</p>',
+                        unsafe_allow_html=True)
+
+                    # Botão Google OAuth (só aparece se GOOGLE_CLIENT_ID configurado)
+                    _g_url = _google_auth_url()
+                    if _g_url:
+                        st.markdown(
+                            f'<a href="{_g_url}" target="_self" style="text-decoration:none">'
+                            f'<div style="display:flex;align-items:center;justify-content:center;'
+                            f'gap:10px;background:#fff;border:1.5px solid #dadce0;border-radius:8px;'
+                            f'padding:10px 16px;cursor:pointer;font-size:15px;font-weight:500;'
+                            f'color:#3c4043;margin-bottom:0.75rem;transition:box-shadow .2s">'
+                            f'<svg width="20" height="20" viewBox="0 0 48 48">'
+                            f'<path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.8 6.1C12.3 13 17.7 9.5 24 9.5z"/>'
+                            f'<path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/>'
+                            f'<path fill="#FBBC05" d="M10.4 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.9-4.6L2.6 13.3A23.9 23.9 0 0 0 0 24c0 3.8.9 7.4 2.6 10.7l7.8-6.1z"/>'
+                            f'<path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.3-7.7 2.3-6.3 0-11.6-4.2-13.6-10l-7.8 6.1C6.6 42.6 14.6 48 24 48z"/>'
+                            f'</svg>'
+                            f'Entrar com Google</div></a>',
+                            unsafe_allow_html=True)
+                        st.markdown(
+                            '<div style="display:flex;align-items:center;gap:8px;margin:0.5rem 0">'
+                            '<hr style="flex:1;border:none;border-top:0.5px solid var(--mc-border);margin:0">'
+                            '<span style="color:var(--mc-text-3);font-size:12px;letter-spacing:.08em">ou</span>'
+                            '<hr style="flex:1;border:none;border-top:0.5px solid var(--mc-border);margin:0">'
+                            '</div>',
+                            unsafe_allow_html=True)
+
+                    email = st.text_input("E-mail", key="login_email",
+                                          placeholder="seu@email.com")
+                    senha = st.text_input("Senha", type="password", key="login_senha",
+                                          placeholder="••••••••")
+                    remember_me = st.checkbox("Manter-me conectado por 30 dias",
+                                              value=True, key="login_remember")
+
+                    if st.button("Entrar", type="primary",
+                                 use_container_width=True, key="btn_login"):
+                        outcome = _login(email, senha, remember=remember_me)
+                        if outcome == LoginResult.OK:
+                            if remember_me and st.session_state.get('remember_token'):
+                                st.query_params["mc_token"] = st.session_state['remember_token']
+                            st.toast("Login realizado", icon="✅")
+                            st.rerun()
+                        elif outcome == LoginResult.RATE_LIMITED:
+                            st.error("Muitas tentativas. Aguarde 10 minutos antes de tentar novamente.")
+                        elif outcome == LoginResult.INVALID:
+                            st.error("E-mail ou senha incorretos. Verifique e tente de novo.")
+                        else:
+                            st.error("Erro ao acessar o banco de dados. Tente novamente em instantes.")
+
+                    if st.button("Esqueci minha senha", use_container_width=True, key="btn_forgot"):
+                        st.session_state["_show_forgot"] = True
+                        st.rerun()
+
+                with tab_cadastro:
+                    st.markdown(
+                        '<p class="mc-step-title" style="margin:0.5rem 0 0.25rem">'
+                        'Crie sua conta</p>'
+                        '<p class="mc-step-sub" style="margin:0 0 1.25rem">'
+                        'É grátis e leva 30 segundos. Seus cafés ficam guardados '
+                        'só para você.</p>',
+                        unsafe_allow_html=True)
+                    new_email = st.text_input("E-mail", key="cadastro_email",
+                                              placeholder="seu@email.com")
+                    new_senha = st.text_input("Senha (mínimo 6 caracteres)",
+                                              type="password", key="cadastro_senha",
+                                              placeholder="••••••••")
+                    new_senha_conf = st.text_input("Confirmar senha", type="password",
+                                                   key="cadastro_senha_conf",
+                                                   placeholder="••••••••")
+
+                    if st.button("Criar conta", type="primary",
+                                 use_container_width=True, key="btn_cadastrar"):
+                        if not new_email or not new_senha:
+                            st.error("Preencha todos os campos.")
+                        elif not mc_core.valida_email(new_email):
+                            st.error("E-mail inválido. Verifique o formato (nome@dominio.com).")
+                        elif new_senha != new_senha_conf:
+                            st.error("As senhas não conferem.")
+                        elif len(new_senha) < 6:
+                            st.error("A senha precisa ter pelo menos 6 caracteres.")
+                        else:
+                            try:
+                                hash_pwd = _hash_senha(new_senha)
+                                _run("INSERT INTO usuarios (email, senha_hash) VALUES (%s, %s)",
+                                     (new_email.strip().lower(), hash_pwd))
+                                st.toast("Conta criada com sucesso", icon="✅")
+                                st.success("Pronto! Vá na aba **Entrar** para começar.")
+                            except Exception:
+                                st.error("Esse e-mail já está cadastrado.")
+        return
+
+    # ── App Logado ──────────────────────────────────────────────────────
+    # Topbar compacta: logo · email · sair (uma linha só)
+    user_email_display = st.session_state.get('user_email', '')
+    initial = (user_email_display[:1] or "?").upper()
+
+    # Toggle Dark/Light mode — persiste na sessão
+    _light_mode = st.session_state.get('_light_mode', False)
+
+    col_brand, col_user, col_theme, col_logout = st.columns([0.60, 0.25, 0.07, 0.08], gap="small")
+    with col_brand:
+        # Marca oficial — usa o PNG real do logo (cacheado em base64)
+        logo_b64 = _logo_b64()
+        if logo_b64:
+            st.markdown(
+                f'<div style="padding-top:4px">'
+                f'<a href="?about=1" target="_self" title="Sobre o Mateu Coffee">'
+                f'<img src="data:image/webp;base64,{logo_b64}" alt="Mateu Coffee" '
+                f'class="mc-topbar-logo" style="height:94px;width:auto;display:block;'
+                f'cursor:pointer"></a>'
+                f'</div>',
+                unsafe_allow_html=True)
+        else:
+            # Fallback elegante caso o PNG não esteja disponível
+            st.markdown(
+                '<div style="padding-top:4px">'
+                + _wordmark_html("compact", with_tag=False) +
+                '</div>',
+                unsafe_allow_html=True)
+    with col_user:
+        st.markdown(
+            f'<div class="mc-topbar-user" style="justify-content:flex-end;padding-top:6px">'
+            f'<div class="mc-topbar-user-avatar">{initial}</div>'
+            f'<span>{user_email_display}</span>'
+            f'</div>',
+            unsafe_allow_html=True)
+    with col_theme:
+        _theme_label = "☀️" if _light_mode else "🌙"
+        if st.button(_theme_label, use_container_width=True, key="btn_theme",
+                     help="Alternar entre modo escuro e claro"):
+            st.session_state['_light_mode'] = not _light_mode
+            st.rerun()
+    with col_logout:
+        if st.button("Sair", use_container_width=True, key="btn_logout",
+                     help="Sair da conta"):
+            _logout()
+            st.rerun()
+
+    # Aplica classe light mode no body via JS
+    if _light_mode:
+        st.markdown(
+            '<script>document.body.classList.add("mc-light");</script>'
+            '<style>body, .stApp, .block-container { background-color: #FAF7F4 !important; }</style>',
+            unsafe_allow_html=True)
+
+    # Widget de consumo (hoje · semana · média · total)
+    _show_daily_consumption()
+
+    _auto_backup_check(st.session_state['user_id'])
+
+    st.markdown("---")
+
+    # ── Onboarding (1ª sessão) — apresenta os diferenciais escondidos ──
+    if not st.session_state.get("_onboard_dismiss"):
+        st.markdown(
+            '<div class="mc-onboard">'
+            '<h4>Bem-vindo ao Mateu Coffee</h4>'
+            '<ul>'
+            '<li>Comece em <b>Novo Café</b> — a foto da embalagem vira ficha por IA.</li>'
+            '<li>Em <b>Nova Extração</b>, o <b>dial-in automático</b> sugere clicks e dose pelo seu histórico.</li>'
+            '<li>O <b>Barista Expert</b> tira dúvidas de técnica, defeitos de extração e receitas.</li>'
+            '</ul></div>', unsafe_allow_html=True)
+        if st.button("Entendi, começar", key="_onboard_btn"):
+            st.session_state["_onboard_dismiss"] = True
+            _log.info("Onboarding dispensado (user=%s)", st.session_state.get('user_id'))
+            st.rerun()
+
+    tab1, tab2, tab3, tab4, tab_barista, tab5, tab6, tab7 = st.tabs([
+        "Novo Café", "Nova Extração", "Meus Cafés", "Histórico",
+        "Barista Expert", "Receitas", "Cápsulas", "Backup"])
+
+    user_id = st.session_state['user_id']
+
+    # ── Tab Barista Expert ─────────────────────────────────────────────
+    with tab_barista:
+        _view_barista(user_id)
+
+    # ── Tab 1 · Cadastrar café ─────────────────────────────────────────
+    with tab1:
+        _view_novo_cafe(user_id)
+
+    # ── Tab 2 · Nova extração ──────────────────────────────────────────
+    with tab2:
+        _view_nova_extracao(user_id)
+
+    # ── Tab 3 · Meus cafés ────────────────────────────────────────────
+    with tab3:
+        _view_meus_cafes(user_id)
+
+    # ── Tab 4 · Histórico ─────────────────────────────────────────────
+    with tab4:
+        _view_historico(user_id)
+
+    # ── Tab 5 · Biblioteca de Receitas ────────────────────────────────
+    with tab5:
+        _view_receitas(user_id)
+
+    # ── Tab 6 · Cápsulas ─────────────────────────────────────────────
+    with tab6:
+        _view_capsulas(user_id)
+
+
+    # ── Tab 7 · Backup ────────────────────────────────────────────────
+    with tab7:
+        _view_backup(user_id)
 
 
 if __name__ == "__main__":
