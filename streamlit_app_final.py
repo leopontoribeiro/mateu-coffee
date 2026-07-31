@@ -745,6 +745,26 @@ def _init_db() -> None:
                 cur.execute("UPDATE coffees   SET user_id=%s WHERE user_id IS NULL", (sole_user,))
                 cur.execute("UPDATE extracoes SET user_id=%s WHERE user_id IS NULL", (sole_user,))
 
+            # Registros com user_id NULL ficam invisíveis (todas as leituras filtram
+            # por user_id). Trava o buraco: só aplica NOT NULL se não houver órfão.
+            cur.execute("""
+                DO $$
+                DECLARE t TEXT;
+                BEGIN
+                    FOREACH t IN ARRAY ARRAY['coffees','extracoes','capsulas'] LOOP
+                        IF EXISTS (SELECT 1 FROM information_schema.columns
+                                   WHERE table_name=t AND column_name='user_id'
+                                     AND is_nullable='YES')
+                        THEN
+                            EXECUTE format('SELECT 1 FROM %I WHERE user_id IS NULL LIMIT 1', t);
+                            IF NOT FOUND THEN
+                                EXECUTE format('ALTER TABLE %I ALTER COLUMN user_id SET NOT NULL', t);
+                            END IF;
+                        END IF;
+                    END LOOP;
+                END $$;
+            """)
+
             cur.execute("""
                 DO $$
                 BEGIN
