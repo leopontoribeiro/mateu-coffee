@@ -82,6 +82,10 @@ def test_parse_stages():
 
 def test_logger_singleton():
     a = mc_core.get_logger("mateu")
+    antes = len(a.handlers)
     b = mc_core.get_logger("mateu")
     assert a is b
-    assert len(a.handlers) == 1   # não duplica handlers
+    # Não duplica handlers. Conta a diferença em vez do total: o pytest
+    # anexa os handlers dele ao mesmo logger, então o total nunca é 1 sob
+    # captura de log — era isso que deixava o CI vermelho de forma crônica.
+    assert len(b.handlers) == antes

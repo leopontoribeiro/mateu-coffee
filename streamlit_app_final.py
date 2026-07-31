@@ -2163,7 +2163,7 @@ def _analisar_embalagem(b64_img: str) -> dict:
             raise
     raise RuntimeError("Cota Gemini esgotada. Ative o faturamento em aistudio.google.com.")
 
-_APP_VERSION = "3.16.1"
+_APP_VERSION = "3.17.0"
 
 @st.dialog("Sobre o Mateu Coffee")
 def _about_dialog():
@@ -4375,6 +4375,13 @@ def main():
                     if st.button("Esqueci minha senha", use_container_width=True, key="btn_forgot"):
                         st.session_state["_show_forgot"] = True
                         st.rerun()
+
+                    # Versão visível sem precisar logar — é como se confere,
+                    # de fora, qual build o servidor está realmente servindo.
+                    st.markdown(
+                        f'<p style="text-align:center;font-size:11px;opacity:.45;'
+                        f'margin-top:1.5rem">v{_APP_VERSION}</p>',
+                        unsafe_allow_html=True)
 
                 with tab_cadastro:
                     st.markdown(
