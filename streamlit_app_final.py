@@ -1,3 +1,8 @@
+# Anotações preguiçosas: o arquivo usa sintaxe `list | None`, que só é
+# avaliável em runtime a partir do 3.10. Sem isto o app quebra no import em
+# qualquer ambiente com Python 3.9 (o padrão do macOS, por exemplo).
+from __future__ import annotations
+
 import streamlit as st
 import streamlit.components.v1 as components
 import plotly.graph_objects as go
@@ -391,10 +396,16 @@ def _cols(tabela: str, prefixo: str = "") -> str:
                      if r["column_name"] not in pesadas)
 
 def _tem_foto(tabela: str, prefixo: str = "") -> str:
-    """Trecho SQL com flag booleana de foto, sem trazer os bytes."""
+    """Trecho SQL com a flag e o PESO da foto, sem trazer os bytes.
+
+    pg_column_size lê o tamanho armazenado (não descomprime o TOAST), então
+    sai de graça — e é o que permite decidir se a foto pode ser exibida
+    direto ou se deve esperar um clique.
+    """
     canon, url = _COLS_PESADAS[tabela]
     p = f"{prefixo}." if prefixo else ""
-    return f"(COALESCE({p}{canon}, {p}{url}) IS NOT NULL) AS tem_foto"
+    return (f"(COALESCE({p}{canon}, {p}{url}) IS NOT NULL) AS tem_foto, "
+            f"COALESCE(pg_column_size({p}{canon}), pg_column_size({p}{url}), 0) AS foto_bytes")
 
 def _foto(tabela: str, row_id: int, user_id: int) -> Optional[str]:
     """Carrega a foto de uma linha só quando ela vai ser exibida.
@@ -408,6 +419,41 @@ def _foto(tabela: str, row_id: int, user_id: int) -> Optional[str]:
     r = _fetch(f"SELECT COALESCE({canon}, {url}) AS f FROM {tabela} "
                f"WHERE id=%s AND user_id=%s", (row_id, user_id), _v=_v())
     return r[0]["f"] if r else None
+
+
+# Acima deste peso a foto só é buscada quando o usuário clica. O Streamlit
+# executa o corpo dos expanders mesmo fechados, então sem este limite uma
+# tela com 13 fotos antigas de 4 MB baixa ~18 MB antes de desenhar qualquer
+# coisa — que era exatamente o motivo do app não abrir.
+_FOTO_INLINE_MAX = 600 * 1024
+
+def _render_foto(tabela: str, row: dict, user_id: int, w: int = 150) -> Optional[str]:
+    """Desenha a foto da linha e devolve o base64 (ou None) para reaproveito.
+
+    Foto leve aparece direto; foto pesada vira um botão, para não travar a
+    página inteira por causa de imagens que versões antigas gravaram sem
+    compressão.
+    """
+    if not row.get("tem_foto"):
+        st.markdown(_ph(), unsafe_allow_html=True)
+        return None
+
+    peso = row.get("foto_bytes") or 0
+    chave = f"_mostrar_foto_{tabela}_{row['id']}"
+    if peso <= _FOTO_INLINE_MAX or st.session_state.get(chave):
+        f = _foto(tabela, row["id"], user_id)
+        if f:
+            _img(f, w=w)
+            return f
+        st.markdown(_ph(), unsafe_allow_html=True)
+        return None
+
+    st.markdown(_ph(), unsafe_allow_html=True)
+    if st.button(f"📷 Ver foto ({peso/1048576:.1f} MB)",
+                 key=f"btn{chave}", use_container_width=True):
+        st.session_state[chave] = True
+        st.rerun()
+    return None
 
 # ─── Cookie manager para persistência real do "Manter-me conectado" ───
 # st.session_state é EFÊMERO (vive só enquanto a aba está aberta).
@@ -3065,11 +3111,7 @@ def _view_meus_cafes(user_id):
                 with st.expander(f"{c['nome']}  ·  {c['torra']}  ·  {_stars(c['classificacao'] or 0)}"):
                     ca, cb, cc = st.columns([1, 2.2, 1.4], gap="large")
                     with ca:
-                        _f = _foto("coffees", c["id"], user_id) if c.get("tem_foto") else None
-                        if _f:
-                            _img(_f, w=150)
-                        else:
-                            st.markdown(_ph(), unsafe_allow_html=True)
+                        _render_foto("coffees", c, user_id, w=150)
                     with cb:
                         _orig = "  ·  ".join(filter(None, [
                             c.get('regiao'), c.get('torra'),
@@ -3183,12 +3225,8 @@ def _view_meus_cafes(user_id):
                         # Seção de foto de embalagem
                         st.markdown("**Foto da Embalagem**")
                         ef_col1, ef_col2 = st.columns([1, 2], gap="large")
-                        _f_emb = _foto("coffees", c["id"], user_id) if c.get("tem_foto") else None
                         with ef_col1:
-                            if _f_emb:
-                                _img(_f_emb, w=130)
-                            else:
-                                st.markdown(_ph(), unsafe_allow_html=True)
+                            _f_emb = _render_foto("coffees", c, user_id, w=130)
                         with ef_col2:
                             ed_foto_emb_f = st.file_uploader(
                                 "Substituir / Adicionar foto da embalagem",
@@ -3276,12 +3314,7 @@ def _view_meus_cafes(user_id):
                             # Foto da caneca
                             with ex_col1:
                                 st.markdown("**Foto da Caneca**")
-                                _f_can = (_foto("extracoes", e["id"], user_id)
-                                          if e.get("tem_foto") else None)
-                                if _f_can:
-                                    _img(_f_can, w=140)
-                                else:
-                                    st.markdown(_ph(), unsafe_allow_html=True)
+                                _render_foto("extracoes", e, user_id, w=140)
                                 # Upload adicional de fotos
                                 # Usamos flag no session_state para evitar loop:
                                 # file_uploader mantém o arquivo após rerun,
@@ -3595,12 +3628,7 @@ def _view_historico(user_id):
                 with st.expander(header):
                     ra, rb, rc = st.columns([1, 2.2, 1.4], gap="large")
                     with ra:
-                        _f_hist = (_foto("extracoes", r["id"], user_id)
-                                   if r.get("tem_foto") else None)
-                        if _f_hist:
-                            _img(_f_hist, w=150)
-                        else:
-                            st.markdown(_ph(), unsafe_allow_html=True)
+                        _f_hist = _render_foto("extracoes", r, user_id, w=150)
                     with rb:
                         tags = _tag(r['metodo'], True) + _tag(r['torra'])
                         info = (_irow("Dose",  f"{r['gramas']}g") +
@@ -3716,6 +3744,7 @@ def _view_historico(user_id):
                                 _img(_f_hist, w=120)
                             else:
                                 st.markdown(_ph(), unsafe_allow_html=True)
+                            # _f_hist já veio do card acima; sem recarregar.
                         with _foto_col2:
                             ed_foto_f = st.file_uploader(
                                 "Substituir / Adicionar foto",
