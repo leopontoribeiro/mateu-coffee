@@ -365,6 +365,50 @@ def _fetch(query: str, params: tuple = (), _v: int = 0) -> list:
 def _v() -> int:
     return st.session_state.get("_v", 0)
 
+# ─── Colunas: nunca use SELECT * em tabelas com foto ───────────────────
+# Fotos são base64 no Postgres (MBs por linha). Um SELECT * numa listagem
+# arrasta dezenas de MB pela rede a cada rerun do Streamlit e trava o app —
+# mesmo quando a foto nem vai ser exibida. Estas duas colunas ficam de fora
+# das listagens e são carregadas sob demanda por _foto().
+_COLS_PESADAS = {
+    "extracoes": ("foto_caneca", "foto_caneca_url"),
+    "coffees":   ("foto_embalagem", "foto_embalagem_url"),
+}
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _cols(tabela: str, prefixo: str = "") -> str:
+    """Colunas da tabela menos as pesadas, lidas do catálogo.
+
+    Ler do information_schema (em vez de uma lista fixa) mantém a query
+    correta quando uma migração adiciona colunas novas.
+    """
+    rows = _fetch("""SELECT column_name FROM information_schema.columns
+                     WHERE table_schema='public' AND table_name=%s
+                     ORDER BY ordinal_position""", (tabela,), _v=0)
+    pesadas = _COLS_PESADAS.get(tabela, ())
+    p = f"{prefixo}." if prefixo else ""
+    return ", ".join(f'{p}"{r["column_name"]}"' for r in rows
+                     if r["column_name"] not in pesadas)
+
+def _tem_foto(tabela: str, prefixo: str = "") -> str:
+    """Trecho SQL com flag booleana de foto, sem trazer os bytes."""
+    canon, url = _COLS_PESADAS[tabela]
+    p = f"{prefixo}." if prefixo else ""
+    return f"(COALESCE({p}{canon}, {p}{url}) IS NOT NULL) AS tem_foto"
+
+def _foto(tabela: str, row_id: int, user_id: int) -> Optional[str]:
+    """Carrega a foto de uma linha só quando ela vai ser exibida.
+
+    COALESCE cobre as fotos gravadas na coluna _url por versões antigas —
+    sem isso elas existem no banco mas nunca aparecem na tela.
+    """
+    if not row_id:
+        return None
+    canon, url = _COLS_PESADAS[tabela]
+    r = _fetch(f"SELECT COALESCE({canon}, {url}) AS f FROM {tabela} "
+               f"WHERE id=%s AND user_id=%s", (row_id, user_id), _v=_v())
+    return r[0]["f"] if r else None
+
 # ─── Cookie manager para persistência real do "Manter-me conectado" ───
 # st.session_state é EFÊMERO (vive só enquanto a aba está aberta).
 # Cookie no browser é o único jeito de manter sessão entre visitas.
@@ -401,6 +445,7 @@ class LoginResult:
 
 _MAX_LOGIN_ATTEMPTS = 5
 _LOGIN_WINDOW_SECS  = 600   # 10 minutos
+_BACKUP_RETENCAO    = 5     # backups mantidos por usuário (os mais recentes)
 
 # ── Google OAuth ────────────────────────────────────────────────────────
 _GOOGLE_AUTH_URL   = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -583,9 +628,14 @@ def _check_remember_token() -> bool:
     if st.session_state.get('_token_checked'):
         return False
 
-    # Prioridade: query_param (confiável entre reruns) > cookie HTTP > session_state
-    token = (st.query_params.get("mc_token") or
-             _read_cookie() or
+    # Cookie primeiro. mc_token na URL ainda é aceito para não deslogar quem
+    # tem um link antigo, mas é consumido e apagado da barra de endereços na
+    # hora — token de sessão não deve viajar em query string.
+    _url_token = st.query_params.get("mc_token")
+    if _url_token:
+        del st.query_params["mc_token"]
+    token = (_read_cookie() or
+             _url_token or
              st.session_state.get('remember_token'))
 
     if not token:
@@ -833,6 +883,20 @@ def _init_db() -> None:
                 END $$;
             """)
             cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS google_id TEXT;")
+            # Pedidos de redefinição de senha: guardamos o HASH do token, nunca
+            # o token em si, e cada um vale uma vez só dentro da validade.
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS password_resets (
+                    id         SERIAL PRIMARY KEY,
+                    user_id    INTEGER NOT NULL REFERENCES usuarios(id),
+                    token_hash TEXT NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    used_at    TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_password_resets_user
+                    ON password_resets(user_id, expires_at DESC);
+            """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS login_attempts (
                     id           SERIAL PRIMARY KEY,
@@ -908,6 +972,14 @@ def _backup_criar(tipo: str = "manual", notas: str = "", user_id: Optional[int] 
              (uid, tipo, notas,
               _rows_to_json(coffees), _rows_to_json(extracoes),
               _rows_to_json(capsulas), git_hash))
+
+        # Retenção: cada backup carrega uma cópia inteira do acervo, fotos
+        # inclusas. Sem teto, a tabela vira o maior objeto do banco (foi o que
+        # aconteceu: 122 MB de backups para um acervo de poucos MB).
+        _run("""DELETE FROM backups WHERE user_id=%s AND id NOT IN (
+                    SELECT id FROM backups WHERE user_id=%s
+                    ORDER BY criado_em DESC LIMIT %s)""",
+             (uid, uid, _BACKUP_RETENCAO))
         return True
     except Exception as e:
         st.error(f"Erro ao criar backup: {e}")
@@ -2066,27 +2138,44 @@ def _about_dialog():
 
 @st.dialog("Recuperar acesso")
 def _forgot_password_dialog():
+    """Registra um pedido de recuperação — NÃO redefine a senha aqui.
+
+    A versão anterior trocava a senha da conta e mostrava a nova na tela para
+    quem quer que digitasse o e-mail: qualquer pessoa que soubesse o endereço
+    de um usuário tomava a conta dele. O fluxo correto exige provar posse do
+    e-mail, então o pedido fica registrado para o envio do link (o disparo
+    depende do provedor de e-mail ainda não configurado) e a resposta é sempre
+    a mesma, exista a conta ou não, para não revelar quem tem cadastro.
+    """
     st.markdown(
         '<p style="font-size:14px;color:var(--mc-text-2);margin-bottom:1.25rem;line-height:1.6">'
-        'Informe seu e-mail e geraremos uma senha temporária para você entrar.</p>',
+        'Informe seu e-mail. Se houver uma conta cadastrada, você receberá um '
+        'link para redefinir a senha.</p>',
         unsafe_allow_html=True)
     fp_email = st.text_input("E-mail cadastrado", placeholder="seu@email.com", key="fp_email_input")
-    if st.button("Gerar senha temporária", type="primary", use_container_width=True, key="fp_gerar_btn"):
-        if not fp_email.strip():
-            st.error("Informe seu e-mail.")
+    if st.button("Enviar link de recuperação", type="primary",
+                 use_container_width=True, key="fp_gerar_btn"):
+        email = fp_email.strip().lower()
+        if not mc_core.valida_email(email):
+            st.error("Informe um e-mail válido.")
         else:
-            result = _fetch("SELECT id FROM usuarios WHERE LOWER(email)=LOWER(%s)",
-                            (fp_email.strip(),), _v=0)
-            if not result:
-                st.error("E-mail não encontrado.")
-            else:
-                import string as _str
-                tmp_pwd = ''.join(secrets.choice(_str.ascii_letters + _str.digits) for _ in range(10))
-                _run("UPDATE usuarios SET senha_hash=%s WHERE LOWER(email)=LOWER(%s)",
-                     (_hash_senha(tmp_pwd), fp_email.strip().lower()))
-                st.success("Senha temporária gerada com sucesso!")
-                st.code(tmp_pwd, language=None)
-                st.caption("Copie e use para entrar. Troque a senha depois nas configurações.")
+            try:
+                achou = _fetch("SELECT id FROM usuarios WHERE LOWER(email)=LOWER(%s)",
+                               (email,), _v=0)
+                if achou:
+                    # Token de uso único, 30 min. Guardamos só o hash: um vazamento
+                    # da tabela não permite redefinir senha de ninguém.
+                    token = secrets.token_urlsafe(32)
+                    _run("""INSERT INTO password_resets (user_id, token_hash, expires_at)
+                            VALUES (%s, %s, NOW() + INTERVAL '30 minutes')""",
+                         (achou[0]["id"], _hash_senha(token)))
+                    _log.info("password_reset: pedido registrado para user_id=%s",
+                              achou[0]["id"])
+            except Exception:
+                _log.warning("password_reset: falha ao registrar pedido", exc_info=True)
+            # Resposta idêntica nos dois casos — não confirma se o e-mail existe.
+            st.success("Se houver uma conta com esse e-mail, o link de recuperação "
+                       "foi enviado. Verifique sua caixa de entrada e o spam.")
 
 # ── Main ───────────────────────────────────────────────────────────────
 # ── Views das abas (extraídas de main para modularização) ──────────────
@@ -2924,16 +3013,19 @@ def _view_nova_extracao(user_id):
 def _view_meus_cafes(user_id):
         st.markdown('<p class="mc-section-header">Biblioteca de Cafés</p>', unsafe_allow_html=True)
 
-        cafes = _fetch("""
-            SELECT c.*, COUNT(e.id) AS total_ext,
+        cafes = _fetch(f"""
+            SELECT {_cols('coffees', 'c')}, {_tem_foto('coffees', 'c')},
+                   COUNT(e.id) AS total_ext,
                    AVG(e.ey) AS avg_ey, AVG(e.classificacao) AS avg_nota
-            FROM coffees c LEFT JOIN extracoes e ON e.coffee_id=c.id
+            FROM coffees c LEFT JOIN extracoes e
+                 ON e.coffee_id=c.id AND e.user_id=c.user_id
             WHERE c.user_id=%s
             GROUP BY c.id ORDER BY c.data_cadastro DESC""", (user_id,), _v=_v())
 
         # P6: busca TODAS as extrações do usuário num único query — evita N+1
-        all_extracts = _fetch("""
-            SELECT * FROM extracoes
+        all_extracts = _fetch(f"""
+            SELECT {_cols('extracoes')}, {_tem_foto('extracoes')}
+            FROM extracoes
             WHERE user_id=%s
             ORDER BY data DESC, created_at DESC
         """, (user_id,), _v=_v())
@@ -2973,8 +3065,9 @@ def _view_meus_cafes(user_id):
                 with st.expander(f"{c['nome']}  ·  {c['torra']}  ·  {_stars(c['classificacao'] or 0)}"):
                     ca, cb, cc = st.columns([1, 2.2, 1.4], gap="large")
                     with ca:
-                        if c["foto_embalagem"]:
-                            _img(c["foto_embalagem"], w=150)
+                        _f = _foto("coffees", c["id"], user_id) if c.get("tem_foto") else None
+                        if _f:
+                            _img(_f, w=150)
                         else:
                             st.markdown(_ph(), unsafe_allow_html=True)
                     with cb:
@@ -3090,9 +3183,10 @@ def _view_meus_cafes(user_id):
                         # Seção de foto de embalagem
                         st.markdown("**Foto da Embalagem**")
                         ef_col1, ef_col2 = st.columns([1, 2], gap="large")
+                        _f_emb = _foto("coffees", c["id"], user_id) if c.get("tem_foto") else None
                         with ef_col1:
-                            if c.get("foto_embalagem"):
-                                _img(c["foto_embalagem"], w=130)
+                            if _f_emb:
+                                _img(_f_emb, w=130)
                             else:
                                 st.markdown(_ph(), unsafe_allow_html=True)
                         with ef_col2:
@@ -3101,7 +3195,7 @@ def _view_meus_cafes(user_id):
                                 type=["jpg","jpeg","png"],
                                 key=f"ec_foto_{c['id']}")
                         # Mantém a foto atual se não fizer upload de nova
-                        ed_foto_emb_b64 = _b64(ed_foto_emb_f) if ed_foto_emb_f else c.get("foto_embalagem")
+                        ed_foto_emb_b64 = _b64(ed_foto_emb_f) if ed_foto_emb_f else _f_emb
 
                         # Seção de compra
                         st.markdown("**Compra**")
@@ -3132,7 +3226,7 @@ def _view_meus_cafes(user_id):
                                             data_torra=%s, classificacao=%s, notas=%s,
                                             local_compra=%s, valor_compra=%s,
                                             data_compra=%s, intensidade=%s,
-                                            foto_embalagem=%s
+                                            foto_embalagem=%s, foto_embalagem_url=NULL
                                             WHERE id=%s AND user_id=%s""",
                                          (ed_nome.strip(), ed_classif, ed_regiao,
                                           ed_tipo, ed_torra, ed_tamanho,
@@ -3182,8 +3276,10 @@ def _view_meus_cafes(user_id):
                             # Foto da caneca
                             with ex_col1:
                                 st.markdown("**Foto da Caneca**")
-                                if e["foto_caneca"]:
-                                    _img(e["foto_caneca"], w=140)
+                                _f_can = (_foto("extracoes", e["id"], user_id)
+                                          if e.get("tem_foto") else None)
+                                if _f_can:
+                                    _img(_f_can, w=140)
                                 else:
                                     st.markdown(_ph(), unsafe_allow_html=True)
                                 # Upload adicional de fotos
@@ -3201,7 +3297,8 @@ def _view_meus_cafes(user_id):
                                         _img(_b64(nova_foto), w=100)
                                         if st.button("📸 Confirmar foto", key=f"save_foto_{e['id']}"):
                                             _run(
-                                                "UPDATE extracoes SET foto_caneca=%s WHERE id=%s AND user_id=%s",
+                                                "UPDATE extracoes SET foto_caneca=%s, foto_caneca_url=NULL "
+                                                "WHERE id=%s AND user_id=%s",
                                                 (_b64(nova_foto), e["id"], user_id)
                                             )
                                             st.session_state[_fkey] = True
@@ -3308,8 +3405,9 @@ def _view_meus_cafes(user_id):
 def _view_historico(user_id):
         st.markdown('<p class="mc-section-header">Histórico de Extrações</p>', unsafe_allow_html=True)
 
-        rows = _fetch("""
-            SELECT e.*, c.nome AS cafe_nome, c.torra FROM extracoes e
+        rows = _fetch(f"""
+            SELECT {_cols('extracoes', 'e')}, {_tem_foto('extracoes', 'e')},
+                   c.nome AS cafe_nome, c.torra FROM extracoes e
             JOIN coffees c ON c.id=e.coffee_id
             WHERE e.user_id=%s
             ORDER BY e.data DESC, e.created_at DESC LIMIT 200""", (user_id,), _v=_v())
@@ -3497,8 +3595,10 @@ def _view_historico(user_id):
                 with st.expander(header):
                     ra, rb, rc = st.columns([1, 2.2, 1.4], gap="large")
                     with ra:
-                        if r["foto_caneca"]:
-                            _img(r["foto_caneca"], w=150)
+                        _f_hist = (_foto("extracoes", r["id"], user_id)
+                                   if r.get("tem_foto") else None)
+                        if _f_hist:
+                            _img(_f_hist, w=150)
                         else:
                             st.markdown(_ph(), unsafe_allow_html=True)
                     with rb:
@@ -3612,8 +3712,8 @@ def _view_historico(user_id):
                         st.markdown("**Foto da Caneca**")
                         _foto_col1, _foto_col2 = st.columns([1, 2], gap="large")
                         with _foto_col1:
-                            if r.get("foto_caneca"):
-                                _img(r["foto_caneca"], w=120)
+                            if _f_hist:
+                                _img(_f_hist, w=120)
                             else:
                                 st.markdown(_ph(), unsafe_allow_html=True)
                         with _foto_col2:
@@ -3621,7 +3721,7 @@ def _view_historico(user_id):
                                 "Substituir / Adicionar foto",
                                 type=["jpg", "jpeg", "png"],
                                 key=f"edit_foto_{r['id']}")
-                        ed_foto_b64 = _b64(ed_foto_f) if ed_foto_f else r.get("foto_caneca")
+                        ed_foto_b64 = _b64(ed_foto_f) if ed_foto_f else _f_hist
 
                         # 2) Classificação detalhada em estrelas (editável)
                         st.markdown('<p class="section-label">Classificação Detalhada</p>',
@@ -3652,7 +3752,7 @@ def _view_historico(user_id):
                             _run("""UPDATE extracoes SET
                                     gramas=%s, agua_alvo=%s, tempo_extracao=%s,
                                     moedor=%s, clicks_moedor=%s, tds=%s, notas=%s,
-                                    foto_caneca=%s,
+                                    foto_caneca=%s, foto_caneca_url=NULL,
                                     crema_stars=%s, corpo_stars=%s, equilibrio_stars=%s,
                                     acidez_stars=%s, amargor_stars=%s, presenca_boca_stars=%s,
                                     docura_stars=%s, nota_final_stars=%s, classificacao=%s
@@ -4159,8 +4259,10 @@ def main():
                     _run("UPDATE usuarios SET remember_token=%s, remember_token_expires=%s WHERE id=%s",
                          (_tok, _exp, uid))
                     st.session_state['remember_token'] = _tok
+                    # O cookie é o único portador do token. Colocá-lo em
+                    # query_param deixava um token de 30 dias na barra de
+                    # endereços — indo para histórico, logs de proxy e Referer.
                     st.session_state['_pending_cookie'] = (_tok, _exp)
-                    st.query_params["mc_token"] = _tok
                 except Exception:
                     _log.warning("cookie: gravar mc_token falhou", exc_info=True)
             st.toast("Login com Google realizado!", icon="✅")
