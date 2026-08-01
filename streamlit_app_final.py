@@ -500,7 +500,28 @@ _GOOGLE_USERINFO   = "https://www.googleapis.com/oauth2/v2/userinfo"
 _GOOGLE_SCOPES     = "openid email profile"
 
 def _google_redirect_uri() -> str:
-    return os.environ.get("GOOGLE_REDIRECT_URI", "https://mateucoffee.souleandroribeiro.com.br")
+    """URI de retorno do OAuth — sempre o host pelo qual o usuário chegou.
+
+    Fixar um host manda de volta para o endereço errado quando o app é servido
+    por mais de um domínio (custom + onrender.com): a pessoa entra por um e
+    termina no outro, com o cookie de sessão nascendo no domínio que ela não
+    está usando. O host é lido do request; a variável de ambiente continua
+    tendo precedência para casos em que o Google exige um URI fixo.
+
+    Cada host usado precisa estar cadastrado como "Authorized redirect URI"
+    no console do Google Cloud, senão o Google recusa com redirect_uri_mismatch.
+    """
+    fixo = os.environ.get("GOOGLE_REDIRECT_URI", "")
+    if fixo:
+        return fixo
+    try:
+        host = st.context.headers.get("Host") or st.context.headers.get("host")
+        if host:
+            proto = "http" if host.startswith("localhost") else "https"
+            return f"{proto}://{host}"
+    except Exception:
+        _log.warning("oauth: host do request indisponível", exc_info=True)
+    return "https://mateucoffee.souleandroribeiro.com.br"
 
 def _new_oauth_state() -> str:
     """Gera um nonce anti-CSRF persistido em DB (session_state não sobrevive ao
@@ -4182,6 +4203,12 @@ def _view_backup(user_id):
                 titulo = f"{tipo_icon} **{data_fmt}** — {bk['tipo'].upper()}"
                 if bk.get("notas"):
                     titulo += f" — _{bk['notas']}_"
+                # Backup sem nenhum registro restaura o vazio, ou seja, apaga
+                # tudo. Como a lista vem por data, um backup vazio recente fica
+                # no topo — o lugar de onde a pessoa costuma restaurar.
+                _vazio = not (bk['n_cafes'] or bk['n_extracoes'] or bk['n_capsulas'])
+                if _vazio:
+                    titulo = f"⚠️ **{data_fmt}** — {bk['tipo'].upper()} — _VAZIO_"
                 stats = (f"☕ {bk['n_cafes']} cafés · "
                          f"⚗️ {bk['n_extracoes']} extrações · "
                          f"🫘 {bk['n_capsulas']} cápsulas")
@@ -4211,6 +4238,11 @@ def _view_backup(user_id):
                                          use_container_width=True):
                                 st.session_state.pop(f"confirm_restore_{bk['id']}", None)
                                 st.rerun()
+                    elif _vazio:
+                        st.error(
+                            "Este backup não tem nenhum registro. Restaurá-lo "
+                            "apagaria todo o seu acervo, então a restauração "
+                            "está bloqueada.", icon="🚫")
                     else:
                         if st.button("🔄 Restaurar este backup", key=f"bk_restore_{bk['id']}",
                                      use_container_width=True):
@@ -4361,8 +4393,10 @@ def main():
                                  use_container_width=True, key="btn_login"):
                         outcome = _login(email, senha, remember=remember_me)
                         if outcome == LoginResult.OK:
-                            if remember_me and st.session_state.get('remember_token'):
-                                st.query_params["mc_token"] = st.session_state['remember_token']
+                            # O token de 30 dias vai só no cookie, gravado por
+                            # _login() via _pending_cookie. Publicá-lo aqui na
+                            # query string o mandava para o histórico do
+                            # navegador, logs de proxy e cabeçalho Referer.
                             st.toast("Login realizado", icon="✅")
                             st.rerun()
                         elif outcome == LoginResult.RATE_LIMITED:
