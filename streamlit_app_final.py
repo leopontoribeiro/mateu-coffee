@@ -511,17 +511,32 @@ def _google_redirect_uri() -> str:
     Cada host usado precisa estar cadastrado como "Authorized redirect URI"
     no console do Google Cloud, senão o Google recusa com redirect_uri_mismatch.
     """
-    fixo = os.environ.get("GOOGLE_REDIRECT_URI", "")
-    if fixo:
-        return fixo
+    # GOOGLE_REDIRECT_URI aceita vários URIs separados por vírgula. Entre eles,
+    # vence o que bate com o host pelo qual o usuário chegou; sem correspondência,
+    # o primeiro da lista. Com um valor único a lista degrada para o comportamento
+    # antigo — que é o que mandava quem entrava pelo domínio custom de volta para
+    # o onrender.com, com o cookie nascendo no domínio errado.
+    permitidos = [u.strip().rstrip("/") for u in
+                  os.environ.get("GOOGLE_REDIRECT_URI", "").split(",") if u.strip()]
+    atual = ""
     try:
         host = st.context.headers.get("Host") or st.context.headers.get("host")
         if host:
             proto = "http" if host.startswith("localhost") else "https"
-            return f"{proto}://{host}"
+            atual = f"{proto}://{host}"
     except Exception:
         _log.warning("oauth: host do request indisponível", exc_info=True)
-    return "https://mateucoffee.souleandroribeiro.com.br"
+
+    if permitidos:
+        for uri in permitidos:
+            if atual and uri == atual:
+                return uri
+        if atual and atual not in permitidos:
+            _log.warning("oauth: host %s não está em GOOGLE_REDIRECT_URI; "
+                         "usando %s (o login sairá do domínio de origem)",
+                         atual, permitidos[0])
+        return permitidos[0]
+    return atual or "https://mateucoffee.souleandroribeiro.com.br"
 
 def _new_oauth_state() -> str:
     """Gera um nonce anti-CSRF persistido em DB (session_state não sobrevive ao
