@@ -133,6 +133,41 @@ def test_recuperacao_nao_revela_se_o_email_existe(fonte, arvore):
         "resposta diferente para e-mail inexistente permite enumerar contas")
 
 
+def test_pedidos_antigos_sao_invalidados_antes_de_criar_o_novo(fonte, arvore):
+    """A invalidação tem de vir antes do INSERT.
+
+    Fazendo depois e filtrando por `token_hash <> hash(token)`, o bcrypt gera
+    um salt novo a cada chamada, o hash nunca casa e o UPDATE queima o token
+    recém-criado — o link chegava ao usuário já inválido.
+    """
+    dlg = _funcao(arvore, "_forgot_password_dialog")
+    trecho = ast.get_source_segment(fonte, dlg) or ""
+    pos_update = trecho.find("UPDATE password_resets SET used_at")
+    pos_insert = trecho.find("INSERT INTO password_resets")
+    assert pos_update != -1 and pos_insert != -1, "fluxo de reset não encontrado"
+    assert pos_update < pos_insert, (
+        "a invalidação dos pedidos antigos precisa vir antes do INSERT")
+    assert "token_hash <>" not in trecho, (
+        "comparar token_hash com um hash bcrypt novo nunca casa (salt aleatório)")
+
+
+def test_reset_grava_apenas_hash_do_token(fonte, arvore):
+    dlg = _funcao(arvore, "_forgot_password_dialog")
+    trecho = ast.get_source_segment(fonte, dlg) or ""
+    assert "_hash_senha(token)" in trecho, "o token precisa ser gravado hasheado"
+    m = re.search(r"VALUES \(%s, %s, NOW\(\)", trecho)
+    assert m, "INSERT do reset mudou de forma — revalidar que não grava o token cru"
+
+
+def test_troca_de_senha_invalida_a_sessao_ativa(fonte, arvore):
+    """Trocar a senha tem de derrubar o remember_token: senão quem estava
+    logado com o token antigo continua dentro."""
+    dlg = _funcao(arvore, "_reset_password_dialog")
+    trecho = ast.get_source_segment(fonte, dlg) or ""
+    assert "remember_token=NULL" in trecho, (
+        "a troca de senha precisa limpar o remember_token")
+
+
 # ── Regressão: token de sessão não pode viajar na URL ──────────────────
 def test_token_de_sessao_nao_e_escrito_em_query_param(fonte):
     assert 'st.query_params["mc_token"] = ' not in fonte, (

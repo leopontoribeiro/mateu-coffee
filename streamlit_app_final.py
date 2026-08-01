@@ -35,6 +35,7 @@ import mc_core  # lógica pura (auth, helpers) + observabilidade
 _log = mc_core.get_logger()  # logs → stdout (capturado pelo Render)
 import mc_data  # dados estáticos extraídos do monólito
 import mc_storage  # armazenamento de imagens (R2 com fallback base64)
+import mc_mail     # e-mail transacional (inerte sem RESEND_API_KEY)
 from mc_data import (METODOS, _LOCAIS_COMPRA, _MOEDORES,
                      CLASSIFICACOES_CAFE, RECIPES, METHOD_PROFILES)
 
@@ -492,6 +493,7 @@ class LoginResult:
 _MAX_LOGIN_ATTEMPTS = 5
 _LOGIN_WINDOW_SECS  = 600   # 10 minutos
 _BACKUP_RETENCAO    = 5     # backups mantidos por usuário (os mais recentes)
+_IA_LIMITE_DIARIO   = int(os.environ.get("IA_LIMITE_DIARIO", "30"))
 
 # ── Google OAuth ────────────────────────────────────────────────────────
 _GOOGLE_AUTH_URL   = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -1167,6 +1169,24 @@ def _chat_carregar(user_id: int) -> list:
         "SELECT role, content FROM barista_chats WHERE user_id=%s ORDER BY criado_em ASC LIMIT 60",
         (user_id,), _v=0)
     return [{"role": r["role"], "content": r["content"]} for r in rows]
+
+def _ia_dentro_da_cota(user_id: int) -> bool:
+    """Teto diário de perguntas à IA, por usuário.
+
+    A chave do Gemini é única e paga pelo dono do app: sem teto, um único
+    usuário curioso consome a cota de todos. Conta as mensagens 'user' do dia
+    no próprio histórico do chat — não precisa de tabela nova.
+    """
+    try:
+        r = _fetch("""SELECT COUNT(*) AS n FROM barista_chats
+                      WHERE user_id=%s AND role='user'
+                        AND criado_em >= CURRENT_DATE""", (user_id,), _v=_v())
+        return int(r[0]["n"]) < _IA_LIMITE_DIARIO if r else True
+    except Exception:
+        # Falha na contagem não pode bloquear o usuário.
+        _log.warning("cota IA: contagem falhou", exc_info=True)
+        return True
+
 
 def _chat_salvar(user_id: int, role: str, content: str) -> None:
     """Salva uma mensagem e mantém no máximo 60 por usuário (FIFO)."""
@@ -2218,6 +2238,60 @@ def _about_dialog():
         f'Desenvolvido por <b>Leandro Ribeiro</b></p></div>',
         unsafe_allow_html=True)
 
+def _consumir_reset(token: str) -> Optional[int]:
+    """Valida o token do link e devolve o user_id, ou None.
+
+    Compara por bcrypt contra os pedidos vivos: o banco guarda só o hash, então
+    não dá para buscar pelo token direto.
+    """
+    if not token:
+        return None
+    try:
+        vivos = _fetch("""SELECT id, user_id, token_hash FROM password_resets
+                          WHERE used_at IS NULL AND expires_at > NOW()
+                          ORDER BY created_at DESC LIMIT 20""", (), _v=_v())
+        for r in vivos:
+            if _verify_senha(token, r["token_hash"]):
+                return r["user_id"]
+    except Exception:
+        _log.warning("password_reset: falha ao validar token", exc_info=True)
+    return None
+
+
+@st.dialog("Criar nova senha")
+def _reset_password_dialog(token: str):
+    uid = _consumir_reset(token)
+    if not uid:
+        st.error("Este link é inválido ou já expirou. Peça um novo em "
+                 "'Esqueci minha senha'.")
+        st.session_state.pop("_reset_token", None)
+        return
+    nova = st.text_input("Nova senha (mínimo 6 caracteres)", type="password",
+                         key="rs_nova")
+    conf = st.text_input("Confirmar nova senha", type="password", key="rs_conf")
+    if st.button("Salvar nova senha", type="primary", use_container_width=True,
+                 key="rs_salvar"):
+        if len(nova) < 6:
+            st.error("A senha precisa ter pelo menos 6 caracteres.")
+        elif nova != conf:
+            st.error("As senhas não conferem.")
+        else:
+            try:
+                _run("UPDATE usuarios SET senha_hash=%s, remember_token=NULL, "
+                     "remember_token_expires=NULL WHERE id=%s",
+                     (_hash_senha(nova), uid))
+                # Queima todos os pedidos do usuário: o link não serve de novo.
+                _run("UPDATE password_resets SET used_at=NOW() "
+                     "WHERE user_id=%s AND used_at IS NULL", (uid,))
+                _log.info("password_reset: senha trocada para user_id=%s", uid)
+                st.session_state.pop("_reset_token", None)
+                st.success("Senha alterada. Faça login com a nova senha.")
+            except Exception:
+                _log.warning("password_reset: falha ao gravar nova senha",
+                             exc_info=True)
+                st.error("Não consegui salvar agora. Tente novamente.")
+
+
 @st.dialog("Recuperar acesso")
 def _forgot_password_dialog():
     """Registra um pedido de recuperação — NÃO redefine a senha aqui.
@@ -2248,9 +2322,23 @@ def _forgot_password_dialog():
                     # Token de uso único, 30 min. Guardamos só o hash: um vazamento
                     # da tabela não permite redefinir senha de ninguém.
                     token = secrets.token_urlsafe(32)
+                    # Invalida os pedidos anteriores ANTES de criar o novo: só o
+                    # último link vale. Filtrar por hash não funcionaria — bcrypt
+                    # usa salt aleatório, então dois hashes do mesmo token são
+                    # diferentes e o UPDATE queimaria o token recém-criado.
+                    _run("""UPDATE password_resets SET used_at=NOW()
+                            WHERE user_id=%s AND used_at IS NULL""",
+                         (achou[0]["id"],))
                     _run("""INSERT INTO password_resets (user_id, token_hash, expires_at)
                             VALUES (%s, %s, NOW() + INTERVAL '30 minutes')""",
                          (achou[0]["id"], _hash_senha(token)))
+                    link = f"{_google_redirect_uri()}/?reset={token}"
+                    _html, _txt = mc_mail.html_reset_senha(link)
+                    if not mc_mail.send(email, "Redefinir sua senha — Mateu Coffee",
+                                        _html, _txt):
+                        _log.warning("password_reset: token gerado mas e-mail não "
+                                     "saiu (provedor desativado) user_id=%s",
+                                     achou[0]["id"])
                     _log.info("password_reset: pedido registrado para user_id=%s",
                               achou[0]["id"])
             except Exception:
@@ -2401,7 +2489,11 @@ def _view_barista(user_id):
             send_btn = st.button("Enviar", use_container_width=True, key="barista_send")
 
         # Processar resposta
-        if send_btn and pergunta.strip():
+        if send_btn and pergunta.strip() and not _ia_dentro_da_cota(user_id):
+            st.warning(
+                f"Você atingiu o limite de {_IA_LIMITE_DIARIO} perguntas ao "
+                "Barista Expert hoje. O limite reinicia amanhã.", icon="⏳")
+        elif send_btn and pergunta.strip():
             _chat_salvar(user_id, "user", pergunta)
             with st.spinner("Barista Expert pensando..."):
                 resposta = ask_barista_expert(pergunta, history=_chat_msgs)
@@ -4181,6 +4273,74 @@ def _view_capsulas(user_id):
                                 st.session_state.pop(f"confirm_del_cap_{cap['id']}", None)
                                 st.rerun()
 
+def _exportar_dados(user_id: int) -> dict:
+    """Gera os CSVs de portabilidade (LGPD art. 18, V).
+
+    As fotos ficam de fora: são base64 de megabytes por linha e inviabilizariam
+    o download. O restante sai como está no banco.
+    """
+    import csv
+    import io as _io
+
+    pacote = {}
+    for tabela in ("coffees", "extracoes", "capsulas"):
+        try:
+            if tabela in _COLS_PESADAS:
+                cols = _cols(tabela)
+            else:
+                cols = "*"
+            linhas = _fetch(f"SELECT {cols} FROM {tabela} WHERE user_id=%s "
+                            f"ORDER BY id", (user_id,), _v=_v())
+            buf = _io.StringIO()
+            if linhas:
+                w = csv.DictWriter(buf, fieldnames=list(linhas[0].keys()))
+                w.writeheader()
+                for r in linhas:
+                    w.writerow(dict(r))
+            else:
+                buf.write("(sem registros)\n")
+            pacote[f"mateu-coffee-{tabela}.csv"] = buf.getvalue()
+        except Exception:
+            _log.warning("export: falha em %s", tabela, exc_info=True)
+    return pacote
+
+
+def _excluir_conta(user_id: int) -> bool:
+    """Apaga a conta e tudo que pende dela (LGPD art. 18, VI).
+
+    Ordem importa: as tabelas filhas saem antes de usuarios, senão a foreign
+    key barra a remoção.
+    """
+    try:
+        with _db() as conn:
+            cur = conn.cursor()
+            try:
+                for tabela in ("extracoes", "coffees", "capsulas", "backups",
+                               "barista_chats", "grinder_profiles",
+                               "password_resets"):
+                    try:
+                        cur.execute(f"DELETE FROM {tabela} WHERE user_id=%s",
+                                    (user_id,))
+                    except Exception:
+                        # Tabela pode não existir neste banco — segue.
+                        conn.rollback()
+                        _log.warning("exclusao: %s ignorada", tabela, exc_info=True)
+                cur.execute("DELETE FROM usuarios WHERE id=%s", (user_id,))
+                conn.commit()
+                _log.info("exclusao: conta %s removida a pedido do titular", user_id)
+                return True
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                cur.close()
+    except Exception:
+        _log.warning("exclusao: falhou para user_id=%s", user_id, exc_info=True)
+        return False
+    finally:
+        _bump()
+
+
 def _view_backup(user_id):
         st.markdown('<p class="mc-section-header">Sistema de Backup</p>', unsafe_allow_html=True)
 
@@ -4264,6 +4424,57 @@ def _view_backup(user_id):
                             st.session_state[f"confirm_restore_{bk['id']}"] = True
                             st.rerun()
 
+        # ── Seus dados (LGPD: portabilidade e eliminação) ────────────
+        st.markdown("---")
+        st.markdown('<p class="mc-section-header">Seus dados</p>',
+                    unsafe_allow_html=True)
+
+        _c_exp, _c_del = st.columns(2, gap="large")
+        with _c_exp:
+            st.markdown("**Exportar**")
+            st.caption("Baixe tudo o que o app guarda sobre você, em CSV.")
+            if st.button("📤 Gerar exportação", key="lgpd_export",
+                         use_container_width=True):
+                st.session_state["_export_pronto"] = _exportar_dados(user_id)
+            _pack = st.session_state.get("_export_pronto")
+            if _pack:
+                for nome, conteudo in _pack.items():
+                    st.download_button(f"⬇️ {nome}", conteudo, file_name=nome,
+                                       mime="text/csv", key=f"dl_{nome}",
+                                       use_container_width=True)
+
+        with _c_del:
+            st.markdown("**Excluir conta**")
+            st.caption("Apaga a conta e todos os dados, sem volta.")
+            if st.session_state.get("_confirm_delete"):
+                st.warning("Isso apaga cafés, extrações, cápsulas, backups e a "
+                           "própria conta. **Não há como desfazer.** "
+                           "Digite EXCLUIR para confirmar.")
+                _txt = st.text_input("Confirmação", key="lgpd_del_txt",
+                                     placeholder="EXCLUIR")
+                _d1, _d2 = st.columns(2)
+                with _d1:
+                    if st.button("Confirmar exclusão", type="primary",
+                                 key="lgpd_del_ok", use_container_width=True,
+                                 disabled=_txt.strip().upper() != "EXCLUIR"):
+                        if _excluir_conta(user_id):
+                            _logout()
+                            st.session_state.clear()
+                            st.success("Conta excluída.")
+                            st.rerun()
+                        else:
+                            st.error("Não consegui excluir agora. Tente de novo.")
+                with _d2:
+                    if st.button("← Cancelar", key="lgpd_del_no",
+                                 use_container_width=True):
+                        st.session_state.pop("_confirm_delete", None)
+                        st.rerun()
+            else:
+                if st.button("🗑️ Excluir minha conta", key="lgpd_del",
+                             use_container_width=True):
+                    st.session_state["_confirm_delete"] = True
+                    st.rerun()
+
 
 def main():
     _init_db()
@@ -4304,6 +4515,18 @@ def main():
         else:
             _js = ""
         components.html(f"<script>{_js}</script>", height=0)
+
+    # Link de redefinição vindo do e-mail (?reset=...). Consome o parâmetro na
+    # hora para o token não ficar na barra de endereços nem no histórico.
+    _rs = st.query_params.get("reset")
+    if _rs:
+        del st.query_params["reset"]
+        st.session_state["_reset_token"] = _rs
+    # O token fica no session_state até a troca terminar: clicar em "Salvar"
+    # dispara um novo run, e um pop aqui apagaria o token antes disso — o
+    # diálogo sumiria sem gravar nada.
+    if st.session_state.get("_reset_token"):
+        _reset_password_dialog(st.session_state["_reset_token"])
 
     # Dialog "Recuperar senha"
     if st.session_state.get("_show_forgot"):
