@@ -4419,7 +4419,13 @@ def main():
                                 st.success("Pronto! Vá na aba **Entrar** para começar.")
                             except Exception:
                                 st.error("Esse e-mail já está cadastrado.")
-        return
+            # Só encerra o run quando a tela de login foi de fato desenhada.
+            # Este return estava um nível acima: quando o cookie restaurava a
+            # sessão, _check_remember_token() devolvia True, o bloco de login
+            # era pulado e o return encerrava main() mesmo assim — o app saía
+            # sem renderizar nada e a tela ficava em branco para todo mundo
+            # que voltava pelo "manter-me conectado".
+            return
 
     # ── App Logado ──────────────────────────────────────────────────────
     # Topbar compacta: logo · email · sair (uma linha só)
