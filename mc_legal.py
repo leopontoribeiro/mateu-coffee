@@ -3,16 +3,20 @@
 Textos em markdown, sem dependência de Streamlit para poderem ser lidos e
 revisados fora do app.
 
-ATENÇÃO — antes de abrir o cadastro ao público, substitua os marcadores
-`[PREENCHER: ...]`. Eles são dados jurídicos do controlador que só o titular
-do negócio tem; deixá-los como estão torna os documentos inválidos na prática.
+O CPF do controlador aparece mascarado: o repositório é público e a política
+é uma página aberta, então o documento completo não é publicado — é informado
+por e-mail a quem tiver direito de exigi-lo.
 """
 from __future__ import annotations
 
 VIGENCIA = "1 de agosto de 2026"
-CONTROLADOR = "[PREENCHER: nome completo ou razão social do controlador]"
-DOC_CONTROLADOR = "[PREENCHER: CPF ou CNPJ]"
-CONTATO = "[PREENCHER: e-mail de contato para titulares de dados]"
+CONTROLADOR = "Leandro Ribeiro"
+# CPF mascarado de propósito: este repositório é público e a política
+# fica numa página aberta. O padrão ***.NNN.NNN-** identifica o
+# controlador sem publicar o documento inteiro. O número completo é
+# fornecido à ANPD ou ao titular que solicitar, por e-mail.
+DOC_CONTROLADOR = "CPF ***.542.167-**"
+CONTATO = "leopontoribeiro@yahoo.com.br"
 
 TERMOS = f"""
 ## Termos de Uso
