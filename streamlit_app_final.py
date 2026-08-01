@@ -355,8 +355,12 @@ def _run(query: str, params: tuple = ()) -> None:
     _bump()
 
 def _bump() -> None:
+    # Só incrementa a versão DESTA sessão. _v entra na chave do cache, então o
+    # próprio usuário já passa a ver o dado novo. Um _fetch.clear() global
+    # descartaria o cache de todos os usuários a cada escrita de qualquer um —
+    # com várias pessoas ativas, cada café salvo viraria uma tempestade de
+    # queries no banco.
     st.session_state["_v"] = st.session_state.get("_v", 0) + 1
-    _fetch.clear()
 
 @st.cache_data(ttl=600, show_spinner=False)
 def _fetch(query: str, params: tuple = (), _v: int = 0) -> list:
@@ -379,6 +383,7 @@ def _v() -> int:
 _COLS_PESADAS = {
     "extracoes": ("foto_caneca", "foto_caneca_url"),
     "coffees":   ("foto_embalagem", "foto_embalagem_url"),
+    "capsulas":  ("foto_embalagem", "foto_embalagem_url"),
 }
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -498,6 +503,17 @@ _MAX_LOGIN_ATTEMPTS = 5
 _LOGIN_WINDOW_SECS  = 600   # 10 minutos
 _BACKUP_RETENCAO    = 5     # backups mantidos por usuário (os mais recentes)
 _IA_LIMITE_DIARIO   = int(os.environ.get("IA_LIMITE_DIARIO", "30"))
+_MAX_LOGIN_ATTEMPTS_IP = 25  # teto por IP na mesma janela
+
+
+def _client_ip() -> str:
+    """IP do cliente atrás do proxy do Render (X-Forwarded-For)."""
+    try:
+        h = st.context.headers
+        xff = h.get("X-Forwarded-For") or h.get("x-forwarded-for") or ""
+        return xff.split(",")[0].strip()[:45]
+    except Exception:
+        return ""
 
 # ── Google OAuth ────────────────────────────────────────────────────────
 _GOOGLE_AUTH_URL   = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -641,11 +657,24 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
         return LoginResult.RATE_LIMITED
     # Verifica também no DB (resiste a múltiplas abas e novos browsers)
     try:
+        _ip = _client_ip()
+        # Conta por (e-mail, IP) — e não só por e-mail. Contando apenas por
+        # e-mail, qualquer um travava a conta de outra pessoa de fora, só
+        # errando a senha dela cinco vezes.
         _db_attempts = _fetch("""
             SELECT COUNT(*) AS n FROM login_attempts
-            WHERE email=LOWER(%s) AND attempted_at > NOW() - INTERVAL '10 minutes'
-        """, (email.strip(),), _v=0)
+            WHERE email=LOWER(%s) AND COALESCE(ip,'') = %s
+              AND attempted_at > NOW() - INTERVAL '10 minutes'
+        """, (email.strip(), _ip), _v=0)
         if _db_attempts and int(_db_attempts[0]['n']) >= _MAX_LOGIN_ATTEMPTS:
+            return LoginResult.RATE_LIMITED
+        # Teto por IP: barra quem varre muitos e-mails a partir do mesmo lugar.
+        _ip_attempts = _fetch("""
+            SELECT COUNT(*) AS n FROM login_attempts
+            WHERE COALESCE(ip,'') = %s AND ip IS NOT NULL
+              AND attempted_at > NOW() - INTERVAL '10 minutes'
+        """, (_ip,), _v=0)
+        if _ip and _ip_attempts and int(_ip_attempts[0]['n']) >= _MAX_LOGIN_ATTEMPTS_IP:
             return LoginResult.RATE_LIMITED
     except Exception:
         pass  # tabela ainda não existe — degradação graciosa
@@ -662,8 +691,8 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
         attempts.append(now)
         st.session_state['_login_attempts'] = attempts
         try:
-            _run("INSERT INTO login_attempts (email, attempted_at) VALUES (LOWER(%s), NOW())",
-                 (email.strip(),))
+            _run("INSERT INTO login_attempts (email, ip, attempted_at) "
+                 "VALUES (LOWER(%s), %s, NOW())", (email.strip(), _client_ip()))
         except Exception:
             _log.warning("login_attempts: insert falhou", exc_info=True)
         return LoginResult.INVALID
@@ -672,8 +701,8 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
         attempts.append(now)
         st.session_state['_login_attempts'] = attempts
         try:
-            _run("INSERT INTO login_attempts (email, attempted_at) VALUES (LOWER(%s), NOW())",
-                 (email.strip(),))
+            _run("INSERT INTO login_attempts (email, ip, attempted_at) "
+                 "VALUES (LOWER(%s), %s, NOW())", (email.strip(), _client_ip()))
         except Exception:
             _log.warning("login_attempts: insert falhou", exc_info=True)
         return LoginResult.INVALID
@@ -696,7 +725,7 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
             expira = _now_local() + timedelta(days=30)
             _run(
                 "UPDATE usuarios SET remember_token=%s, remember_token_expires=%s WHERE id=%s",
-                (token, expira, usuario['id'])
+                (_token_hash(token), expira, usuario['id'])
             )
             st.session_state['remember_token'] = token
             # NÃO grava o cookie aqui: o st.rerun() do botão de login desmontaria
@@ -708,6 +737,17 @@ def _login(email: str, senha: str, remember: bool = False) -> str:
             pass
 
     return LoginResult.OK
+
+def _token_hash(token: str) -> str:
+    """SHA-256 do token de sessão.
+
+    O banco guarda só isto: um dump vazado deixa de ser uma chave mestra para
+    todas as contas. SHA-256 (e não bcrypt) porque a busca precisa ser por
+    igualdade indexada — e o token já é aleatório de 32 bytes, então não há
+    o que quebrar por força bruta.
+    """
+    return hashlib.sha256((token or "").encode()).hexdigest()
+
 
 def _check_remember_token() -> bool:
     """Restaura sessão a partir de query_param mc_token, cookie ou session_state."""
@@ -733,7 +773,17 @@ def _check_remember_token() -> bool:
     try:
         result = _fetch(
             "SELECT id, email, remember_token_expires FROM usuarios WHERE remember_token=%s",
-            (token,), _v=0)
+            (_token_hash(token),), _v=0)
+        if not result:
+            # Cookie emitido antes do hash: aceita uma vez e migra na hora,
+            # para ninguém ser deslogado pela mudança de formato.
+            legado = _fetch(
+                "SELECT id, email, remember_token_expires FROM usuarios "
+                "WHERE remember_token=%s", (token,), _v=0)
+            if legado:
+                _run("UPDATE usuarios SET remember_token=%s WHERE id=%s",
+                     (_token_hash(token), legado[0]["id"]))
+                result = legado
         if not result:
             st.session_state['_token_checked'] = True
             if "mc_token" in st.query_params:
@@ -984,6 +1034,20 @@ def _init_db() -> None:
                 );
                 CREATE INDEX IF NOT EXISTS idx_password_resets_user
                     ON password_resets(user_id, expires_at DESC);
+            """)
+            # Rate limit por IP além de por e-mail.
+            cur.execute("""
+                ALTER TABLE login_attempts ADD COLUMN IF NOT EXISTS ip TEXT;
+                CREATE INDEX IF NOT EXISTS idx_login_attempts_ip
+                    ON login_attempts(ip, attempted_at DESC);
+            """)
+            # Higiene: pedidos de reset e tentativas de login viram lixo depois
+            # da janela em que valem. Sem expurgo, as duas tabelas só crescem.
+            cur.execute("""
+                DELETE FROM password_resets
+                 WHERE expires_at < NOW() - INTERVAL '7 days';
+                DELETE FROM login_attempts
+                 WHERE attempted_at < NOW() - INTERVAL '7 days';
             """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS login_attempts (
@@ -2270,13 +2334,13 @@ def _reset_password_dialog(token: str):
                  "'Esqueci minha senha'.")
         st.session_state.pop("_reset_token", None)
         return
-    nova = st.text_input("Nova senha (mínimo 6 caracteres)", type="password",
+    nova = st.text_input("Nova senha (mínimo 8 caracteres)", type="password",
                          key="rs_nova")
     conf = st.text_input("Confirmar nova senha", type="password", key="rs_conf")
     if st.button("Salvar nova senha", type="primary", use_container_width=True,
                  key="rs_salvar"):
-        if len(nova) < 6:
-            st.error("A senha precisa ter pelo menos 6 caracteres.")
+        if len(nova) < 8:
+            st.error("A senha precisa ter pelo menos 8 caracteres.")
         elif nova != conf:
             st.error("As senhas não conferem.")
         else:
@@ -4080,7 +4144,8 @@ def _view_capsulas(user_id):
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         st.markdown('<p class="section-label">Minhas Cápsulas</p>', unsafe_allow_html=True)
 
-        caps = _fetch("""SELECT * FROM capsulas WHERE user_id=%s
+        caps = _fetch(f"""SELECT {_cols('capsulas')}, {_tem_foto('capsulas')}
+                         FROM capsulas WHERE user_id=%s
                          ORDER BY created_at DESC""", (user_id,), _v=_v())
 
         if not caps:
@@ -4106,10 +4171,7 @@ def _view_capsulas(user_id):
                 with st.expander(header_cap):
                     cc1, cc2, cc3 = st.columns([1, 2.2, 1.4], gap="large")
                     with cc1:
-                        if cap.get("foto_embalagem"):
-                            _img(cap["foto_embalagem"], w=150)
-                        else:
-                            st.markdown(_ph(), unsafe_allow_html=True)
+                        _render_foto("capsulas", cap, user_id, w=150)
                     with cc2:
                         c_info = (_irow("Máquina",    cap['maquina']) +
                                   _irow("Intensidade", f"{cap['intensidade']}/12") +
@@ -4596,7 +4658,7 @@ def main():
                     _tok = secrets.token_urlsafe(32)
                     _exp = _now_local() + timedelta(days=30)
                     _run("UPDATE usuarios SET remember_token=%s, remember_token_expires=%s WHERE id=%s",
-                         (_tok, _exp, uid))
+                         (_token_hash(_tok), _exp, uid))
                     st.session_state['remember_token'] = _tok
                     # O cookie é o único portador do token. Colocá-lo em
                     # query_param deixava um token de 30 dias na barra de
@@ -4705,7 +4767,7 @@ def main():
                         unsafe_allow_html=True)
                     new_email = st.text_input("E-mail", key="cadastro_email",
                                               placeholder="seu@email.com")
-                    new_senha = st.text_input("Senha (mínimo 6 caracteres)",
+                    new_senha = st.text_input("Senha (mínimo 8 caracteres)",
                                               type="password", key="cadastro_senha",
                                               placeholder="••••••••")
                     new_senha_conf = st.text_input("Confirmar senha", type="password",
@@ -4720,8 +4782,8 @@ def main():
                             st.error("E-mail inválido. Verifique o formato (nome@dominio.com).")
                         elif new_senha != new_senha_conf:
                             st.error("As senhas não conferem.")
-                        elif len(new_senha) < 6:
-                            st.error("A senha precisa ter pelo menos 6 caracteres.")
+                        elif len(new_senha) < 8:
+                            st.error("A senha precisa ter pelo menos 8 caracteres.")
                         else:
                             try:
                                 hash_pwd = _hash_senha(new_senha)
