@@ -234,3 +234,68 @@ def test_hash_sha256_legado_ainda_valida():
 def test_hash_malformado_nao_autentica():
     for ruim in ("$2", "sem-cifrao", "a$b$c$d", "   "):
         assert mc_core.verify_senha("x", ruim) is False
+
+
+# ── Regressões das correções de 2026-08-01 ─────────────────────────────
+def test_token_de_sessao_e_guardado_hasheado(fonte):
+    """Guardar o remember_token em texto puro transformava um dump do banco
+    em chave mestra de todas as contas."""
+    for trecho in re.findall(r"UPDATE usuarios SET remember_token=%s[^)]*\)",
+                             fonte, re.S):
+        assert "_token_hash(" in trecho, (
+            "remember_token gravado sem hash: " + trecho[:90])
+
+
+def test_cache_nao_e_limpo_globalmente(fonte, arvore):
+    """_fetch.clear() em _bump descarta o cache de todos os usuários a cada
+    escrita de qualquer um."""
+    # Olha a AST, não o texto: o comentário que explica o problema cita
+    # _fetch.clear() e faria um teste textual falhar sozinho.
+    bump = _funcao(arvore, "_bump")
+    for no in ast.walk(bump):
+        if (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)
+                and no.func.attr == "clear"
+                and getattr(no.func.value, "id", "") == "_fetch"):
+            raise AssertionError(
+                "_bump não pode chamar _fetch.clear() — invalida o cache de "
+                "todos os usuários a cada escrita de qualquer um")
+
+
+def test_toda_tabela_com_foto_esta_declarada():
+    """capsulas guarda foto base64 e ficou de fora na primeira correção."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_app", _APP)
+    # Não dá para importar o módulo (precisa de Streamlit e banco); lê o dict
+    # do fonte por AST.
+    with open(_APP, encoding="utf-8") as f:
+        arvore = ast.parse(f.read())
+    for no in ast.walk(arvore):
+        if (isinstance(no, ast.Assign)
+                and any(getattr(t, "id", "") == "_COLS_PESADAS" for t in no.targets)):
+            chaves = {k.value for k in no.value.keys}
+            assert {"coffees", "extracoes", "capsulas"} <= chaves, (
+                f"faltam tabelas com foto em _COLS_PESADAS: {chaves}")
+            return
+    raise AssertionError("_COLS_PESADAS não encontrado")
+
+
+def test_leitura_de_foto_ignora_string_vazia(fonte):
+    """Linhas com '' em vez de NULL contavam como 'tem foto' e a tela tentava
+    exibir imagem inexistente."""
+    assert "NULLIF" in fonte, "leituras de foto precisam de NULLIF"
+    for m in re.finditer(r"COALESCE\((\w*\.?foto_\w+), (\w*\.?foto_\w+)\)", fonte):
+        raise AssertionError(
+            f"COALESCE sem NULLIF na linha {fonte[:m.start()].count(chr(10))+1}")
+
+
+def test_documentos_legais_existem():
+    import mc_legal
+    assert len(mc_legal.TERMOS) > 500
+    assert len(mc_legal.PRIVACIDADE) > 1000
+    assert "art. 18" in mc_legal.PRIVACIDADE, "direitos do titular não citados"
+
+
+def test_cota_de_ia_por_usuario(fonte, arvore):
+    corpo = ast.get_source_segment(fonte, _funcao(arvore, "_ia_dentro_da_cota")) or ""
+    assert "user_id=%s" in corpo, "a cota precisa ser por usuário"
+    assert "CURRENT_DATE" in corpo, "a cota precisa ser diária"

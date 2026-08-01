@@ -36,6 +36,7 @@ _log = mc_core.get_logger()  # logs → stdout (capturado pelo Render)
 import mc_data  # dados estáticos extraídos do monólito
 import mc_storage  # armazenamento de imagens (R2 com fallback base64)
 import mc_mail     # e-mail transacional (inerte sem RESEND_API_KEY)
+import mc_legal    # Termos de Uso e Política de Privacidade
 from mc_data import (METODOS, _LOCAIS_COMPRA, _MOEDORES,
                      CLASSIFICACOES_CAFE, RECIPES, METHOD_PROFILES)
 
@@ -1373,39 +1374,6 @@ def _get_api_key() -> str:
     """Lê GOOGLE_API_KEY de env ou secrets."""
     return _get_gemini_key()
 
-def _comentario_motor_barista(coffee_info: dict, params: dict) -> str:
-    """Gera comentário curto sobre o que esperar deste café com estes parâmetros."""
-    if not _get_gemini_key():
-        return ""
-    try:
-        _pp = (f"{params['pressure']} bar" if params.get('pressure') is not None
-               else "sem pressão (método filtrado/imersão)")
-        prompt = (
-            "Você é um barista sênior. Em 2–3 frases curtas e diretas, "
-            "descreva o que esperar na xícara com este café e estes parâmetros. "
-            "Seja específico para ESTE café.\n\n"
-            f"Café: {coffee_info.get('nome','?')} — Torra {coffee_info.get('torra','Média')} "
-            f"— {coffee_info.get('tipo','Grãos')}\n"
-            f"Região: {coffee_info.get('regiao','não informada') or 'não informada'}\n"
-            f"Notas: {coffee_info.get('notas','não informadas') or 'não informadas'}\n"
-            f"Intensidade: {coffee_info.get('intensidade',5)}/12\n\n"
-            f"Parâmetros Motor Barista: Dose {params['dose']}g | Yield {params['yield']}g | "
-            f"{params['time']}s | {params['temp']}°C | {_pp}\n\n"
-            "Responda em português. Máximo 70 palavras."
-        )
-        genai.configure(api_key=_get_gemini_key())
-        for _mn in ("gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"):
-            try:
-                resp = genai.GenerativeModel(_mn).generate_content(prompt)
-                return resp.text.strip()
-            except Exception as _e:
-                if "429" in str(_e) or "quota" in str(_e).lower():
-                    continue
-                break
-        return ""
-    except Exception:
-        return ""
-
 def _diagnostico_barista_ia(coffee_info: dict, params: dict,
                              real: dict, m_real: dict) -> str:
     """Análise minuciosa como barista sênior — variáveis, resultados e dicas."""
@@ -2358,6 +2326,29 @@ def _reset_password_dialog(token: str):
                 _log.warning("password_reset: falha ao gravar nova senha",
                              exc_info=True)
                 st.error("Não consegui salvar agora. Tente novamente.")
+
+
+def _aviso_legal_pendente():
+    """Deixa explícito que o documento ainda tem marcador por preencher —
+    publicar assim não cumpre a LGPD."""
+    faltando = mc_legal.pendencias()
+    if faltando:
+        st.warning(
+            "Documento em rascunho: falta preencher " + ", ".join(faltando) +
+            ". Edite `mc_legal.py` antes de abrir o cadastro ao público.",
+            icon="✏️")
+
+
+@st.dialog("Termos de Uso")
+def _termos_dialog():
+    _aviso_legal_pendente()
+    st.markdown(mc_legal.TERMOS)
+
+
+@st.dialog("Política de Privacidade")
+def _privacidade_dialog():
+    _aviso_legal_pendente()
+    st.markdown(mc_legal.PRIVACIDADE)
 
 
 @st.dialog("Recuperar acesso")
@@ -4635,6 +4626,14 @@ def main():
         st.session_state.pop("_show_forgot")
         _forgot_password_dialog()
 
+    # Documentos legais — acessíveis logado ou não, por link direto.
+    if "termos" in st.query_params:
+        del st.query_params["termos"]
+        _termos_dialog()
+    if "privacidade" in st.query_params:
+        del st.query_params["privacidade"]
+        _privacidade_dialog()
+
     # Dialog "Sobre" — aberto pelo clique na marca (?about=1), em qualquer estado
     if "about" in st.query_params:
         del st.query_params["about"]
@@ -4753,8 +4752,14 @@ def main():
                     # Versão visível sem precisar logar — é como se confere,
                     # de fora, qual build o servidor está realmente servindo.
                     st.markdown(
-                        f'<p style="text-align:center;font-size:11px;opacity:.45;'
-                        f'margin-top:1.5rem">v{_APP_VERSION}</p>',
+                        f'<p style="text-align:center;font-size:11px;opacity:.55;'
+                        f'margin-top:1.5rem;line-height:1.9">'
+                        f'<a href="?termos=1" target="_self" '
+                        f'style="color:inherit">Termos de Uso</a>'
+                        f'&nbsp;·&nbsp;'
+                        f'<a href="?privacidade=1" target="_self" '
+                        f'style="color:inherit">Privacidade</a>'
+                        f'<br><span style="opacity:.7">v{_APP_VERSION}</span></p>',
                         unsafe_allow_html=True)
 
                 with tab_cadastro:
