@@ -15,7 +15,9 @@ CONTROLADOR = "Leandro Ribeiro"
 # fica numa página aberta. O padrão ***.NNN.NNN-** identifica o
 # controlador sem publicar o documento inteiro. O número completo é
 # fornecido à ANPD ou ao titular que solicitar, por e-mail.
-DOC_CONTROLADOR = "CPF ***.542.167-**"
+# Asteriscos escapados: o texto é renderizado como markdown e 
+# "***" viraria itálico/negrito, comendo a máscara.
+DOC_CONTROLADOR = r"CPF \*\*\*.542.167-\*\*"
 CONTATO = "leopontoribeiro@yahoo.com.br"
 
 TERMOS = f"""
