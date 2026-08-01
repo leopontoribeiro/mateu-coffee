@@ -405,8 +405,11 @@ def _tem_foto(tabela: str, prefixo: str = "") -> str:
     """
     canon, url = _COLS_PESADAS[tabela]
     p = f"{prefixo}." if prefixo else ""
-    return (f"(COALESCE({p}{canon}, {p}{url}) IS NOT NULL) AS tem_foto, "
-            f"COALESCE(pg_column_size({p}{canon}), pg_column_size({p}{url}), 0) AS foto_bytes")
+    # NULLIF: há linhas com string vazia em vez de NULL. Sem isso elas contam
+    # como "tem foto" e a tela tenta exibir uma imagem que não existe.
+    return (f"(COALESCE(NULLIF({p}{canon},''), NULLIF({p}{url},'')) IS NOT NULL) AS tem_foto, "
+            f"COALESCE(pg_column_size(NULLIF({p}{canon},'')), "
+            f"pg_column_size(NULLIF({p}{url},'')), 0) AS foto_bytes")
 
 def _foto(tabela: str, row_id: int, user_id: int) -> Optional[str]:
     """Carrega a foto de uma linha só quando ela vai ser exibida.
@@ -417,8 +420,9 @@ def _foto(tabela: str, row_id: int, user_id: int) -> Optional[str]:
     if not row_id:
         return None
     canon, url = _COLS_PESADAS[tabela]
-    r = _fetch(f"SELECT COALESCE({canon}, {url}) AS f FROM {tabela} "
-               f"WHERE id=%s AND user_id=%s", (row_id, user_id), _v=_v())
+    r = _fetch(f"SELECT COALESCE(NULLIF({canon},''), NULLIF({url},'')) AS f "
+               f"FROM {tabela} WHERE id=%s AND user_id=%s",
+               (row_id, user_id), _v=_v())
     return r[0]["f"] if r else None
 
 
@@ -4273,36 +4277,67 @@ def _view_capsulas(user_id):
                                 st.session_state.pop(f"confirm_del_cap_{cap['id']}", None)
                                 st.rerun()
 
-def _exportar_dados(user_id: int) -> dict:
-    """Gera os CSVs de portabilidade (LGPD art. 18, V).
+def _exportar_dados(user_id: int) -> Optional[bytes]:
+    """Gera o ZIP de portabilidade (LGPD art. 18, V): CSVs + fotos.
 
-    As fotos ficam de fora: são base64 de megabytes por linha e inviabilizariam
-    o download. O restante sai como está no banco.
+    As imagens (embalagens e xícaras) são dado do titular como qualquer outro
+    campo, então vão junto — como .jpg de verdade, não base64 dentro da
+    planilha. Depois da recompressão o acervo inteiro cabe em poucos MB.
     """
+    import base64 as _b64mod
     import csv
     import io as _io
+    import zipfile
 
-    pacote = {}
-    for tabela in ("coffees", "extracoes", "capsulas"):
-        try:
-            if tabela in _COLS_PESADAS:
-                cols = _cols(tabela)
-            else:
-                cols = "*"
-            linhas = _fetch(f"SELECT {cols} FROM {tabela} WHERE user_id=%s "
-                            f"ORDER BY id", (user_id,), _v=_v())
-            buf = _io.StringIO()
-            if linhas:
-                w = csv.DictWriter(buf, fieldnames=list(linhas[0].keys()))
-                w.writeheader()
-                for r in linhas:
-                    w.writerow(dict(r))
-            else:
-                buf.write("(sem registros)\n")
-            pacote[f"mateu-coffee-{tabela}.csv"] = buf.getvalue()
-        except Exception:
-            _log.warning("export: falha em %s", tabela, exc_info=True)
-    return pacote
+    buf_zip = _io.BytesIO()
+    try:
+        with zipfile.ZipFile(buf_zip, "w", zipfile.ZIP_DEFLATED) as z:
+            for tabela in ("coffees", "extracoes", "capsulas"):
+                cols = _cols(tabela) if tabela in _COLS_PESADAS else "*"
+                linhas = _fetch(f"SELECT {cols} FROM {tabela} WHERE user_id=%s "
+                                f"ORDER BY id", (user_id,), _v=_v())
+                buf = _io.StringIO()
+                if linhas:
+                    w = csv.DictWriter(buf, fieldnames=list(linhas[0].keys()))
+                    w.writeheader()
+                    for r in linhas:
+                        w.writerow(dict(r))
+                else:
+                    buf.write("(sem registros)\n")
+                z.writestr(f"dados/{tabela}.csv", buf.getvalue())
+
+            # Fotos: uma por linha que tenha, nomeada pelo id do registro para
+            # dar para cruzar com o CSV.
+            for tabela, pasta in (("coffees", "fotos-embalagens"),
+                                  ("extracoes", "fotos-xicaras")):
+                canon, url = _COLS_PESADAS[tabela]
+                fotos = _fetch(
+                    f"SELECT id, COALESCE(NULLIF({canon},''), NULLIF({url},'')) AS f "
+                    f"FROM {tabela} WHERE user_id=%s AND "
+                    f"COALESCE(NULLIF({canon},''), NULLIF({url},'')) IS NOT NULL",
+                    (user_id,), _v=_v())
+                for r in fotos:
+                    ref = r["f"] or ""
+                    if ref.startswith("http"):
+                        # Foto no R2: guarda o endereço, não baixa.
+                        z.writestr(f"{pasta}/{r['id']}.url.txt", ref)
+                        continue
+                    dados = ref.split(",", 1)[1] if ref.startswith("data:") else ref
+                    try:
+                        z.writestr(f"{pasta}/{r['id']}.jpg",
+                                   _b64mod.b64decode(dados + "=" * (-len(dados) % 4)))
+                    except Exception:
+                        _log.warning("export: foto %s/%s ilegível", tabela, r["id"])
+
+            z.writestr("LEIA-ME.txt",
+                       "Exportação de dados — Mateu Coffee\n\n"
+                       "dados/            seus cafés, extrações e cápsulas em CSV\n"
+                       "fotos-embalagens/ fotos das embalagens (nome = id do café)\n"
+                       "fotos-xicaras/    fotos das xícaras (nome = id da extração)\n")
+        return buf_zip.getvalue()
+    except Exception:
+        _log.warning("export: falha ao gerar o pacote", exc_info=True)
+        return None
 
 
 def _excluir_conta(user_id: int) -> bool:
@@ -4432,16 +4467,21 @@ def _view_backup(user_id):
         _c_exp, _c_del = st.columns(2, gap="large")
         with _c_exp:
             st.markdown("**Exportar**")
-            st.caption("Baixe tudo o que o app guarda sobre você, em CSV.")
+            st.caption("Baixe tudo o que o app guarda sobre você: cafés, "
+                       "extrações e cápsulas em CSV, mais as fotos.")
             if st.button("📤 Gerar exportação", key="lgpd_export",
                          use_container_width=True):
-                st.session_state["_export_pronto"] = _exportar_dados(user_id)
+                with st.spinner("Montando o pacote…"):
+                    st.session_state["_export_pronto"] = _exportar_dados(user_id)
             _pack = st.session_state.get("_export_pronto")
             if _pack:
-                for nome, conteudo in _pack.items():
-                    st.download_button(f"⬇️ {nome}", conteudo, file_name=nome,
-                                       mime="text/csv", key=f"dl_{nome}",
-                                       use_container_width=True)
+                st.download_button(
+                    f"⬇️ Baixar ({len(_pack)/1048576:.1f} MB)", _pack,
+                    file_name=f"mateu-coffee-dados-{_today_local():%Y-%m-%d}.zip",
+                    mime="application/zip", key="dl_zip",
+                    use_container_width=True)
+            elif _pack is not None and st.session_state.get("_export_pronto") is None:
+                st.error("Não consegui gerar o pacote. Tente novamente.")
 
         with _c_del:
             st.markdown("**Excluir conta**")
