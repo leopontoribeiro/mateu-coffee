@@ -38,7 +38,11 @@ import mc_storage  # armazenamento de imagens (R2 com fallback base64)
 import mc_mail     # e-mail transacional (inerte sem RESEND_API_KEY)
 import mc_legal    # Termos de Uso e Política de Privacidade
 from mc_data import (METODOS, _LOCAIS_COMPRA, _MOEDORES,
-                     CLASSIFICACOES_CAFE, RECIPES, METHOD_PROFILES)
+                     CLASSIFICACOES_CAFE, RECIPES, METHOD_PROFILES,
+                     MAQUINAS_ESPRESSO, PRESSAO_EFETIVA_IDEAL,
+                     ESPRESSO_STYLES, ESPRESSO_STYLE_DEFAULT,
+                     CESTO_CAPACIDADE_G, CESTO_PADRAO_MM,
+                     RETENCAO_G_POR_G, RETENCAO_PADRAO)
 
 # ── Gemini helper ──────────────────────────────────────────────────────
 def _get_gemini_key() -> str:
@@ -159,21 +163,32 @@ def _load_logo(max_width: int = 380) -> bool:
         return False
 
 def _show_daily_consumption() -> None:
-    """Widget de consumo: xícaras hoje + semana + custo mensal + total."""
+    """Widget de consumo: bebida (ml) + pó (g) por período, custo do mês.
+
+    A unidade é ML DE BEBIDA, não 'xícaras'. Um registro de extração pode
+    ser 3 shots de espresso ou 500 ml de Chemex — contar registros como
+    xícaras dava números sem significado. Onde ml_final não existe (café
+    registrado antes desta versão) o SQL cai para agua_alvo.
+    """
     hoje = _today_local()
     user_id = st.session_state.get('user_id')
     primeiro_dia_mes = hoje.replace(day=1)
 
     stats = _fetch("""
         SELECT
-          COALESCE(COUNT(CASE WHEN data = %s THEN 1 END), 0)              AS hoje_n,
-          COALESCE(SUM(CASE WHEN data = %s THEN gramas ELSE 0 END), 0)    AS hoje_g,
-          COALESCE(COUNT(CASE WHEN data >= %s THEN 1 END), 0)             AS semana_n,
-          COALESCE(SUM(CASE WHEN data >= %s THEN gramas ELSE 0 END), 0)   AS semana_g,
-          COUNT(*)                                                         AS total_n,
-          COALESCE(SUM(gramas), 0)                                         AS total_g
+          COALESCE(SUM(CASE WHEN data = %s  THEN COALESCE(ml_final, agua_alvo, 0) ELSE 0 END), 0) AS hoje_ml,
+          COALESCE(SUM(CASE WHEN data = %s  THEN gramas ELSE 0 END), 0)    AS hoje_g,
+          COALESCE(COUNT(CASE WHEN data = %s THEN 1 END), 0)               AS hoje_n,
+          COALESCE(SUM(CASE WHEN data >= %s THEN COALESCE(ml_final, agua_alvo, 0) ELSE 0 END), 0) AS semana_ml,
+          COALESCE(SUM(CASE WHEN data >= %s THEN gramas ELSE 0 END), 0)    AS semana_g,
+          COALESCE(COUNT(CASE WHEN data >= %s THEN 1 END), 0)              AS semana_n,
+          COALESCE(SUM(COALESCE(ml_final, agua_alvo, 0)), 0)               AS total_ml,
+          COALESCE(SUM(gramas), 0)                                          AS total_g,
+          COUNT(*)                                                          AS total_n
         FROM extracoes WHERE user_id = %s
-    """, (hoje, hoje, hoje - timedelta(days=6), hoje - timedelta(days=6), user_id), _v=_v())
+    """, (hoje, hoje, hoje,
+          hoje - timedelta(days=6), hoje - timedelta(days=6), hoje - timedelta(days=6),
+          user_id), _v=_v())
 
     cost_mes = _fetch("""
         SELECT c.valor_compra, c.tamanho_pacote, e.gramas
@@ -181,27 +196,31 @@ def _show_daily_consumption() -> None:
         WHERE e.data >= %s AND e.user_id = %s AND c.valor_compra > 0 AND c.tamanho_pacote > 0
     """, (primeiro_dia_mes, user_id), _v=_v())
 
-    s = stats[0] if stats else {"hoje_n": 0, "hoje_g": 0, "semana_n": 0, "semana_g": 0, "total_n": 0, "total_g": 0}
+    s = stats[0] if stats else {"hoje_ml": 0, "hoje_g": 0, "hoje_n": 0,
+                                "semana_ml": 0, "semana_g": 0, "semana_n": 0,
+                                "total_ml": 0, "total_g": 0, "total_n": 0}
     custo_mes = sum(
         (r["valor_compra"] / r["tamanho_pacote"]) * r["gramas"]
         for r in cost_mes if r["valor_compra"] and r["tamanho_pacote"]
     )
     custo_str = f"R$ {custo_mes:.2f}" if custo_mes > 0 else "—"
-    media_semana = (int(s["semana_n"]) / 7) if s["semana_n"] else 0
-    hoje_n = int(s["hoje_n"])
+    media_semana = (float(s["semana_ml"]) / 7) if s["semana_ml"] else 0
+    hoje_ml  = float(s["hoje_ml"] or 0)
+    hoje_n   = int(s["hoje_n"] or 0)
     mes_nome = hoje.strftime("%b").capitalize()
 
     st.markdown(
         f'<div class="mc-consumo">'
         f'  <div class="mc-consumo-cell">'
         f'    <p class="mc-consumo-label">Hoje</p>'
-        f'    <p class="mc-consumo-value accent">{hoje_n}</p>'
-        f'    <p class="mc-consumo-sub">{"xícara" if hoje_n == 1 else "xícaras"} · {s["hoje_g"]:.0f}g</p>'
+        f'    <p class="mc-consumo-value accent">{hoje_ml:.0f}<span style="font-size:14px"> ml</span></p>'
+        f'    <p class="mc-consumo-sub">{s["hoje_g"]:.0f}g de pó · '
+        f'{hoje_n} {"extração" if hoje_n == 1 else "extrações"}</p>'
         f'  </div>'
         f'  <div class="mc-consumo-cell">'
         f'    <p class="mc-consumo-label">Esta Semana</p>'
-        f'    <p class="mc-consumo-value">{int(s["semana_n"])}</p>'
-        f'    <p class="mc-consumo-sub">{s["semana_g"]:.0f}g · {media_semana:.1f}/dia</p>'
+        f'    <p class="mc-consumo-value">{float(s["semana_ml"] or 0):.0f}<span style="font-size:14px"> ml</span></p>'
+        f'    <p class="mc-consumo-sub">{s["semana_g"]:.0f}g de pó · {media_semana:.0f} ml/dia</p>'
         f'  </div>'
         f'  <div class="mc-consumo-cell">'
         f'    <p class="mc-consumo-label">Gasto em {mes_nome}</p>'
@@ -210,8 +229,9 @@ def _show_daily_consumption() -> None:
         f'  </div>'
         f'  <div class="mc-consumo-cell">'
         f'    <p class="mc-consumo-label">Total Histórico</p>'
-        f'    <p class="mc-consumo-value">{int(s["total_n"])}</p>'
-        f'    <p class="mc-consumo-sub">{s["total_g"]:.0f}g consumidos</p>'
+        f'    <p class="mc-consumo-value">{float(s["total_ml"] or 0)/1000:.1f}<span style="font-size:14px"> L</span></p>'
+        f'    <p class="mc-consumo-sub">{s["total_g"]:.0f}g de pó · '
+        f'{int(s["total_n"])} extrações</p>'
         f'  </div>'
         f'</div>',
         unsafe_allow_html=True)
@@ -981,7 +1001,19 @@ def _init_db() -> None:
             cur.execute("""
                 ALTER TABLE extracoes
                     ADD COLUMN IF NOT EXISTS temp_real    FLOAT DEFAULT NULL,
-                    ADD COLUMN IF NOT EXISTS pressao_real FLOAT DEFAULT NULL;
+                    ADD COLUMN IF NOT EXISTS pressao_real FLOAT DEFAULT NULL,
+                    -- pressao_real  = valor NOMINAL digitado (spec da bomba)
+                    -- pressao_efetiva = bar estimados NO BOLO DE CAFÉ (usado
+                    -- em todo diagnóstico sensorial)
+                    ADD COLUMN IF NOT EXISTS pressao_efetiva  FLOAT DEFAULT NULL,
+                    ADD COLUMN IF NOT EXISTS maquina_espresso TEXT  DEFAULT '',
+                    -- estilo_espresso: Ristretto | Normale | Lungo ('' p/ coados)
+                    -- n_doses: nº de shots (espresso) — pó e bebida são o TOTAL
+                    -- ml_final: rendimento líquido; nos coados já desconta a
+                    --           água retida pelo borra (agua_alvo é a despejada)
+                    ADD COLUMN IF NOT EXISTS estilo_espresso TEXT    DEFAULT '',
+                    ADD COLUMN IF NOT EXISTS n_doses         INTEGER DEFAULT 1,
+                    ADD COLUMN IF NOT EXISTS ml_final        FLOAT   DEFAULT NULL;
             """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS backups (
@@ -1184,7 +1216,8 @@ def _backup_restaurar_dados(backup_id: int, user_id: int) -> bool:
                     'crema_stars','corpo_stars','equilibrio_stars','acidez_stars',
                     'amargor_stars','presenca_boca_stars','docura_stars',
                     'nota_final_stars','balanco_ideal','data_hora_extracao',
-                    'user_id','temp_real','pressao_real'}
+                    'user_id','temp_real','pressao_real','pressao_efetiva',
+                    'maquina_espresso','estilo_espresso','n_doses','ml_final'}
                 _OK_CAP    = {'id','user_id','nome','marca','maquina','intensidade',
                     'quantidade','aluminio','volume_ml','foto_embalagem','created_at',
                     'crema_stars','corpo_stars','equilibrio_stars','acidez_stars',
@@ -1379,7 +1412,49 @@ def _diagnostico_barista_ia(coffee_info: dict, params: dict,
     """Análise minuciosa como barista sênior — variáveis, resultados e dicas."""
     _sem_press = params.get('pressure') is None
     _pp = "sem pressão (método filtrado)" if _sem_press else f"Pressão {params['pressure']} bar"
-    _rp = "sem pressão" if _sem_press else f"Pressão {real['pressao_real']} bar"
+    # A IA recebe a pressão EFETIVA (no puck). Passar a nominal fazia o
+    # modelo concluir "15 bar = super-pressão" e inventar adstringência.
+    if _sem_press:
+        _rp = "sem pressão"
+    else:
+        _pn = real.get('pressao_real')
+        _pe = real.get('pressao_efetiva') or mc_core.pressao_efetiva(_pn)
+        _rp = f"Pressão efetiva ≈{_pe} bar no bolo de café"
+        if _pe is not None and _pn is not None and abs(float(_pe) - float(_pn)) > 0.05:
+            _rp += (f" (a máquina é especificada em {_pn} bar, mas esse é o pico "
+                    f"da bomba sem carga — NÃO trate como super-pressão)")
+
+    # Contexto do modelo: sem isso a IA aplica as convenções erradas —
+    # julga ristretto pela janela de EY do normale e trata a água
+    # despejada num coado como se fosse a bebida na jarra.
+    _lbl_y = "Bebida na xícara" if not _sem_press else "Água despejada"
+    if not _sem_press:
+        _est_ia = (real.get('estilo_espresso') or '').strip()
+        _nd_ia  = int(real.get('n_doses') or 1)
+        _ey_ia  = ESPRESSO_STYLES.get(_est_ia, {}).get('ey_alvo')
+        _ctx_modelo = (
+            "- Espresso NÃO escala em ml. Ristretto (1:1,5), Normale (1:2) e "
+            "Lungo (1:3) são ratios diferentes sobre a MESMA dose de pó.\n"
+            f"- Estilo desta extração: {_est_ia or 'não informado'}"
+            + (f" | janela de EY esperada: {_ey_ia[0]:.0f}–{_ey_ia[1]:.0f}%"
+               if _ey_ia else " | janela de EY: 18–22%") + "\n"
+            + (f"- Foram {_nd_ia} doses (shots). Dose e bebida acima são o TOTAL "
+               f"das {_nd_ia} extrações, não de um puck só. Não conclua que a "
+               f"dose por puck está alta.\n" if _nd_ia > 1 else
+               "- Uma única dose (1 shot).\n")
+            + "- Julgue o EY pela janela DO ESTILO, não pela faixa genérica.")
+    else:
+        _ret_ia = RETENCAO_G_POR_G.get(real.get('metodo', ''), RETENCAO_PADRAO)
+        _mlf_ia = real.get('ml_final')
+        _ctx_modelo = (
+            f"- Método filtrado/imersão: o número de água acima é a ÁGUA "
+            f"DESPEJADA, não o que chegou à jarra.\n"
+            f"- O pó retém ≈{_ret_ia:.1f} g de água por grama; essa parte nunca "
+            f"vira bebida.\n"
+            + (f"- Rendimento líquido real na jarra: {float(_mlf_ia):.0f} ml.\n"
+               if _mlf_ia else "")
+            + "- Ao comentar rendimento, use o líquido na jarra, não a água despejada.")
+
     prompt = f"""Você é um barista sênior com 15 anos de experiência em cafés especiais.
 
 Analise esta extração de forma minuciosa como se estivesse treinando um barista.
@@ -1391,11 +1466,14 @@ Analise esta extração de forma minuciosa como se estivesse treinando um barist
 - Notas de sabor: {coffee_info.get('notas','não informadas') or 'não informadas'}
 - Intensidade: {coffee_info.get('intensidade','?')}/12
 
+## COMO ESTE SISTEMA MODELA A EXTRAÇÃO (siga estas regras)
+{_ctx_modelo}
+
 ## PARÂMETROS PLANEJADOS (Motor Barista)
-Dose {params['dose']}g | Yield {params['yield']}g | Tempo {params['time']}s | Temp {params['temp']}°C | {_pp}
+Dose {params['dose']}g | {_lbl_y} {params['yield']}g | Tempo {params['time']}s | Temp {params['temp']}°C | {_pp}
 
 ## O QUE ACONTECEU DE VERDADE
-Dose {real['gramas']}g | Yield {real['agua']}g | Tempo {real['tempo']}s | Temp {real['temp_real']}°C | {_rp}
+Dose {real['gramas']}g | {_lbl_y} {real['agua']}g | Tempo {real['tempo']}s | Temp {real['temp_real']}°C | {_rp}
 TDS: {f"{real['tds']}% (medido)" if real['tds'] > 0 else 'não medido'}
 
 ## RESULTADOS CALCULADOS
@@ -1608,8 +1686,10 @@ class CoffeeEngine:
     EY_LOW   = 18.0
     EY_HIGH  = 22.0
 
-    # Retenção de líquido no pó por método (g absorvidos ≈ fator × g de pó)
-    RETENCAO = {"Espresso": 1.5, "Moka Pot": 1.8}
+    # Retenção de líquido no pó — fonte única em mc_data.RETENCAO_G_POR_G,
+    # a mesma tabela usada para dimensionar a receita. Manter duas tabelas
+    # fazia a receita prometer um volume e o EY calcular sobre outro.
+    RETENCAO = RETENCAO_G_POR_G
     # Métodos em que o campo 'água' já é a BEBIDA na xícara (yield), não a água total
     YIELD_BASED = {"Espresso"}
 
@@ -1633,7 +1713,8 @@ class CoffeeEngine:
             if metodo in CoffeeEngine.YIELD_BASED:
                 bev = water_g
             else:
-                bev = max(water_g - CoffeeEngine.RETENCAO.get(metodo, 2.0) * coffee_g, 0)
+                bev = max(water_g - CoffeeEngine.RETENCAO.get(
+                    metodo, RETENCAO_PADRAO) * coffee_g, 0)
             ey  = (bev * tds) / coffee_g
             out["ey"] = ey
             if ey < CoffeeEngine.EY_LOW:
@@ -1842,7 +1923,6 @@ def _motor_barista_params(metodo: str, torra: str, tipo: str) -> dict:
         "temp": float(prof["temp"]),
         "pressure": prof["pressure"],          # None = método não usa pressão
         "grind": prof["grind"],
-        "yield_label": prof["yield_label"],
         "dose_max": float(prof["dose_max"]),
         "water_max": float(prof["water_max"]),
     }
@@ -1925,7 +2005,7 @@ _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<script>window.MB_REF=__MB_REF__;</script>
+<script>window.MB_REF=__MB_REF__;window.MB_MAQ=__MB_MAQ__;</script>
 <div class="layout">
   <div class="card">
     <h2>Variáveis de Entrada</h2>
@@ -1955,9 +2035,11 @@ _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
     </div>
 
     <div class="cg" id="pg">
-      <div class="cl"><label>Pressão da Bomba</label><span id="vb">9.0 bar</span></div>
+      <div class="cl"><label>Pressão da Bomba (nominal)</label><span id="vb">9.0 bar</span></div>
       <input type="range" id="ib" min="1" max="20" step="0.5" value="9">
-      <div class="ht">Fora de 8–10 bar gera canalizações ou falta de crema.</div>
+      <div class="ht" id="hb">O valor da especificação é o pico da bomba sem carga.
+      O que importa é a pressão efetiva no bolo de café: fora de 8–10 bar
+      efetivos gera canalização ou falta de crema.</div>
     </div>
   </div>
 
@@ -2008,7 +2090,21 @@ function sim(){
   document.getElementById('vy').innerText=y.toFixed(1)+' g';
   document.getElementById('vt').innerText=t+' s';
   document.getElementById('vp').innerText=p.toFixed(1)+' °C';
-  document.getElementById('vb').innerText=b.toFixed(1)+' bar';
+  // Pressão NOMINAL (spec da bomba) → EFETIVA (no puck).
+  // "15 bar" de máquina doméstica é o pico da bomba vibratória sem carga.
+  // OPV + perda de carga + resistência do bolo derrubam isso p/ ~9 bar.
+  // Sem converter, o motor acusava adstringência/canalização inexistentes.
+  const MQ=(window.MB_MAQ||null);
+  function efetiva(n){
+    if(MQ&&MQ.nominal&&MQ.efetiva) return n*(MQ.efetiva/MQ.nominal);
+    if(n<=10) return n;
+    return Math.min(10.5, 9.0+(n-10.0)*0.10);
+  }
+  const be=efetiva(b);
+  const _conv=Math.abs(be-b)>0.05;
+  document.getElementById('vb').innerText =
+    _conv ? b.toFixed(1)+' bar nominal → '+be.toFixed(1)+' bar no puck'
+          : b.toFixed(1)+' bar';
 
   // Alvos do MÉTODO selecionado (injetados pelo Python). Os desvios são
   // RELATIVOS ao alvo → o radar funciona tanto p/ espresso (1:2) quanto p/
@@ -2029,8 +2125,9 @@ function sim(){
   if(dT>0){am+=dT*0.4;ac-=dT*0.2}
   else{ac+=Math.abs(dT)*0.4;am-=Math.abs(dT)*0.3;sw-=Math.abs(dT)*0.2}
 
-  // Pressão só existe no espresso (REF.pressure==null nos coados/imersão)
-  if(REF.pressure!=null){ if(b>10){as+=(b-10);am+=(b-10)*0.4} else if(b<8){co-=(8-b);sw-=(8-b)*0.4} }
+  // Pressão só existe no espresso (REF.pressure==null nos coados/imersão).
+  // Usa a pressão EFETIVA (be), nunca a nominal (b).
+  if(REF.pressure!=null){ if(be>10){as+=(be-10)*2.0;am+=(be-10)*0.8} else if(be<8){co-=(8-be);sw-=(8-be)*0.4} }
 
   const cl=v=>Math.max(0,Math.min(10,v));
   ac=cl(ac);am=cl(am);co=cl(co);sw=cl(sw);as=cl(as);
@@ -2043,7 +2140,7 @@ function sim(){
   if(am>7&&ac<3.5){ti="Superextração Crítica (Amargo e Seco)";tx="A água dissolveu compostos pesados da celulose do grão. O café apresenta corpo fino/ralo porém muito amargo, com sensação de queima e finalização cinzenta."}
   else if(ac>7&&am<3.5){ti="Subextração (Ácido Macetado e Ralo)";tx="A extração foi interrompida antes da dissolução dos açúcares complexos. O resultado é um café agressivamente azedo, corpo excessivamente fino e sem finalização."}
   else if(co>7.2&&ratio<1.6){ti="Concentrado / Ristretto denso";tx="Alta concentração de óleos insolúveis e coloides. Corpo extremamente pesado e espesso, com potência ácida elevada. Perfil xaroposo."}
-  else if(as>4){ti="Canalização Hidráulica Detectada";tx="Fissuras no bolo de café causadas por alta pressão ou moagem irregular geraram caminhos preferenciais. O café amarra a boca como banana verde."}
+  else if(as>3.5){ti="Canalização Hidráulica Detectada";tx="Fissuras no bolo de café causadas por pressão efetiva alta no puck ou moagem irregular geraram caminhos preferenciais. O café amarra a boca como banana verde. Atenção: o bar da especificação da máquina não é a pressão de extração — o diagnóstico aqui usa a pressão efetiva."}
 
   document.getElementById('vtitle').innerText=ti;
   document.getElementById('vtext').innerText=tx;
@@ -2449,7 +2546,11 @@ def _view_barista(user_id):
         _DICAS_BARISTA = [
             ("Acidez agressiva?", "Aumente a temperatura da água em 2°C ou afine a moagem. Temperaturas baixas subextraem compostos doces."),
             ("Café amargo?", "Abra a moagem 1–2 cliques ou reduza a temperatura em 2°C. Superextração dissolve compostos amargos pesados."),
-            ("Crema rala ou ausente?", "Verifique a frescura do grão (ideal: 5–21 dias pós-torra) e a pressão da bomba (alvo: 9 bar)."),
+            ("Crema rala ou ausente?", "Verifique a frescura do grão (ideal: 5–21 dias pós-torra) e a pressão EFETIVA no bolo de café (alvo: 8–10 bar)."),
+            ("Ristretto, normale ou lungo — qual a diferença real?", "São RATIOS diferentes sobre a MESMA dose de pó, não volumes diferentes de uma mesma bebida. Ristretto 1:1,5 (18g→27ml, ~25s), normale 1:2 (18g→36ml, ~28s), lungo 1:3 (18g→54ml, ~35s). Como o lungo passa mais água pelo mesmo pó, precisa de moagem mais grossa para não superextrair; o ristretto precisa de moagem mais fina para não subextrair."),
+            ("Quero mais café — aumento a água?", "Não. Dobrar a água de um normale não faz um lungo: faz um normale aguado, com EY alto e amargor. Para mais volume, aumente o Nº DE DOSES (shots) — cada dose é um puck novo com a mesma receita. Um portafiltro comporta ~22g (cesto 58mm), então 3 doses são 3 extrações separadas."),
+            ("Nos coados, por que sai menos café do que a água que despejei?", "O pó molhado retém cerca de 2g de água por grama e essa água nunca chega à jarra. Com 30g de pó e 500g de água despejada, chegam ~440ml. O sistema já faz essa conta: você informa o ml que quer NA JARRA e ele calcula a água a despejar."),
+            ("Minha máquina é 15 bar. Isso é pressão demais?", "Não. O número da caixa (15, 20 bar) é o pico da bomba vibratória medido sem carga. Entre a bomba e o café existem a válvula de alívio (OPV), a perda de carga na tubulação e a resistência do próprio bolo — a extração real fica por volta de 9 bar. Uma Oster Perfect Brew 15 bar extrai na faixa correta. Se quiser confirmar, use um portafiltro com manômetro."),
             ("Fluxo rápido demais?", "Afine a moagem. Cada clique faz diferença — mude 1 clique por vez e registre o resultado."),
             ("Brew ratio correto?", "Espresso clássico: 1:2 (18g → 36g em 25–30s). Pour over: 1:15 a 1:16. Registre cada variação."),
             ("Degaseificação?", "Grãos muito frescos (< 5 dias pós-torra) liberam CO₂ em excesso e criam barreira à extração. Espere."),
@@ -2814,16 +2915,112 @@ def _view_nova_extracao(user_id):
                     cafe_info[0]["torra"] if cafe_info else "Média",
                     cafe_info[0]["tipo"]  if cafe_info else "Grãos")
 
-                # Rendimento em ML (total) em vez de "xícaras": o café é X ml a partir
-                # de X g de pó + X g de água. multiplier = alvo ÷ rendimento-base do método.
-                _base_yield = float(params["yield"]) or 1.0
-                target_ml = st.number_input(
-                    "Rendimento total (ml)", 10.0, float(params["water_max"]),
-                    value=float(round(_base_yield)), step=5.0, key=f"config_ml_{metodo}",
-                    help=(f"Quanto café pronto você quer. {metodo}: base {params['yield']:.0f} ml "
-                          f"com {params['dose']:.0f} g de pó (ratio 1:{params['ratio']:.1f}). "
-                          f"A dose de pó ajusta-se ao volume."))
-                multiplier = target_ml / _base_yield
+                # ─────────────────────────────────────────────────────────────
+                # DIMENSIONAMENTO — duas lógicas, porque a física é diferente
+                #
+                # ESPRESSO: estilo (ristretto/normale/lungo) × nº de doses.
+                #   Não escala em ml — os estilos são RATIOS sobre a mesma
+                #   dose, e volume maior significa mais shots, não mais água.
+                # COADOS/IMERSÃO: ml final NA JARRA, descontando a água que
+                #   o pó retém. O usuário divide em xícaras como quiser.
+                # ─────────────────────────────────────────────────────────────
+                _is_espresso = params.get("pressure") is not None
+                estilo_espresso, n_doses = "", 1
+
+                if _is_espresso:
+                    _e1, _e2 = st.columns([2, 1], gap="medium")
+                    with _e1:
+                        estilo_espresso = st.radio(
+                            "Estilo do espresso", list(ESPRESSO_STYLES.keys()),
+                            index=list(ESPRESSO_STYLES.keys()).index(ESPRESSO_STYLE_DEFAULT),
+                            horizontal=True, key=f"config_estilo_{metodo}",
+                            help="Ristretto, normale e lungo são ratios diferentes "
+                                 "sobre a MESMA dose de pó — mudam yield, tempo e moagem.")
+                    with _e2:
+                        n_doses = int(st.number_input(
+                            "Nº de doses (shots)", 1, 8, value=1, step=1,
+                            key=f"config_doses_{metodo}",
+                            help="Cada dose é um puck. Multiplica pó e bebida."))
+
+                    _est = ESPRESSO_STYLES[estilo_espresso]
+                    _cesto = CESTO_CAPACIDADE_G.get(CESTO_PADRAO_MM)
+                    _esp = mc_core.calcular_espresso(params["dose"], _est,
+                                                     n_doses, cesto_max_g=_cesto)
+                    # O estilo REDEFINE ratio, yield, tempo e moagem do alvo.
+                    params["ratio"] = _esp["ratio"]
+                    params["dose"]  = _esp["dose"]
+                    params["yield"] = _esp["yield"]
+                    params["time"]  = _esp["time"]
+                    params["grind"] = _est["grind"]
+                    params["dose_max"]  = max(params["dose_max"], _esp["dose"] * 1.5)
+                    params["water_max"] = max(params["water_max"], _esp["yield"] * 1.5)
+                    target_ml  = _esp["yield"]
+
+                    st.caption(
+                        f"☕ **{estilo_espresso}** · 1:{_esp['ratio']:.1f} · "
+                        f"{_esp['time']}s · moagem {_est['grind_delta']} · "
+                        f"{n_doses}× ({_esp['dose_por_dose']:.1f} g → "
+                        f"{_esp['yield_por_dose']:.0f} ml por dose) = "
+                        f"**{_esp['dose']:.1f} g de pó → {_esp['yield']:.0f} ml**")
+                    st.caption(_est["desc"])
+                    if _esp["aviso_cesto"]:
+                        st.warning(f"⚠️ {_esp['aviso_cesto']}")
+                    if n_doses > 2:
+                        st.info(f"ℹ️ {n_doses} doses não cabem num portafiltro só — "
+                                f"são {n_doses} extrações separadas de "
+                                f"{_esp['dose_por_dose']:.1f} g. Registre o total aqui.")
+
+                else:
+                    _ret = RETENCAO_G_POR_G.get(metodo, RETENCAO_PADRAO)
+                    # Ratio precisa superar a retenção, senão nada chega à
+                    # jarra. Métodos de ratio curto (ex.: "Outro" 1:2) caem
+                    # para o modo sem desconto em vez de travar a tela.
+                    _descontar = float(params["ratio"]) - _ret > 0.5
+                    if not _descontar:
+                        _ret = 0.0
+                    _base_liq = mc_core.calcular_coado(
+                        float(params["yield"]), float(params["ratio"]), _ret,
+                        descontar_retencao=_descontar)
+                    _base_ml = float(round(_base_liq.get("yield") or params["yield"]))
+                    # Teto do campo é o LÍQUIDO máximo, não a água máxima:
+                    # pedir 700 ml na jarra exigiria ~795 g de água despejada.
+                    _r_ml = float(params["ratio"])
+                    _ml_max = float(round(
+                        float(params["water_max"]) * max(0.1, (_r_ml - _ret)) / _r_ml))
+                    _ml_max = max(_ml_max, _base_ml)
+                    target_ml = st.number_input(
+                        "Rendimento final na jarra (ml)", 10.0,
+                        _ml_max, value=_base_ml, step=10.0,
+                        key=f"config_ml_{metodo}",
+                        help=(f"Quanto café PRONTO você quer na jarra. O pó retém "
+                              f"≈{_ret:.1f} g de água por grama, então a água a "
+                              f"despejar é maior que este número. Divida em xícaras "
+                              f"como preferir."))
+                    _co = mc_core.calcular_coado(target_ml, float(params["ratio"]),
+                                                 _ret, descontar_retencao=_descontar)
+                    if _co.get("erro") or not _co:
+                        st.error(_co.get("erro") or
+                                 "Não foi possível dimensionar este método.")
+                    else:
+                        params["dose"]  = _co["dose"]
+                        params["yield"] = _co["agua"]   # campo 'água' = a despejar
+                        params["dose_max"]  = max(params["dose_max"], _co["dose"] * 1.5)
+                        params["water_max"] = max(params["water_max"], _co["agua"] * 1.5)
+                        if _descontar:
+                            st.caption(
+                                f"💧 Para **{target_ml:.0f} ml na jarra**: "
+                                f"**{_co['dose']:.1f} g de pó** + "
+                                f"**{_co['agua']:.0f} g de água a despejar** "
+                                f"(ratio 1:{_co['ratio']:.1f}) — "
+                                f"{_co['retido']:.0f} g ficam retidos no borra. "
+                                f"Divida em xícaras como preferir.")
+                        else:
+                            st.caption(
+                                f"💧 **{_co['dose']:.1f} g de pó** + "
+                                f"**{_co['agua']:.0f} g de água** "
+                                f"(ratio 1:{_co['ratio']:.1f}). Retenção não "
+                                f"descontada neste método — o rendimento real "
+                                f"pode ficar abaixo do informado.")
     
                 # ─────────────────────────────────────────────────────────────
                 # SETUP DA SESSÃO — Moedor · Clicks · Data · Hora (no topo)
@@ -2860,6 +3057,31 @@ def _view_nova_extracao(user_id):
                                                key="inp_moedor_custom")
                     else:
                         moedor = _moedor_sel
+
+                    # Máquina de espresso — define a conversão pressão
+                    # NOMINAL (spec da bomba) → EFETIVA (no bolo de café).
+                    # Só aparece em métodos que usam pressão.
+                    if params.get("pressure") is not None:
+                        _maq_opts = list(MAQUINAS_ESPRESSO.keys())
+                        _maq_sel = st.selectbox(
+                            "Máquina de espresso", _maq_opts,
+                            index=_maq_opts.index(st.session_state.get(
+                                "sel_maquina_last", _maq_opts[0]))
+                                if st.session_state.get("sel_maquina_last") in _maq_opts else 0,
+                            key="sel_maquina",
+                            help="O bar da caixa é o pico da bomba sem carga. "
+                                 "O app converte para a pressão real no puck.")
+                        st.session_state["sel_maquina_last"] = _maq_sel
+                        maquina_espresso = _maq_sel
+                        _maq_cfg = MAQUINAS_ESPRESSO.get(_maq_sel) or {}
+                        if _maq_cfg.get("nominal") and _maq_cfg.get("efetiva"):
+                            st.caption(
+                                f"⚙️ {_maq_cfg['nominal']:.0f} bar nominais → "
+                                f"≈{_maq_cfg['efetiva']:.1f} bar efetivos no bolo de café. "
+                                f"{_maq_cfg['nota']}")
+                    else:
+                        maquina_espresso = ""
+                        _maq_cfg = {}
 
                 # Busca clicks do perfil específico (café + moedor + torra + método)
                 _profile_clicks = last_clicks
@@ -2932,9 +3154,11 @@ def _view_nova_extracao(user_id):
                     f'<span style="font-size:11px;color:var(--mc-text-3);margin-left:8px">· {metodo}</span>'
                     f'<div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:8px;font-size:14px;'
                     f'color:var(--mc-text)">'
-                    f'<span><b>{_rs["dose"]:.0f}g</b> dose</span>'
-                    f'<span><b>{_rs["yield"]:.0f}g</b> água (1:{_rs["ratio"]:.1f})</span>'
-                    f'<span><b>{_rs["time"]}s</b> tempo</span>'
+                    f'<span><b>{_rs["dose"]:.1f}g</b> pó</span>'
+                    + (f'<span><b>{_rs["yield"]:.0f}g</b> bebida (1:{_rs["ratio"]:.1f})</span>'
+                       if _is_espresso
+                       else f'<span><b>{_rs["yield"]:.0f}g</b> água a despejar (1:{_rs["ratio"]:.1f})</span>')
+                    + f'<span><b>{_rs["time"]}s</b> tempo</span>'
                     f'<span><b>{_rs["temp"]}°C</b> água</span>'
                     + (f'<span><b>{_rs["pressure"]} bar</b> pressão</span>'
                        if _rs.get("pressure") is not None
@@ -2942,20 +3166,38 @@ def _view_nova_extracao(user_id):
                     + f'<span><b>{_rs["grind"]}</b> · moagem</span>'
                     + f'</div>'
                     + (
+                        # Espresso: o alvo é estilo × doses, já embutido em params.
                         f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
                         f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
-                        f'🎯 <b>Para {target_ml:.0f} ml de café:</b> use '
-                        f'<b>{_rs["dose"]*multiplier:.1f} g</b> de pó e '
-                        f'<b>{_rs["yield"]*multiplier:.0f} g/ml</b> de água — '
-                        f'mesmo ratio 1:{_rs["ratio"]:.1f}, moagem {_rs["grind"].lower()}, '
+                        f'🎯 <b>{estilo_espresso} × {n_doses} '
+                        f'{"dose" if n_doses == 1 else "doses"}:</b> '
+                        f'<b>{_rs["dose"]:.1f} g</b> de pó → '
+                        f'<b>{_rs["yield"]:.0f} ml</b> de bebida '
+                        f'(1:{_rs["ratio"]:.1f}), moagem {_rs["grind"].lower()}, '
                         f'tempo alvo {_rs["time"]}s.</div>'
+                        if _is_espresso else
+                        # Coado: o alvo é o líquido na jarra; a água despejada é maior.
+                        f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
+                        f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
+                        f'🎯 <b>Para {target_ml:.0f} ml na jarra:</b> use '
+                        f'<b>{_rs["dose"]:.1f} g</b> de pó e despeje '
+                        f'<b>{_rs["yield"]:.0f} g</b> de água — '
+                        f'ratio 1:{_rs["ratio"]:.1f}, moagem {_rs["grind"].lower()}, '
+                        f'tempo alvo {_rs["time"]}s. A diferença fica retida no borra.</div>'
                       )
                     + '</div>', unsafe_allow_html=True)
     
                 _mb_ref = json.dumps({"ratio": params["ratio"], "time": params["time"],
                                       "temp": params["temp"], "pressure": params["pressure"]})
+                # Máquina → o motor JS converte bar nominal em bar efetivo.
+                # 'null' = sem calibração conhecida → curva genérica no JS.
+                _mb_maq = json.dumps(
+                    {"nominal": _maq_cfg.get("nominal"),
+                     "efetiva": _maq_cfg.get("efetiva")}
+                    if _maq_cfg.get("nominal") and _maq_cfg.get("efetiva") else None)
                 motor_html = (_MOTOR_BARISTA_HTML
                     .replace('__MB_REF__', _mb_ref)
+                    .replace('__MB_MAQ__', _mb_maq)
                     .replace('value="18"', f'value="{params["dose"]}"')
                     .replace('value="36"', f'value="{params["yield"]}"')
                     .replace('value="28"', f'value="{params["time"]}"')
@@ -2971,8 +3213,8 @@ def _view_nova_extracao(user_id):
                 # Botão para propagar sugestão do Motor Barista → campos reais abaixo
                 if st.button("↩ Redefinir campos com sugestão do Motor Barista",
                              key="btn_reset_to_motor", help="Preenche os campos abaixo com os valores sugeridos para este grão"):
-                    st.session_state["ext_gramas"] = round(float(params["dose"])  * multiplier, 1)
-                    st.session_state["ext_agua"]   = round(float(params["yield"]) * multiplier, 1)
+                    st.session_state["ext_gramas"] = round(float(params["dose"]), 1)
+                    st.session_state["ext_agua"]   = round(float(params["yield"]), 1)
                     st.session_state["ext_tempo"]  = int(params["time"])
                     st.session_state["ext_temp"]   = float(params["temp"])
                     st.session_state["ext_press"]  = float(params["pressure"]) if params.get("pressure") is not None else 0.0
@@ -2992,11 +3234,14 @@ def _view_nova_extracao(user_id):
                     # que as abas voltem para a 1ª ao trocar xícaras/café).
                     # Os defaults são semeados via session_state quando café ou
                     # nº de xícaras mudam.
-                    _seed_sig = (cid, multiplier, metodo)
+                    # Reseed quando muda café, método, estilo do espresso ou
+                    # nº de doses — todos alteram dose/água/tempo alvo.
+                    _seed_sig = (cid, metodo, estilo_espresso,
+                                 n_doses, round(target_ml, 1))
                     if st.session_state.get("_ext_seed") != _seed_sig:
                         st.session_state["_ext_seed"]  = _seed_sig
-                        st.session_state["ext_gramas"] = round(float(params["dose"])  * multiplier, 1)
-                        st.session_state["ext_agua"]   = round(float(params["yield"]) * multiplier, 1)
+                        st.session_state["ext_gramas"] = round(float(params["dose"]), 1)
+                        st.session_state["ext_agua"]   = round(float(params["yield"]), 1)
                         st.session_state["ext_tempo"]  = int(params["time"])
                         st.session_state["ext_temp"]   = float(params["temp"])
                         st.session_state["ext_press"]  = float(params["pressure"]) if params.get("pressure") is not None else 0.0
@@ -3005,15 +3250,28 @@ def _view_nova_extracao(user_id):
                     # Limites dos campos adaptados ao método (cold brew usa muito
                     # mais pó/água que espresso, etc.)
                     # floats obrigatórios: st.number_input não aceita mistura int/float
-                    _dose_max = float(max(60.0, round(float(params["dose_max"]) * multiplier, 1)))
-                    _agua_max = float(max(80.0, round(float(params["water_max"]) * multiplier, 1)))
-                    gramas       = st.number_input("Dose Real (g)", 1.0, _dose_max,
-                                                   step=0.1, key="ext_gramas",
-                                                   help="Peso do pó medido na balança")
-                    agua         = st.number_input(f"{params['yield_label']} — real", 5.0, _agua_max,
+                    _dose_max = float(max(60.0, round(float(params["dose_max"]), 1)))
+                    _agua_max = float(max(80.0, round(float(params["water_max"]), 1)))
+                    gramas       = st.number_input(
+                        "Dose Real — pó total (g)", 1.0, _dose_max,
+                        step=0.1, key="ext_gramas",
+                        help=(f"Peso do pó medido na balança. Total para "
+                              f"{n_doses} dose(s)." if _is_espresso
+                              else "Peso do pó medido na balança."))
+                    # Rótulo honesto: no espresso o campo é a BEBIDA na xícara;
+                    # nos coados é a ÁGUA DESPEJADA (parte fica retida no borra).
+                    _lbl_agua = ("Bebida real na xícara (g)" if _is_espresso
+                                 else "Água despejada — real (g)")
+                    agua         = st.number_input(_lbl_agua, 5.0, _agua_max,
                                                    step=1.0, key="ext_agua",
-                                                   help=f"Água/bebida real ({metodo}). Sugerido: "
-                                                        f"{params['yield']*multiplier:.0f}g")
+                                                   help=f"{metodo}. Sugerido: "
+                                                        f"{params['yield']:.0f}g")
+                    if not _is_espresso:
+                        _ret_m = RETENCAO_G_POR_G.get(metodo, RETENCAO_PADRAO)
+                        _liq = max(0.0, agua - gramas * _ret_m)
+                        st.caption(f"💧 Rendimento estimado na jarra: **{_liq:.0f} ml** "
+                                   f"({gramas * _ret_m:.0f} g retidos no borra). "
+                                   f"Divida em xícaras como preferir.")
                     # Brew ratio ao vivo (recalcula ao digitar dose/água)
                     _ratio = mc_core.brew_ratio(gramas, agua)
                     st.markdown(
@@ -3046,8 +3304,28 @@ def _view_nova_extracao(user_id):
                     temp_real    = st.number_input("Temperatura Real (°C)", 15.0, 100.0,
                                                    step=0.5, key="ext_temp")
                     if params.get("pressure") is not None:
-                        pressao_real = st.number_input("Pressão Real (bar)", 1.0, 20.0,
-                                                       step=0.5, key="ext_press")
+                        pressao_real = st.number_input(
+                            "Pressão da bomba (bar — valor nominal)", 1.0, 20.0,
+                            step=0.5, key="ext_press",
+                            help="Digite o valor da especificação da máquina ou do "
+                                 "manômetro. O app converte para a pressão EFETIVA "
+                                 "no bolo de café antes de avaliar a extração.")
+                        # Conversão nominal → efetiva. É a efetiva que entra no
+                        # diagnóstico; usar a nominal acusava adstringência falsa.
+                        _dp = mc_core.diagnostico_pressao(pressao_real, _maq_cfg or None)
+                        if _dp:
+                            pressao_efetiva_real = _dp["efetiva"]
+                            _cor = {"ideal": "#3DD68C", "alta": "#E85D5D",
+                                    "baixa": "#E8A33D"}[_dp["status"]]
+                            if _dp["convertida"]:
+                                st.markdown(
+                                    f'<div style="font-size:12px;color:{_cor};margin:-8px 0 8px">'
+                                    f'⚙️ <b>{_dp["nominal"]:.1f} bar nominais → '
+                                    f'{_dp["efetiva"]:.1f} bar efetivos no puck</b></div>',
+                                    unsafe_allow_html=True)
+                            st.caption(_dp["msg"])
+                        else:
+                            pressao_efetiva_real = pressao_real
                     else:
                         # Método filtrado/imersão: sem pressão da bomba → campo
                         # DESATIVADO (mesmo tipo de widget mantém a estrutura estável
@@ -3055,6 +3333,7 @@ def _view_nova_extracao(user_id):
                         st.number_input(f"Pressão da bomba — não se aplica ao {metodo}",
                                         0.0, 20.0, step=0.5, key="ext_press", disabled=True)
                         pressao_real = 0.0
+                        pressao_efetiva_real = 0.0
                     tds          = st.number_input("TDS Medido (%)", 0.0, 5.0,
                                                    step=0.01, key="ext_tds",
                                                    help="Opcional — refratômetro. Deixe 0 se não usar.")
@@ -3115,13 +3394,33 @@ def _view_nova_extracao(user_id):
                             f"⏱ <b>Fluxo {dir_t}:</b> você planejou {params['time']}s, "
                             f"mas extraiu em {tempo}s. Sugestão: {sugest}.")
     
-                    dt_yield = agua - params["yield"] * multiplier
-                    if abs(dt_yield) >= 5:
+                    # Tolerância proporcional: 5 g num espresso de 36 g é 14%,
+                    # mas num Chemex de 500 g é ruído. Usa 5 % do alvo (mín. 2 g).
+                    dt_yield = agua - params["yield"]
+                    _tol_y = max(2.0, float(params["yield"]) * 0.05)
+                    if abs(dt_yield) >= _tol_y:
                         dir_y = "abaixo" if dt_yield < 0 else "acima"
+                        _o = "Bebida" if _is_espresso else "Água despejada"
                         diagnosticos.append(
-                            f"💧 <b>Yield {dir_y} da meta:</b> planejou "
-                            f"{params['yield']*multiplier:.0f}g, real {agua:.0f}g "
+                            f"💧 <b>{_o} {dir_y} da meta:</b> planejou "
+                            f"{params['yield']:.0f}g, real {agua:.0f}g "
                             f"(Δ {dt_yield:+.0f}g).")
+
+                    # Espresso: o ratio real define QUAL estilo você fez de fato.
+                    # Sair da faixa do estilo escolhido é o desvio que importa.
+                    if _is_espresso and gramas > 0:
+                        _r_real = agua / gramas
+                        _r_alvo = float(params["ratio"])
+                        if abs(_r_real - _r_alvo) >= 0.25:
+                            _feito = min(
+                                ESPRESSO_STYLES,
+                                key=lambda k: abs(ESPRESSO_STYLES[k]["ratio"] - _r_real))
+                            _extra = (f" Esse ratio corresponde a um <b>{_feito}</b>, "
+                                      f"não a um {estilo_espresso}."
+                                      if _feito != estilo_espresso else "")
+                            diagnosticos.append(
+                                f"⚖️ <b>Ratio fora do estilo:</b> {estilo_espresso} pede "
+                                f"1:{_r_alvo:.1f}, você extraiu 1:{_r_real:.1f}.{_extra}")
     
                     dt_temp = temp_real - params["temp"]
                     if abs(dt_temp) >= 1.5:
@@ -3131,26 +3430,44 @@ def _view_nova_extracao(user_id):
                             f"{params['temp']}°C, real {temp_real:.1f}°C (Δ {dt_temp:+.1f}°C).")
     
                     if params.get("pressure") is not None:
-                        dt_press = pressao_real - params["pressure"]
-                        if abs(dt_press) >= 0.8:
-                            dir_p = "abaixo" if dt_press < 0 else "acima"
-                            diagnosticos.append(
-                                f"📊 <b>Pressão {dir_p} do target:</b> planejou "
-                                f"{params['pressure']:.1f} bar, real {pressao_real:.1f} bar "
-                                f"(Δ {dt_press:+.1f} bar).")
+                        # Compara EFETIVA vs target. A nominal (15 bar de máquina
+                        # doméstica) não é pressão de extração e gerava um desvio
+                        # falso de +6 bar contra o alvo de 9.
+                        _pe = mc_core.pressao_efetiva(pressao_real, _maq_cfg or None)
+                        if _pe is not None:
+                            dt_press = _pe - params["pressure"]
+                            if abs(dt_press) >= 0.8:
+                                dir_p = "abaixo" if dt_press < 0 else "acima"
+                                _sufixo = (f" — os {pressao_real:.1f} bar da bomba são "
+                                           f"especificação sem carga"
+                                           if abs(_pe - pressao_real) > 0.05 else "")
+                                diagnosticos.append(
+                                    f"📊 <b>Pressão {dir_p} do target:</b> planejou "
+                                    f"{params['pressure']:.1f} bar, efetiva {_pe:.1f} bar "
+                                    f"(Δ {dt_press:+.1f} bar){_sufixo}.")
     
+                    # Janela de EY por ESTILO: um ristretto extrai menos sólidos
+                    # que um lungo por construção. Julgar os dois pela mesma
+                    # faixa 18–22% condena o ristretto e absolve o lungo.
+                    if _is_espresso and estilo_espresso in ESPRESSO_STYLES:
+                        _ey_lo, _ey_hi = ESPRESSO_STYLES[estilo_espresso]["ey_alvo"]
+                        _ey_ctx = f" (janela do {estilo_espresso}: {_ey_lo:.0f}–{_ey_hi:.0f}%)"
+                    else:
+                        _ey_lo, _ey_hi = CoffeeEngine.EY_LOW, CoffeeEngine.EY_HIGH
+                        _ey_ctx = ""
+
                     if ey_real > 0:
-                        if ey_real < CoffeeEngine.EY_LOW:
+                        if ey_real < _ey_lo:
                             diagnosticos.append(
-                                f"⚡ <b>Sub-extração ({ey_real:.1f}%):</b> sabor raso e ácido — "
+                                f"⚡ <b>Sub-extração ({ey_real:.1f}%){_ey_ctx}:</b> sabor raso e ácido — "
                                 "experimente moagem mais fina ou tempo maior.")
-                        elif ey_real > CoffeeEngine.EY_HIGH:
+                        elif ey_real > _ey_hi:
                             diagnosticos.append(
-                                f"⚡ <b>Super-extração ({ey_real:.1f}%):</b> amargor e adstringência — "
+                                f"⚡ <b>Super-extração ({ey_real:.1f}%){_ey_ctx}:</b> amargor e adstringência — "
                                 "experimente moagem mais grossa ou tempo menor.")
                         else:
                             diagnosticos.append(
-                                f"✅ <b>EY dentro da janela de ouro ({ey_real:.1f}%)</b> — extração equilibrada.")
+                                f"✅ <b>EY dentro da janela ({ey_real:.1f}%){_ey_ctx}</b> — extração equilibrada.")
                         diagnosticos.append(
                             f"🧪 <b>Extraction Yield: {ey_real:.2f}%</b> — {m_real.get('status','')}.")
                     elif _ey_estimado > 0:
@@ -3219,14 +3536,23 @@ def _view_nova_extracao(user_id):
                          tempo_extracao,brew_ratio,ey,fluxo,foto_caneca,classificacao,notas,
                          crema_stars,corpo_stars,equilibrio_stars,acidez_stars,amargor_stars,
                          presenca_boca_stars,docura_stars,nota_final_stars,balanco_ideal,
-                         data_hora_extracao,user_id,temp_real,pressao_real)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                         data_hora_extracao,user_id,temp_real,pressao_real,
+                         pressao_efetiva,maquina_espresso,
+                         estilo_espresso,n_doses,ml_final)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                         (cid, data_ext, metodo, gramas, moedor, clicks, agua, tds, tempo,
                          m_real.get("ratio",0), ey_real, m_real.get("fluxo",0),
                          _b64(foto_can) if foto_can else None, nota_final_stars, notas_e,
                          crema_stars, corpo_stars, equilibrio_stars, acidez_stars, amargor_stars,
                          presenca_boca_stars, docura_stars, nota_final_stars, balanco_ideal,
-                         data_hora, user_id, temp_real, pressao_real))
+                         data_hora, user_id, temp_real, pressao_real,
+                         pressao_efetiva_real, maquina_espresso,
+                         estilo_espresso, n_doses,
+                         # Espresso: a bebida É o rendimento. Coado: desconta
+                         # o que o borra reteve da água despejada.
+                         round(agua, 1) if _is_espresso else
+                         round(max(0.0, agua - gramas * RETENCAO_G_POR_G.get(
+                             metodo, RETENCAO_PADRAO)), 1)))
                     if user_id and moedor:
                         _run("UPDATE usuarios SET last_grinder=%s, last_clicks=%s WHERE id=%s",
                              (moedor, clicks, user_id))
@@ -3348,15 +3674,27 @@ def _view_meus_cafes(user_id):
                             lbl = (f"Comprado em {c['data_compra'].strftime('%d/%m/%Y')}"
                                    if c.get("data_compra") else "Valor Pago")
                             st.metric(lbl, f"R$ {c['valor_compra']:.2f}")
-                            # Custo por xícara baseado na dose média das extrações
+                            # Custo por 100 ml de BEBIDA. "Custo/xícara" perdeu
+                            # sentido: um registro pode ser 3 shots de 27 ml ou
+                            # 500 ml de Chemex — a dose média misturava os dois.
                             _cexts = extracts_by_coffee.get(c["id"], [])
-                            _avg_dose = (sum(float(e["gramas"] or 0) for e in _cexts) / len(_cexts)
-                                         if _cexts else None)
-                            if _avg_dose and c.get("tamanho_pacote") and float(c["tamanho_pacote"]) > 0:
-                                _custo_xic = (float(c["valor_compra"])
-                                              / float(c["tamanho_pacote"]) * _avg_dose)
-                                st.metric("Custo/Xícara", f"R$ {_custo_xic:.2f}",
-                                          help=f"R${c['valor_compra']:.2f} ÷ {c['tamanho_pacote']}g × {_avg_dose:.1f}g/dose")
+                            _pkg = float(c.get("tamanho_pacote") or 0)
+                            if _cexts and _pkg > 0:
+                                _g_tot  = sum(float(e["gramas"] or 0) for e in _cexts)
+                                _ml_tot = sum(float(e.get("ml_final")
+                                                    or e.get("agua_alvo") or 0)
+                                              for e in _cexts)
+                                _preco_g = float(c["valor_compra"]) / _pkg
+                                if _ml_tot > 0:
+                                    _c100 = _preco_g * _g_tot / _ml_tot * 100
+                                    st.metric("Custo/100 ml", f"R$ {_c100:.2f}",
+                                              help=(f"R${c['valor_compra']:.2f} ÷ {_pkg:.0f}g "
+                                                    f"× {_g_tot:.0f}g de pó ÷ {_ml_tot:.0f}ml "
+                                                    f"de bebida × 100"))
+                                if _g_tot > 0:
+                                    _cdose = _preco_g * (_g_tot / len(_cexts))
+                                    st.metric("Custo/extração", f"R$ {_cdose:.2f}",
+                                              help=f"Média de {_g_tot/len(_cexts):.1f}g de pó por extração")
                         if c["avg_ey"]:   st.metric("EY Médio",   f"{c['avg_ey']:.1f}%")
                         if c["avg_nota"]: st.metric("Nota Média", _stars(round(c["avg_nota"])))
 
@@ -3493,8 +3831,21 @@ def _view_meus_cafes(user_id):
                             unsafe_allow_html=True)
                     else:
                         for e in extracts:
+                            # Espresso: o estilo e o nº de doses são a receita.
+                            # Coado: o que importa é o volume que foi para a jarra.
+                            _est_e = (e.get('estilo_espresso') or '').strip()
+                            _nd_e  = int(e.get('n_doses') or 1)
+                            _ml_e  = e.get('ml_final')
+                            if _est_e:
+                                _det = f"{_est_e}" + (f" ×{_nd_e}" if _nd_e > 1 else "")
+                            elif _ml_e:
+                                _det = f"{float(_ml_e):.0f} ml"
+                            else:
+                                _det = ""
                             ex_header = (f"📅 {e['data'].strftime('%d/%m/%Y')}  ·  "
-                                        f"{e['metodo']}  ·  {_stars(e['classificacao'] or 0)}")
+                                        f"{e['metodo']}"
+                                        + (f"  ·  {_det}" if _det else "")
+                                        + f"  ·  {_stars(e['classificacao'] or 0)}")
                             st.markdown(f"**{ex_header}**")
                             ex_col1, ex_col2, ex_col3 = st.columns([1, 2, 1.5], gap="large")
 
@@ -3587,7 +3938,20 @@ def _view_meus_cafes(user_id):
                                     ed_moedor = st.text_input("Moedor", value=e['moedor'] or "", key=f"tab3_ed_m_{e['id']}")
                                     ed_clicks = st.number_input("Clicks", value=int(e['clicks_moedor'] or 0), key=f"tab3_ed_cl_{e['id']}")
                                     ed_temp   = st.number_input("Temperatura (°C)", value=float(e.get('temp_real') or 0), step=0.5, key=f"tab3_ed_tp_{e['id']}")
-                                    ed_press  = st.number_input("Pressão (bar)", value=float(e.get('pressao_real') or 0), step=0.5, key=f"tab3_ed_pr_{e['id']}")
+                                    ed_press  = st.number_input("Pressão nominal (bar)", value=float(e.get('pressao_real') or 0), step=0.5, key=f"tab3_ed_pr_{e['id']}",
+                                                                help="Valor da bomba/spec. A pressão efetiva no puck é recalculada ao salvar.")
+                                    _ed_maq_opts = list(MAQUINAS_ESPRESSO.keys())
+                                    _ed_maq_cur  = e.get('maquina_espresso') or _ed_maq_opts[-1]
+                                    ed_maq = st.selectbox("Máquina", _ed_maq_opts,
+                                                          index=_ed_maq_opts.index(_ed_maq_cur)
+                                                                if _ed_maq_cur in _ed_maq_opts
+                                                                else len(_ed_maq_opts) - 1,
+                                                          key=f"tab3_ed_mq_{e['id']}")
+                                    _ed_pe = mc_core.pressao_efetiva(
+                                        ed_press, MAQUINAS_ESPRESSO.get(ed_maq))
+                                    if _ed_pe is not None and abs(_ed_pe - ed_press) > 0.05:
+                                        st.caption(f"⚙️ {ed_press:.1f} bar nominais → "
+                                                   f"{_ed_pe:.1f} bar efetivos no puck.")
                                 ed_notas = st.text_area("Comentários", value=e['notas'] or "", key=f"tab3_ed_n_{e['id']}", height=80)
 
                                 if st.button("💾 Salvar Edição", key=f"tab3_save_e_{e['id']}", use_container_width=True):
@@ -3595,12 +3959,16 @@ def _view_meus_cafes(user_id):
                                         """UPDATE extracoes SET
                                             gramas=%s, agua_alvo=%s, tempo_extracao=%s,
                                             tds=%s, moedor=%s, clicks_moedor=%s,
-                                            temp_real=%s, pressao_real=%s, notas=%s
+                                            temp_real=%s, pressao_real=%s,
+                                            pressao_efetiva=%s, maquina_espresso=%s,
+                                            notas=%s
                                             WHERE id=%s AND user_id=%s""",
                                         (ed_gramas, ed_agua, ed_tempo, ed_tds,
                                          ed_moedor or None, ed_clicks,
                                          ed_temp if ed_temp > 0 else None,
                                          ed_press if ed_press > 0 else None,
+                                         _ed_pe if ed_press > 0 else None,
+                                         ed_maq if ed_press > 0 else '',
                                          ed_notas, e['id'], user_id)
                                     )
                                     st.toast("Extração atualizada", icon="✅")
@@ -3677,7 +4045,8 @@ def _view_historico(user_id):
 
                     _fields = [("Dose", "gramas", "g", 1), ("Yield", "agua_alvo", "g", 1),
                                ("Ratio", None, "", None), ("Tempo", "tempo_extracao", "s", 0),
-                               ("Temp.", "temp_real", "°C", 1), ("Pressão", "pressao_real", "bar", 1),
+                               ("Temp.", "temp_real", "°C", 1),
+                               ("Pressão efetiva", "pressao_efetiva", "bar", 1),
                                ("TDS", "tds", "%", 2), ("EY", "ey", "%", 1),
                                ("Nota", "nota_final_stars", "/5", 0)]
                     _trs = ""
@@ -3775,7 +4144,9 @@ def _view_historico(user_id):
                 _csv_buf = _io.StringIO()
                 _csv_fields = ["data","cafe_nome","metodo","gramas","agua_alvo",
                                 "tempo_extracao","tds","ey","brew_ratio","nota_final_stars",
-                                "moedor","clicks_moedor","temp_real","pressao_real","notas"]
+                                "moedor","clicks_moedor","temp_real","pressao_real",
+                                "pressao_efetiva","maquina_espresso",
+                                "estilo_espresso","n_doses","ml_final","notas"]
                 _writer = csv.DictWriter(_csv_buf, fieldnames=_csv_fields, extrasaction="ignore")
                 _writer.writeheader()
                 _writer.writerows(rows)

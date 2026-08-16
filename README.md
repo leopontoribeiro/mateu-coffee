@@ -248,6 +248,72 @@ Se erro de conexão → volte ao STEP 7 e revise credenciais
    - Métricas resumidas: Total, Avaliação Média, Tempo Médio, Brew Ratio Médio
    - Exporta CSV
 
+---
+
+## ⚙️ MODELO DE EXTRAÇÃO — REGRAS DO SISTEMA
+
+Três invariantes. Quebrá-las produz diagnóstico errado; há testes travando cada uma.
+
+### 1. Pressão nominal ≠ pressão efetiva
+
+O `bar` da caixa ("15 bar", "20 bar") é o **pico da bomba vibratória sem carga**.
+Entre a bomba e o café existem OPV, perda de carga e a resistência do puck — a
+extração real fica em ~9 bar. Uma Oster Xpert Perfect Brew 15 bar extrai **dentro**
+da faixa SCA.
+
+- Registro: `MAQUINAS_ESPRESSO` em `mc_data.py` (`nominal` / `efetiva`)
+- Conversão: `mc_core.pressao_efetiva()` — **todo** diagnóstico usa a efetiva
+- Nunca julgar adstringência ou canalização pelo valor nominal
+
+### 2. Espresso não escala em ml
+
+Ristretto, normale e lungo são **ratios sobre a mesma dose**, não volumes
+diferentes da mesma bebida.
+
+| Estilo | Ratio | 18 g → | Tempo | Moagem | Janela EY |
+|---|---|---|---|---|---|
+| Ristretto | 1:1,5 | 27 ml | 25 s | mais fina | 17–20% |
+| Normale | 1:2,0 | 36 ml | 28 s | referência | 18–22% |
+| Lungo | 1:3,0 | 54 ml | 35 s | mais grossa | 20–23% |
+
+Mais volume = **mais doses (shots)**, cada uma com seu puck. Dobrar a água de um
+normale não faz um lungo: faz um normale aguado com EY estourado.
+
+- Registro: `ESPRESSO_STYLES` em `mc_data.py`
+- Cálculo: `mc_core.calcular_espresso(dose, estilo, n_doses)`
+- Limite de cesto 58 mm: 22 g por puck (`CESTO_CAPACIDADE_G`)
+
+### 3. Coados trabalham pelo líquido na jarra
+
+O pó retém ~2 g de água por grama e essa água nunca vira bebida. O usuário
+informa o **ml final na jarra**; o app calcula a água a despejar. A divisão em
+xícaras é do usuário.
+
+```
+dose = ml_final / (ratio - retencao)
+agua = dose * ratio
+```
+
+- Registro: `RETENCAO_G_POR_G` em `mc_data.py` — **fonte única**, também usada
+  pelo `CoffeeEngine` no cálculo de EY (duas tabelas fariam receita e EY divergir)
+- Cálculo: `mc_core.calcular_coado(ml_final, ratio, retencao)`
+
+### Unidade de consumo
+
+Métricas em **ml de bebida**, não em "xícaras". Um registro pode ser 3 shots de
+27 ml ou 500 ml de Chemex — contar registros como xícaras não significa nada.
+Custo é reportado por 100 ml e por extração.
+
+### Testes que travam o modelo
+
+| Arquivo | Cobre |
+|---|---|
+| `tests/test_pressao.py` | conversão nominal→efetiva, faixas, entradas inválidas |
+| `tests/test_dimensionamento.py` | estilos, nº de doses, cesto, retenção |
+| `tests/test_coerencia_modelo.py` | coerência entre camadas + import do app |
+
+---
+
 ### **Motor de Barista (Você)**
 
 Sempre que receber dados de extração:
