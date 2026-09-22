@@ -37,8 +37,8 @@
         --mc-font-mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
     }
 
-    /* ─── Tema escuro "Roast" — classe aplicada pelo toggle ───────── */
-    .mc-dark {
+    /* ─── Tema escuro "Roast" — ativo quando a página contém .mc-dark-flag (toggle) ─── */
+    :root:has(.mc-dark-flag), .mc-dark {
         --mc-bg: #131211;
         --mc-surface: #1C1A18;
         --mc-surface-2: #0D0C0B;
@@ -60,9 +60,9 @@
         --mc-roast-medium: #B8774A;
         --mc-roast-dark: #6B4630;
     }
-    .mc-dark .stApp { background-color: var(--mc-bg) !important; color: var(--mc-text) !important; }
-    .mc-dark [data-testid="stSidebar"] { background-color: var(--mc-surface) !important; }
-    .mc-dark [data-testid="stHeader"]  { background-color: var(--mc-bg) !important; }
+    :root:has(.mc-dark-flag) .stApp { background-color: var(--mc-bg) !important; color: var(--mc-text) !important; }
+    :root:has(.mc-dark-flag) [data-testid="stSidebar"] { background-color: var(--mc-surface) !important; }
+    :root:has(.mc-dark-flag) [data-testid="stHeader"]  { background-color: var(--mc-bg) !important; }
 
     /* ─── Tipografia base ─────────────────────────────────────────── */
     html, body, [class*="css"], .stApp, div, p, span, label,
@@ -1374,3 +1374,155 @@
     .mc-topbar-logo { border-radius: 12px; }
     .mc-login-hero img, [data-testid="stImage"] img, [data-testid="stImageContainer"] img { border-radius: 20px; }
     [data-baseweb="input"], [data-baseweb="base-input"] { border-color: transparent !important; background: transparent !important; }
+
+    /* ─── v4: ícones de traço (Material Symbols Rounded, sem preenchimento) ───
+       A regra global de fonte (span/div !important) quebraria as ligaduras dos
+       ícones; esta regra, mais específica, devolve a fonte de ícones. */
+    [data-testid="stIconMaterial"], .mc-ic,
+    span[style*="Material Symbols"], span[role="img"][translate="no"],
+    [data-testid*="Icon"][translate="no"], span[translate="no"][color] {
+        font-family: 'Material Symbols Rounded' !important;
+        font-weight: 400 !important;
+        font-style: normal !important;
+        letter-spacing: normal !important;
+        text-transform: none !important;
+        font-feature-settings: 'liga' !important;
+        font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20;
+        -webkit-font-smoothing: antialiased;
+    }
+    .mc-ic {
+        display: inline-block;
+        font-size: 1.2em;
+        line-height: 1;
+        vertical-align: -0.22em;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: ltr;
+    }
+
+    /* ─── v4: login dividido — o preto do logo ocupa meia tela ─────────
+       #010101 = cor da borda da arte do logo, para o painel emendar sem costura. */
+    .mc-login-hero {
+        background: #010101 !important;
+        border: 0 !important;
+        text-align: center;
+    }
+    .mc-login-hero img {
+        width: 100% !important;
+        max-width: 560px !important;
+        border-radius: 0 !important;
+        filter: none !important;
+        display: block;
+        margin: 0 auto;
+    }
+    .mc-login-hero .mc-login-tagline { color: #B8B0A8 !important; }
+    @media (min-width: 900px) {
+        .mc-login-hero {
+            position: fixed;
+            top: 0; left: 0; bottom: 0;
+            width: 50vw;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 48px !important;
+            margin: 0 !important;
+            z-index: 2;
+        }
+        .mc-login-hero img { max-width: min(560px, 90%) !important; }
+        .block-container:has(.mc-login-hero) {
+            margin-left: 50vw !important;
+            margin-right: 0 !important;
+            max-width: 50vw !important;
+            padding: 14vh 6vw 3rem !important;
+        }
+        [data-testid="stHeader"]:has(~ * .mc-login-hero) { background: transparent !important; }
+    }
+    @media (max-width: 899px) {
+        .mc-login-hero {
+            margin: -0.75rem -0.85rem 1.5rem !important;
+            padding: 2rem 1rem 1.5rem !important;
+        }
+    }
+    /* Funde a vinheta cinza da arte no preto do painel (sem alterar o arquivo) */
+    .mc-login-hero img {
+        -webkit-mask-image: radial-gradient(ellipse 70% 70% at center, #000 55%, transparent 100%);
+        mask-image: radial-gradient(ellipse 70% 70% at center, #000 55%, transparent 100%);
+    }
+
+    /* ─── v4: tags do multiselect — texto grafite sobre laranja (5.6:1) ─── */
+    [data-baseweb="tag"] { background: var(--mc-orange) !important; }
+    [data-baseweb="tag"], [data-baseweb="tag"] * { color: var(--mc-on-orange) !important; }
+    /* Botões nunca quebram o rótulo no meio da palavra */
+    .stButton button p, .stFormSubmitButton button p { white-space: nowrap; }
+
+    /* ─── v4: botões secundários seguem o tema (antes ficavam com o claro nativo) ─── */
+    .stButton button[kind="secondary"], .stDownloadButton button,
+    [data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-secondaryFormSubmit"] {
+        background: var(--mc-surface-3) !important;
+        color: var(--mc-text) !important;
+        border: 1px solid var(--mc-border) !important;
+    }
+    .stButton button[kind="secondary"]:hover, .stDownloadButton button:hover,
+    [data-testid="stBaseButton-secondary"]:hover {
+        border-color: var(--mc-border-strong) !important;
+    }
+
+    /* ─── v4: tema escuro — texto dos widgets nativos (que usam o textColor claro do config) ─── */
+    :root:has(.mc-dark-flag) .stApp :is(
+        [data-testid="stMarkdownContainer"], [role="radiogroup"] label,
+        [data-testid="stCheckbox"] label, [data-testid="stToggle"] label,
+        [data-testid="stExpander"] summary, [data-testid="stCaptionContainer"],
+        [data-testid="stFileUploaderDropzone"], [data-testid="stText"],
+        [data-baseweb="select"] div, [data-baseweb="popover"] li) {
+        color: var(--mc-text);
+    }
+    :root:has(.mc-dark-flag) [data-testid="stFileUploaderDropzone"],
+    :root:has(.mc-dark-flag) [data-testid="stExpander"] details,
+    :root:has(.mc-dark-flag) [data-baseweb="popover"] ul {
+        background: var(--mc-surface) !important;
+    }
+    :root:has(.mc-dark-flag) [data-testid="stAlert"] > div {
+        background: var(--mc-surface-3) !important;
+        color: var(--mc-text) !important;
+    }
+    /* Botão primário: texto grafite sobre laranja nos dois temas (5.6:1) */
+    [data-testid^="stBaseButton-primary"], [data-testid^="stBaseButton-primary"] * {
+        color: var(--mc-on-orange) !important;
+    }
+
+    /* ─── v4: borda dos campos no invólucro (evita corte da borda no mobile) ─── */
+    [data-testid="stTextInput"] [data-baseweb="input"],
+    [data-testid="stNumberInput"] [data-baseweb="input"],
+    [data-testid="stDateInput"] [data-baseweb="input"],
+    [data-testid="stTimeInput"] [data-baseweb="input"] {
+        border: 1px solid var(--mc-border-strong) !important;
+        border-radius: 8px !important;
+        background: var(--mc-surface) !important;
+        overflow: hidden;
+    }
+    [data-testid="stTextInput"] [data-baseweb="input"]:focus-within,
+    [data-testid="stNumberInput"] [data-baseweb="input"]:focus-within,
+    [data-testid="stDateInput"] [data-baseweb="input"]:focus-within,
+    [data-testid="stTimeInput"] [data-baseweb="input"]:focus-within {
+        border-color: var(--mc-orange) !important;
+        box-shadow: 0 0 0 2px var(--mc-orange-ink) !important;
+    }
+    .stTextInput input, .stNumberInput input, .stDateInput input, .stTimeInput input,
+    [data-testid="stTextInput"] input, [data-testid="stNumberInput"] input,
+    [data-testid="stDateInput"] input {
+        border: 0 !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+    }
+
+    /* Login mobile: a faixa preta encosta no topo (sem vão do header) */
+    @media (max-width: 899px) {
+        .block-container:has(.mc-login-hero) { padding-top: 0 !important; }
+        [data-testid="stHeader"] { background: transparent !important; }
+        .mc-login-hero { margin-top: -14px !important; padding-top: 3.25rem !important; }
+    }
+    /* Login: blocos que só injetam <style> não ocupam espaço (o <style> continua valendo) */
+    .block-container:has(.mc-login-hero) [data-testid="stElementContainer"]:has(style):not(:has(.mc-login-hero)):not(:has(form)):not(:has(input)) {
+        display: none !important;
+    }

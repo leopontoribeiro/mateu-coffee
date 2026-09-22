@@ -108,14 +108,14 @@ def ask_barista_expert(pergunta: str, history: list | None = None) -> str:
 
     _log.error("Gemini: cota esgotada em todos os modelos")
     return (
-        "⚠️ Cota da API Gemini esgotada em todos os modelos disponíveis. "
+        "Cota da API Gemini esgotada em todos os modelos disponíveis. "
         "Ative o faturamento em aistudio.google.com para continuar usando o Barista Expert."
     )
 
 # ── Page config ────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Mateu Coffee Production",
-    page_icon="☕",
+    page_icon=":material/coffee:",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -262,7 +262,7 @@ def _show_logo() -> None:
     else:
         st.markdown("""
         <div class="app-header">
-          <div style="font-size:32px">☕</div>
+          <div style="font-size:32px"><span class=mc-ic>coffee</span></div>
           <div>
             <div class="app-header-title">Mateu Coffee Production</div>
             <div class="app-header-sub">Cadastro · Extração · Análise · Histórico</div>
@@ -480,7 +480,7 @@ def _render_foto(tabela: str, row: dict, user_id: int, w: int = 150) -> Optional
         return None
 
     st.markdown(_ph(), unsafe_allow_html=True)
-    if st.button(f"📷 Ver foto ({peso/1048576:.1f} MB)",
+    if st.button(f":material/photo_camera: Ver foto ({peso/1048576:.1f} MB)",
                  key=f"btn{chave}", use_container_width=True):
         st.session_state[chave] = True
         st.rerun()
@@ -1398,7 +1398,7 @@ def _irow(k: str, v: str) -> str:
 def _ph() -> str:
     return ('<div style="width:150px;height:150px;background:var(--mc-surface-2);border:1px solid var(--mc-border);'
             'border-radius:10px;display:flex;align-items:center;justify-content:center;'
-            'color:var(--mc-border-strong);font-size:36px;">☕</div>')
+            'color:var(--mc-border-strong);font-size:36px;"><span class=mc-ic>coffee</span></div>')
 
 
 # ── IA helpers ─────────────────────────────────────────────────────────
@@ -1499,7 +1499,7 @@ Seja técnico, direto e acessível. Responda em português brasileiro. Entre 250
             if "429" in str(_e) or "quota" in str(_e).lower():
                 continue
             raise
-    return "⚠️ Cota Gemini esgotada. Ative o faturamento em aistudio.google.com."
+    return "Cota Gemini esgotada. Ative o faturamento em aistudio.google.com."
 
 # ── Brand wordmark ─────────────────────────────────────────────────────
 
@@ -1514,7 +1514,7 @@ def _wordmark_html(size: str = "hero", with_tag: bool = True) -> str:
     return (
         f'<div class="mc-mark mc-mark-{size}">'
         f'  <div class="mc-mark-row">'
-        f'    <span class="mc-mark-icon">☕</span>'
+        f'    <span class="mc-mark-icon"><span class=mc-ic>coffee</span></span>'
         f'    <span class="mc-mark-mateu">MATEU</span>'
         f'    <span class="mc-mark-coffee">COFFEE</span>'
         f'  </div>'
@@ -1635,7 +1635,7 @@ def _render_recipe(r: dict) -> None:
 
     # Fonte
     st.markdown(
-        f'<p class="mc-recipe-source">📖 Receita-referência: {r["fonte"]}</p>',
+        f'<p class="mc-recipe-source"><span class=mc-ic>menu_book</span> Receita-referência: {r["fonte"]}</p>',
         unsafe_allow_html=True)
 
     # Botão para aplicar receita na aba Nova Extração
@@ -1657,7 +1657,7 @@ def _render_recipe(r: dict) -> None:
     except Exception:
         _tempo_match = None
 
-    if st.button(f"⚡ Usar esta receita na Nova Extração",
+    if st.button(f":material/bolt: Usar esta receita na Nova Extração",
                  key=f"use_recipe_{r['nome'].replace(' ','_')}",
                  use_container_width=True, type="primary"):
         st.session_state["_recipe_applied"] = {
@@ -1667,7 +1667,7 @@ def _render_recipe(r: dict) -> None:
             "tempo":   _tempo_match,
             "moagem":  _moagem_match,
         }
-        st.success("✓ Receita aplicada! Vá para ⚡ Nova Extração.")
+        st.success(":material/check: Receita aplicada! Vá para :material/bolt: Nova Extração.")
 
 # Classificação oficial do café (substitui o campo Fazenda na UI)
 
@@ -1831,7 +1831,7 @@ def _dial_in_recomendacao(coffee_id: int, metodo: str, user_id: int) -> dict:
             else:
                 _alt = "repita esse ajuste"
             recs.append({
-                "icone": "🎯", "cor": "#D97732",
+                "icone": "<span class=mc-ic>target</span>", "cor": "#D97732",
                 "titulo": f"Ponto doce: {sweet_clicks} clicks" + (f" ({_moedor})" if _moedor else ""),
                 "acao": f"Melhor resultado desse café ({_por})",
                 "alternativa": _alt,
@@ -1841,21 +1841,21 @@ def _dial_in_recomendacao(coffee_id: int, metodo: str, user_id: int) -> dict:
     if avg_ey > 0:
         if avg_ey < 18.0:
             recs.append({
-                "icone": "⬇️", "cor": "#AE3B2A",
+                "icone": "<span class=mc-ic>download</span>", "cor": "#AE3B2A",
                 "titulo": f"Sub-extração (EY médio {avg_ey:.1f}%)",
                 "acao": "Afine a moagem 1–2 clicks" if last_clicks > 0 else "Afine a moagem",
                 "alternativa": f"ou aumente o tempo em 2–3s (atual: {avg_tempo:.0f}s)"
             })
         elif avg_ey > 22.0:
             recs.append({
-                "icone": "⬆️", "cor": "#8A5A00",
+                "icone": "<span class=mc-ic>arrow_upward</span>", "cor": "#8A5A00",
                 "titulo": f"Super-extração (EY médio {avg_ey:.1f}%)",
                 "acao": "Abra a moagem 1–2 clicks" if last_clicks > 0 else "Abra a moagem",
                 "alternativa": f"ou reduza o tempo em 2–3s (atual: {avg_tempo:.0f}s)"
             })
         else:
             recs.append({
-                "icone": "✅", "cor": "#2D6E48",
+                "icone": "<span class=mc-ic>check_circle</span>", "cor": "#2D6E48",
                 "titulo": f"EY na janela ideal ({avg_ey:.1f}%)",
                 "acao": "Mantenha os parâmetros",
                 "alternativa": "extração equilibrada"
@@ -1865,14 +1865,14 @@ def _dial_in_recomendacao(coffee_id: int, metodo: str, user_id: int) -> dict:
     if not com_ey:
         if avg_tempo < 22 and metodo == "Espresso":
             recs.append({
-                "icone": "⚡", "cor": "#AE3B2A",
+                "icone": "<span class=mc-ic>bolt</span>", "cor": "#AE3B2A",
                 "titulo": f"Fluxo rápido (média {avg_tempo:.0f}s)",
                 "acao": "Afine a moagem para aumentar resistência",
                 "alternativa": "meta: 25–32s para espresso"
             })
         elif avg_tempo > 38 and metodo == "Espresso":
             recs.append({
-                "icone": "🐌", "cor": "#8A5A00",
+                "icone": "<span class=mc-ic>hourglass_bottom</span>", "cor": "#8A5A00",
                 "titulo": f"Fluxo lento (média {avg_tempo:.0f}s)",
                 "acao": "Abra a moagem para aumentar fluxo",
                 "alternativa": "meta: 25–32s para espresso"
@@ -1881,7 +1881,7 @@ def _dial_in_recomendacao(coffee_id: int, metodo: str, user_id: int) -> dict:
     # Avaliação sensorial baixa
     if avg_nota > 0 and avg_nota < 2.5 and not recs:
         recs.append({
-            "icone": "⭐", "cor": "#2A6283",
+            "icone": "<span class=mc-ic>star</span>", "cor": "#2A6283",
             "titulo": f"Nota sensorial baixa (média {avg_nota:.1f}/5)",
             "acao": "Mude UMA variável por vez: moagem → observe → ajuste",
             "alternativa": "anote o resultado de cada ajuste"
@@ -1943,30 +1943,59 @@ def _motor_barista_params(metodo: str, torra: str, tipo: str) -> dict:
 
     return p
 
+def _chart_pal(dark: bool = False) -> dict:
+    """Cores dos gráficos Plotly no tema claro (padrão v4) ou escuro."""
+    if dark:
+        return {"grid": "#2A2724", "muted": "#948B82", "label": "#B8B0A8",
+                "series": ["#D97732", "#F3EFEA", "#948B82", "#E8914F", "#E6C39A"]}
+    return {"grid": "#E3DDD4", "muted": "#6F655C", "label": "#574E46",
+            "series": ["#D97732", "#1C1714", "#8F857A", "#A4501A", "#E6C39A"]}
+
 @st.cache_data(ttl=86400, show_spinner=False)
-def _radar(profile: tuple) -> go.Figure:
+def _radar(profile: tuple, dark: bool = False) -> go.Figure:
+    _c = _chart_pal(dark)
     attrs = CoffeeEngine.ATTRS
     fig   = go.Figure()
     fig.add_trace(go.Scatterpolar(
         r=CoffeeEngine.TARGET, theta=attrs, fill='toself',
-        name='Target', line_color='#6F655C', fillcolor='rgba(111,101,92,0.10)'))
+        name='Target', line_color=_c['muted'], fillcolor='rgba(111,101,92,0.10)'))
     fig.add_trace(go.Scatterpolar(
         r=profile, theta=attrs, fill='toself',
         name='Atual', line_color='#D97732', fillcolor='rgba(232,114,46,0.22)'))
     fig.update_layout(
         polar=dict(
             bgcolor='rgba(0,0,0,0)',
-            radialaxis=dict(visible=True, range=[0,10], gridcolor='#E3DDD4',
-                            linecolor='#E3DDD4', tickfont=dict(color='#6F655C', size=9)),
-            angularaxis=dict(gridcolor='#E3DDD4', linecolor='#E3DDD4',
-                             tickfont=dict(color='#574E46', size=10))),
+            radialaxis=dict(visible=True, range=[0,10], gridcolor=_c['grid'],
+                            linecolor=_c['grid'], tickfont=dict(color=_c['muted'], size=9)),
+            angularaxis=dict(gridcolor=_c['grid'], linecolor=_c['grid'],
+                             tickfont=dict(color=_c['label'], size=10))),
         showlegend=True,
-        legend=dict(font=dict(color='#574E46', size=11), bgcolor='rgba(0,0,0,0)'),
+        legend=dict(font=dict(color=_c['label'], size=11), bgcolor='rgba(0,0,0,0)'),
         height=280, margin=dict(l=20,r=20,t=20,b=20),
         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='#574E46', size=11, family='Geist'),
+        font=dict(color=_c['label'], size=11, family='Geist'),
     )
     return fig
+
+# ── Tema dos iframes (Motor Barista, cronômetro, timer) ─────────────────
+# Os componentes em iframe não enxergam as variáveis CSS da página; os
+# templates são escritos na paleta clara (v4) e trocados para a escura aqui.
+# "#1C1713" é o texto sobre laranja: fica escuro nos dois temas de propósito.
+_IFRAME_DARK = {
+    "#F6F3EE": "#131211", "#FFFFFF": "#1C1A18", "#EDE8E1": "#0D0C0B",
+    "#E6E0D7": "#24211E", "#E3DDD4": "#2A2724", "#8F857A": "#716A63",
+    "#1C1714": "#F3EFEA", "#574E46": "#B8B0A8", "#6F655C": "#948B82",
+    "#A4501A": "#E8914F", "#FBE9DA": "#2E1D11", "#2D6E48": "#6CC08E",
+    "#C96A28": "#E8883A",
+}
+
+def _iframe_theme(html_src: str) -> str:
+    """Aplica o tema escolhido (claro/escuro) a um template de iframe."""
+    if not st.session_state.get("_dark_mode"):
+        return html_src
+    for _lt, _dk in _IFRAME_DARK.items():
+        html_src = html_src.replace(_lt, _dk)
+    return html_src.replace("rgba(232,114,46,0.18)", "rgba(217,119,50,0.28)")
 
 # ── Motor Barista HTML ─────────────────────────────────────────────────
 _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
@@ -1975,6 +2004,7 @@ _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500&display=swap">
 <style>
   :root {
     --bg:      #F6F3EE;
@@ -1984,23 +2014,24 @@ _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
     --label:   #574E46;
     --accent:  #D97732;
     --accent2: #C96A28;
+    --accent-ink: #A4501A;
     --border:  #E3DDD4;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);padding:16px 4px 4px}
+  body{font-family:Geist,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);padding:16px 4px 4px}
   .layout{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   @media(max-width:680px){.layout{grid-template-columns:1fr}}
-  .card{background:var(--card);border-radius:8px;padding:18px;border:1px solid var(--border)}
-  .card h2{color:var(--accent);font-size:11pt;margin-bottom:16px;border-left:3px solid var(--accent);padding-left:9px;font-weight:700}
+  .card{background:var(--card);border-radius:16px;padding:18px;border:1px solid var(--border)}
+  .card h2{color:var(--text);font-size:11pt;margin-bottom:16px;font-weight:600;letter-spacing:-.01em}
   .cg{margin-bottom:14px}
   .cl{display:flex;justify-content:space-between;font-weight:600;font-size:9.5pt;margin-bottom:4px}
-  .cl span{color:var(--accent)}
+  .cl span{color:var(--accent-ink);font-family:'Geist Mono',monospace;font-weight:500}
   input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4px}
   .ht{font-size:7.5pt;color:var(--muted);margin-top:3px;line-height:1.4}
   .chart-wrap{position:relative;height:260px;width:100%}
   .results{margin-top:14px;background:#EDE8E1;border-radius:8px;padding:14px;border:1px solid var(--border)}
-  .rt{font-size:9.5pt;font-weight:700;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.08em}
-  .vb{font-size:11pt;font-weight:700;color:#1C1714;background:#FBE9DA;padding:10px 12px;border-radius:6px;margin-bottom:8px}
+  .rt{font-size:9.5pt;font-weight:600;color:var(--accent-ink);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.08em}
+  .vb{font-size:11pt;font-weight:600;color:#1C1714;background:#FBE9DA;padding:10px 12px;border-radius:6px;margin-bottom:8px}
   .vd{font-size:9pt;color:var(--label);line-height:1.55}
 </style>
 </head>
@@ -2173,17 +2204,18 @@ _TIMER_HTML = """<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500&display=swap">
 <style>
   :root{--bg:      #F6F3EE;--card:#FFFFFF;--text:#1C1714;--accent:#D97732;--border:#E3DDD4;--muted:#6F655C;}
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;background:var(--bg);padding:10px 0 0}
+  body{font-family:Geist,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);padding:10px 0 0}
   .wrap{display:flex;align-items:center;gap:16px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 18px;flex-wrap:wrap}
-  .disp{font-size:40px;font-weight:800;color:var(--text);letter-spacing:-0.03em;font-variant-numeric:tabular-nums;min-width:110px}
+  .disp{font-family:'Geist Mono',monospace;font-size:40px;font-weight:500;color:var(--text);letter-spacing:-0.03em;font-variant-numeric:tabular-nums;min-width:110px}
   .disp.run{color:var(--accent)}
   .btns{display:flex;gap:8px;flex-wrap:wrap}
   button{background:#EDE8E1;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-weight:600;padding:9px 16px;cursor:pointer;transition:all .15s;white-space:nowrap}
   button:hover{background:#E6E0D7;border-color:#8F857A}
-  .btn-go{background:var(--accent);border-color:var(--accent);color:#1C1714}
+  .btn-go{background:var(--accent);border-color:var(--accent);color:#1C1713}
   .btn-go:hover{background:#C96A28}
   .laps{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
   .lap{background:#EDE8E1;border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:11px;color:var(--muted);font-weight:600}
@@ -2195,23 +2227,23 @@ _TIMER_HTML = """<!DOCTYPE html>
   <div id="disp" class="disp">0:00.0</div>
   <div style="flex:1">
     <div class="btns">
-      <button class="btn-go" id="btn" onclick="toggle()">▶ Iniciar</button>
-      <button onclick="lap()">⚑ Lap</button>
-      <button onclick="reset()">↺ Zerar</button>
+      <button class="btn-go" id="btn" onclick="toggle()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><polygon points="6 3 20 12 6 21 6 3"/></svg> Iniciar</button>
+      <button onclick="lap()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg> Volta</button>
+      <button onclick="reset()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Zerar</button>
     </div>
     <div class="laps" id="laps"></div>
-    <div class="note" id="note">Pressione ▶ quando começar a extração</div>
+    <div class="note" id="note">Toque em Iniciar quando começar a extração</div>
   </div>
 </div>
 <script>
 let ms=0,iv=null,laps=[];
 function fmt(ms){const s=Math.floor(ms/1000),m=Math.floor(s/60);return m+':'+(s%60).toString().padStart(2,'0')+'.'+Math.floor((ms%1000)/100);}
 function toggle(){
-  if(iv){clearInterval(iv);iv=null;document.getElementById('btn').textContent='▶ Continuar';document.getElementById('disp').className='disp';document.getElementById('note').textContent='Pausado — '+fmt(ms);}
-  else{const t=Date.now()-ms;iv=setInterval(()=>{ms=Date.now()-t;document.getElementById('disp').textContent=fmt(ms);},50);document.getElementById('btn').textContent='⏸ Pausar';document.getElementById('disp').className='disp run';document.getElementById('note').textContent='Cronômetro rodando...';}
+  if(iv){clearInterval(iv);iv=null;document.getElementById('btn').innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><polygon points="6 3 20 12 6 21 6 3"/></svg> Continuar';document.getElementById('disp').className='disp';document.getElementById('note').textContent='Pausado — '+fmt(ms);}
+  else{const t=Date.now()-ms;iv=setInterval(()=>{ms=Date.now()-t;document.getElementById('disp').textContent=fmt(ms);},50);document.getElementById('btn').innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg> Pausar';document.getElementById('disp').className='disp run';document.getElementById('note').textContent='Cronômetro rodando...';}
 }
 function lap(){laps.push(fmt(ms));const el=document.getElementById('laps');el.innerHTML=laps.map((l,i)=>`<span class="lap">#${i+1} ${l}</span>`).join('');}
-function reset(){clearInterval(iv);iv=null;ms=0;laps=[];document.getElementById('disp').textContent='0:00.0';document.getElementById('disp').className='disp';document.getElementById('btn').textContent='▶ Iniciar';document.getElementById('laps').innerHTML='';document.getElementById('note').textContent='Pressione ▶ quando começar a extração';}
+function reset(){clearInterval(iv);iv=null;ms=0;laps=[];document.getElementById('disp').textContent='0:00.0';document.getElementById('disp').className='disp';document.getElementById('btn').innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><polygon points="6 3 20 12 6 21 6 3"/></svg> Iniciar';document.getElementById('laps').innerHTML='';document.getElementById('note').textContent='Toque em Iniciar quando começar a extração';}
 </script>
 </body>
 </html>"""
@@ -2223,6 +2255,8 @@ function reset(){clearInterval(iv);iv=null;ms=0;laps=[];document.getElementById(
 # para a próxima etapa. Placeholders __TARGET__/__STAGES__/__CHECKED__/
 # __SWDISP__/__NSTAGES__ são injetados em Python via .replace().
 _EXT_TIMER_TPL = """
+<meta charset="UTF-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500&display=swap">
 <div style="font-family:Geist,system-ui,sans-serif;background:#FFFFFF;
 border:1px solid #E3DDD4;border-radius:12px;padding:12px 14px">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
@@ -2235,14 +2269,14 @@ border:1px solid #E3DDD4;border-radius:12px;padding:12px 14px">
       color:#1C1714;font-size:13px;font-weight:700;padding:5px 6px;text-align:center">
       <span>s</span>
       <button id="tb" title="Testar som" style="background:transparent;border:1px solid #8F857A;
-      border-radius:6px;color:#A4501A;font-size:14px;padding:4px 8px;cursor:pointer">&#128276;</button>
+      border-radius:6px;color:#A4501A;font-size:14px;padding:4px 8px;cursor:pointer;line-height:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
     </div>
   </div>
   <div id="t" style="font-family:'Geist Mono',ui-monospace,monospace;font-weight:500;letter-spacing:-.02em;font-size:48px;
   color:#1C1714;line-height:1;margin:10px 0 12px;text-align:center;transition:color .2s">0.0<span style="font-size:19px"> s</span></div>
   <div style="display:flex;gap:8px;justify-content:center">
     <button id="s" style="flex:1;max-width:200px;padding:12px;border-radius:9px;border:none;
-    background:#D97732;color:#1C1714;font-weight:700;font-size:15px;cursor:pointer">Iniciar</button>
+    background:#D97732;color:#1C1713;font-weight:600;font-size:15px;cursor:pointer">Iniciar</button>
     <button id="r" style="flex:0 0 auto;padding:12px 18px;border-radius:9px;
     border:1px solid #8F857A;background:transparent;color:#574E46;font-weight:600;
     font-size:15px;cursor:pointer">Zerar</button>
@@ -2279,7 +2313,7 @@ function es(){return nowMs()/1000;}
 function fmtT(s){var m=Math.floor(s/60),x=Math.floor(s%60);return m>0?(m+':'+(x<10?'0':'')+x):(x+' s');}
 function alarms(){var l=[];if(sw.checked){STAGES.forEach(function(s){if(s.t<TARGET&&s.t>0)l.push({t:s.t,label:s.label,k:'e'});});}
   l.push({t:TARGET,label:'Tempo alvo',k:'f'});l.sort(function(a,b){return a.t-b.t;});return l;}
-function setBtn(txt,bg){sb.textContent=txt;sb.style.background=bg;sb.style.color=(bg==='transparent'?'#574E46':'#1C1714');}
+function setBtn(txt,bg){sb.innerHTML=txt;sb.style.background=bg;sb.style.color=(bg==='transparent'?'#574E46':(bg==='#D97732'?'#1C1713':'#FFFFFF'));}
 function say(html,color){banner.innerHTML=html;banner.style.color=color||'#1C1714';}
 function renderChips(){var al=alarms();stg.innerHTML=al.map(function(a){
   return '<span class="mchip" data-t="'+a.t+'" data-k="'+a.k+'" style="border:1px solid '
@@ -2297,8 +2331,8 @@ function nextUnfired(after){var al=alarms();for(var i=0;i<al.length;i++){if(al[i
 function fireStage(a){fired[a.k+a.t]=1;longAlarm(5);buzz([500,170,500,170,500,170,600]);flash(a.k==='f');
   acc=a.t*1000;t0=null;running=false;cancelAnimationFrame(raf);
   el.innerHTML=a.t.toFixed(1)+'<span style="font-size:19px"> s</span>';
-  if(a.k==='f'){setBtn('Concluído ✓','#2D6E48');say('✓ Tempo alvo <b>'+fmtT(a.t)+'</b> atingido — <b>pare a extração!</b>','#2D6E48');}
-  else{var nx=nextUnfired(a.t);setBtn('▶ Continuar','#2D6E48');
+  if(a.k==='f'){setBtn('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M20 6 9 17l-5-5"/></svg> Concluído','#2D6E48');say('Tempo alvo <b>'+fmtT(a.t)+'</b> atingido — <b>pare a extração!</b>','#2D6E48');}
+  else{var nx=nextUnfired(a.t);setBtn('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><polygon points="6 3 20 12 6 21 6 3"/></svg> Continuar','#2D6E48');
     say('Etapa <b>'+fmtT(a.t)+'</b>: '+a.label+(nx?'<br><span style="color:#6F655C">próxima: '+fmtT(nx.t)+' · '+nx.label+'</span>':''),'#1C1714');}
   paint();}
 function check(){var e=es(),al=alarms();for(var i=0;i<al.length;i++){var a=al[i];if(!fired[a.k+a.t]&&e>=a.t){fireStage(a);return;}}}
@@ -2306,7 +2340,7 @@ function tick(){el.innerHTML=(nowMs()/1000).toFixed(1)+'<span style="font-size:1
 function startRun(){au();stopAlarm();if(t0===null)t0=performance.now();running=true;setBtn('Pausar','#D97732');
   var nx=nextUnfired(-1);say(nx?'Cronometrando… próxima: <b>'+fmtT(nx.t)+'</b> · '+nx.label:'Cronometrando…','#6F655C');tick();}
 sb.onclick=function(){if(running){acc=nowMs();t0=null;running=false;cancelAnimationFrame(raf);stopAlarm();
-  setBtn('▶ Continuar','#2D6E48');say('Pausado — '+(nowMs()/1000).toFixed(1)+'s','#6F655C');}else{startRun();}};
+  setBtn('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><polygon points="6 3 20 12 6 21 6 3"/></svg> Continuar','#2D6E48');say('Pausado — '+(nowMs()/1000).toFixed(1)+'s','#6F655C');}else{startRun();}};
 rb.onclick=function(){cancelAnimationFrame(raf);stopAlarm();t0=null;acc=0;running=false;fired={};
   el.innerHTML='0.0<span style="font-size:19px">s</span>';el.style.color='#1C1714';setBtn('Iniciar','#D97732');
   say('Toque em Iniciar — o timer para em cada etapa até você tocar Continuar.','#6F655C');renderChips();paint();};
@@ -2433,7 +2467,7 @@ def _aviso_legal_pendente():
         st.warning(
             "Documento em rascunho: falta preencher " + ", ".join(faltando) +
             ". Edite `mc_legal.py` antes de abrir o cadastro ao público.",
-            icon="✏️")
+            icon=":material/edit:")
 
 
 @st.dialog("Termos de Uso")
@@ -2533,7 +2567,7 @@ def _view_barista(user_id):
                     </p>
                     <p style="margin:6px 0 0;color:var(--mc-text-3);font-size:12px">{_html.escape(bc['regiao'] or '—')}</p>
                     <p style="margin:8px 0 0;color:var(--mc-text);font-size:11px">{_html.escape(bc['notas'] or '(sem notas)')}</p>
-                    <p style="margin:8px 0 0;font-size:18px;color:var(--mc-orange-ink)">{'⭐' * int(bc['classificacao'])}</p>
+                    <p style="margin:8px 0 0;font-size:18px;color:var(--mc-orange-ink)">{'★' * int(bc['classificacao'])}</p>
                 </div>
                 """, unsafe_allow_html=True)
             else:
@@ -2572,9 +2606,9 @@ def _view_barista(user_id):
             st.markdown(f"""
             <div style="background:#D97732;
             border-radius:12px;padding:16px;margin:0;color:var(--mc-on-orange)">
-                <p style="margin:0 0 8px;font-weight:700;font-size:14px">🎯 {_html.escape(_dica_titulo)}</p>
+                <p style="margin:0 0 8px;font-weight:700;font-size:14px"><span class=mc-ic>target</span> {_html.escape(_dica_titulo)}</p>
                 <p style="margin:0;font-size:12px;line-height:1.6">{_html.escape(_dica_texto)}</p>
-                <p style="margin:12px 0 0;font-size:11px;opacity:0.9">💡 Use o chat abaixo para perguntas específicas</p>
+                <p style="margin:12px 0 0;font-size:11px;opacity:0.9"><span class=mc-ic>lightbulb</span> Use o chat abaixo para perguntas específicas</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -2652,7 +2686,7 @@ def _view_barista(user_id):
         if send_btn and pergunta.strip() and not _ia_dentro_da_cota(user_id):
             st.warning(
                 f"Você atingiu o limite de {_IA_LIMITE_DIARIO} perguntas ao "
-                "Barista Expert hoje. O limite reinicia amanhã.", icon="⏳")
+                "Barista Expert hoje. O limite reinicia amanhã.", icon=":material/hourglass_top:")
         elif send_btn and pergunta.strip():
             _chat_salvar(user_id, "user", pergunta)
             with st.spinner("Barista Expert pensando..."):
@@ -2716,7 +2750,7 @@ def _view_novo_cafe(user_id):
             foto_emb_b64 = _b64(foto_emb) if foto_emb else None
             if foto_emb_b64:
                 _img(foto_emb_b64, w=160)
-                if st.button("🔍 Analisar Embalagem com IA",
+                if st.button(":material/search: Analisar Embalagem com IA",
                              use_container_width=True, key="btn_ai"):
                     with st.spinner("Lendo a embalagem..."):
                         try:
@@ -2762,13 +2796,13 @@ def _view_novo_cafe(user_id):
                      local_compra.strip() or None,
                      valor_compra if valor_compra > 0 else None,
                      data_compra, intensidade, user_id))
-                st.toast(f"☕ {nome} cadastrado com sucesso", icon="✅")
+                st.toast(f":material/coffee: {nome} cadastrado com sucesso", icon=":material/check_circle:")
                 st.balloons()
                 st.rerun()  # reseta formulário e revalida lista sem duplicação
 
 def _view_nova_extracao(user_id):
         # Modo Rápido / Completo
-        _quick = st.toggle("⚡ Modo Rápido", value=False,
+        _quick = st.toggle(":material/bolt: Modo Rápido", value=False,
                            help="Modo simplificado: apenas os campos essenciais para registrar rápido")
         st.markdown('<p class="mc-section-header">Registrar Extração</p>', unsafe_allow_html=True)
 
@@ -2780,7 +2814,7 @@ def _view_nova_extracao(user_id):
             _rap_html = (
                 f'<div style="display:flex;align-items:center;gap:8px;background:rgba(45,110,72,.08);'
                 f'border:1px solid var(--mc-border);border-radius:8px;padding:9px 14px;margin:0 0 .6rem;'
-                f'font-size:13px;color:var(--mc-text)">📖 Receita <b>{_html.escape(str(_rap["nome"]))}</b> '
+                f'font-size:13px;color:var(--mc-text)"><span class=mc-ic>menu_book</span> Receita <b>{_html.escape(str(_rap["nome"]))}</b> '
                 f'aplicada — dose {_rap["dose"]}g · yield {_rap["yield"]}g · '
                 f'{_html.escape(str(_rap["tempo"]))} · moagem {_html.escape(str(_rap["moagem"]))}</div>')
         st.markdown(_rap_html, unsafe_allow_html=True)
@@ -2789,7 +2823,7 @@ def _view_nova_extracao(user_id):
         cafes = _fetch("SELECT id, nome, torra, data_torra FROM coffees WHERE user_id=%s ORDER BY nome",
                        (user_id,), _v=_v())
         if not cafes:
-            _empty("☕", "Cadastre seu primeiro café",
+            _empty("<span class=mc-ic>coffee</span>", "Cadastre seu primeiro café",
                    "Para registrar uma extração você precisa ter pelo menos "
                    "um café cadastrado na sua biblioteca.",
                    hint="Vá em 'Novo Café' acima")
@@ -2812,19 +2846,19 @@ def _view_nova_extracao(user_id):
                     _fresh_html = ""
                 elif _dias_torra <= 4:
                     _fresh_html = (f'<div style="{_fbox};background:rgba(232,163,61,.12);'
-                                   f'border:1px solid var(--mc-border);color:var(--mc-warning)">⏳ Este grão está há '
+                                   f'border:1px solid var(--mc-border);color:var(--mc-warning)"><span class=mc-ic>hourglass_top</span> Este grão está há '
                                    f'{_dias_torra}d pós-torra — ainda degaseificando. Ideal após o 5º dia.</div>')
                 elif _dias_torra <= 21:
                     _fresh_html = (f'<div style="{_fbox};background:rgba(45,110,72,.08);'
-                                   f'border:1px solid var(--mc-border);color:var(--mc-success)">✨ Janela ideal! '
+                                   f'border:1px solid var(--mc-border);color:var(--mc-success)"><span class=mc-ic>auto_awesome</span> Janela ideal! '
                                    f'{_dias_torra} dias pós-torra — pico de sabor e aroma.</div>')
                 elif _dias_torra <= 45:
                     _fresh_html = (f'<div style="{_fbox};background:rgba(74,158,255,.12);'
-                                   f'border:1px solid var(--mc-border);color:var(--mc-info)">👍 {_dias_torra} dias '
+                                   f'border:1px solid var(--mc-border);color:var(--mc-info)"><span class=mc-ic>thumb_up</span> {_dias_torra} dias '
                                    f'pós-torra — ainda bom, aromas começando a decair.</div>')
                 else:
                     _fresh_html = (f'<div style="{_fbox};background:rgba(232,93,93,.12);'
-                                   f'border:1px solid var(--mc-border);color:var(--mc-error)">⏳ {_dias_torra} dias '
+                                   f'border:1px solid var(--mc-border);color:var(--mc-error)"><span class=mc-ic>hourglass_top</span> {_dias_torra} dias '
                                    f'pós-torra — priorize consumir logo.</div>')
             st.markdown(_fresh_html, unsafe_allow_html=True)
 
@@ -2844,9 +2878,9 @@ def _view_nova_extracao(user_id):
                 st.markdown('<p style="font-size:11px;color:var(--mc-text-3)">Moedor, TDS, temperatura e avaliação detalhada ficam zerados no modo rápido. Use o modo completo para registros completos.</p>', unsafe_allow_html=True)
 
                 # Cronômetro compacto
-                components.html(_TIMER_HTML, height=80, scrolling=False)
+                components.html(_iframe_theme(_TIMER_HTML), height=80, scrolling=False)
 
-                if st.button("✓ REGISTRAR (Rápido)", type="primary", use_container_width=True, key="btn_rq_save"):
+                if st.button(":material/check: REGISTRAR (Rápido)", type="primary", use_container_width=True, key="btn_rq_save"):
                     _rq_m = CoffeeEngine.calc(_rq_dose, _rq_yield, None, _rq_tempo)
                     _rq_ey = CoffeeEngine.estimate_ey(
                         _rq_dose, _rq_yield, _rq_tempo,
@@ -2858,7 +2892,7 @@ def _view_nova_extracao(user_id):
                         (cid, _today_local(), metodo, _rq_dose, _rq_yield, _rq_tempo,
                          _rq_m.get("ratio", 0), _rq_ey, _rq_m.get("fluxo", 0),
                          _rq_nota, _rq_nota, _rq_notas, user_id, _now_local()))
-                    st.toast("☕ Extração registrada (modo rápido)", icon="⚡")
+                    st.toast(":material/coffee: Extração registrada (modo rápido)", icon=":material/bolt:")
                     st.session_state.pop("_recipe_applied", None)
                     st.rerun()
 
@@ -2876,7 +2910,7 @@ def _view_nova_extracao(user_id):
                     "Cold Brew":    "1:8 concentrado · 12–18h · moagem grossa",
                 }
                 _hint = next((v for k, v in _RATIO_GUIDE.items() if k.lower() in metodo.lower()), None)
-                st.caption(f"📐 Referência {metodo}: {_hint}" if _hint else "")
+                st.caption(f":material/straighten: Referência {metodo}: {_hint}" if _hint else "")
     
                 # Última receita deste café — o coração do dial-in
                 _last = _fetch("""SELECT gramas, agua_alvo, tempo_extracao, clicks_moedor,
@@ -2894,7 +2928,7 @@ def _view_nova_extracao(user_id):
                         f'border-left:3px solid var(--mc-orange);border-radius:0 10px 10px 0;'
                         f'padding:10px 14px;margin:4px 0 8px;font-size:13px;line-height:1.7;color:var(--mc-text)">'
                         f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange-ink);'
-                        f'text-transform:uppercase;letter-spacing:.1em">🔁 Última receita ({_html.escape(metodo)})</span><br>'
+                        f'text-transform:uppercase;letter-spacing:.1em"><span class=mc-ic>history</span> Última receita ({_html.escape(metodo)})</span><br>'
                         f"<b>{float(lx['gramas'] or 0):.1f}g → {float(lx['agua_alvo'] or 0):.0f}g</b> · "
                         f"{int(lx['tempo_extracao'] or 0)}s · "
                         f"{int(lx['clicks_moedor'] or 0)} clicks ({_html.escape(lx['moedor'] or '—')}) · "
@@ -2957,14 +2991,14 @@ def _view_nova_extracao(user_id):
                     target_ml  = _esp["yield"]
 
                     st.caption(
-                        f"☕ **{estilo_espresso}** · 1:{_esp['ratio']:.1f} · "
+                        f":material/coffee: **{estilo_espresso}** · 1:{_esp['ratio']:.1f} · "
                         f"{_esp['time']}s · moagem {_est['grind_delta']} · "
                         f"{n_doses}× ({_esp['dose_por_dose']:.1f} g → "
                         f"{_esp['yield_por_dose']:.0f} ml por dose) = "
                         f"**{_esp['dose']:.1f} g de pó → {_esp['yield']:.0f} ml**")
                     st.caption(_est["desc"])
                     if _esp["aviso_cesto"]:
-                        st.warning(f"⚠️ {_esp['aviso_cesto']}")
+                        st.warning(f":material/warning: {_esp['aviso_cesto']}")
                     if n_doses > 2:
                         st.info(f"ℹ️ {n_doses} doses não cabem num portafiltro só — "
                                 f"são {n_doses} extrações separadas de "
@@ -3008,7 +3042,7 @@ def _view_nova_extracao(user_id):
                         params["water_max"] = max(params["water_max"], _co["agua"] * 1.5)
                         if _descontar:
                             st.caption(
-                                f"💧 Para **{target_ml:.0f} ml na jarra**: "
+                                f":material/water_drop: Para **{target_ml:.0f} ml na jarra**: "
                                 f"**{_co['dose']:.1f} g de pó** + "
                                 f"**{_co['agua']:.0f} g de água a despejar** "
                                 f"(ratio 1:{_co['ratio']:.1f}) — "
@@ -3016,7 +3050,7 @@ def _view_nova_extracao(user_id):
                                 f"Divida em xícaras como preferir.")
                         else:
                             st.caption(
-                                f"💧 **{_co['dose']:.1f} g de pó** + "
+                                f":material/water_drop: **{_co['dose']:.1f} g de pó** + "
                                 f"**{_co['agua']:.0f} g de água** "
                                 f"(ratio 1:{_co['ratio']:.1f}). Retenção não "
                                 f"descontada neste método — o rendimento real "
@@ -3076,7 +3110,7 @@ def _view_nova_extracao(user_id):
                         _maq_cfg = MAQUINAS_ESPRESSO.get(_maq_sel) or {}
                         if _maq_cfg.get("nominal") and _maq_cfg.get("efetiva"):
                             st.caption(
-                                f"⚙️ {_maq_cfg['nominal']:.0f} bar nominais → "
+                                f":material/settings: {_maq_cfg['nominal']:.0f} bar nominais → "
                                 f"≈{_maq_cfg['efetiva']:.1f} bar efetivos no bolo de café. "
                                 f"{_maq_cfg['nota']}")
                     else:
@@ -3093,13 +3127,13 @@ def _view_nova_extracao(user_id):
                     """, (user_id, cid, moedor, _cafe_torra, metodo), _v=_v())
                     if _pf:
                         _profile_clicks = int(_pf[0]["clicks"])
-                        st.caption(f"💾 Clicks do perfil: **{_profile_clicks}** (café+moedor+torra+método)")
+                        st.caption(f":material/save: Clicks do perfil: **{_profile_clicks}** (café+moedor+torra+método)")
 
                 with sc2:
                     clicks = st.number_input("Clicks", 0, 200, _profile_clicks, 1,
                                              help="Pré-preenchido pelo perfil deste café+moedor",
                                              key="inp_clicks")
-                st.caption("🕐 Data e hora são registradas automaticamente no momento do registro.")
+                st.caption(":material/schedule: Data e hora são registradas automaticamente no momento do registro.")
                 st.markdown('</div>', unsafe_allow_html=True)
     
                 # ═════════════════════════════════════════════════════════════
@@ -3132,7 +3166,7 @@ def _view_nova_extracao(user_id):
                         f'border-radius:12px;padding:14px 18px;margin:0 0 1rem">'
                         f'<p style="margin:0 0 8px;font-size:11px;font-weight:700;'
                         f'color:var(--mc-orange-ink);text-transform:uppercase;letter-spacing:.1em">'
-                        f'📊 Dial-in Automático — {_di_n} extraç{"ão" if _di_n==1 else "ões"} '
+                        f':material/bar_chart: Dial-in Automático — {_di_n} extraç{"ão" if _di_n==1 else "ões"} '
                         f'({metodo}{f", última: {_di_data}" if _di_data else ""})</p>'
                         f'{_di_cards}</div>')
                 st.markdown(_di_html, unsafe_allow_html=True)
@@ -3150,7 +3184,7 @@ def _view_nova_extracao(user_id):
                     f'<div style="background:var(--mc-orange-soft);border:1px solid var(--mc-orange);'
                     f'border-radius:12px;padding:14px 18px;margin:0 0 1rem">'
                     f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange-ink);'
-                    f'text-transform:uppercase;letter-spacing:.1em">🎯 Receita sugerida para este grão</span>'
+                    f'text-transform:uppercase;letter-spacing:.1em"><span class=mc-ic>target</span> Receita sugerida para este grão</span>'
                     f'<span style="font-size:11px;color:var(--mc-text-3);margin-left:8px">· {metodo}</span>'
                     f'<div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:8px;font-size:14px;'
                     f'color:var(--mc-text)">'
@@ -3169,7 +3203,7 @@ def _view_nova_extracao(user_id):
                         # Espresso: o alvo é estilo × doses, já embutido em params.
                         f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
                         f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
-                        f'🎯 <b>{estilo_espresso} × {n_doses} '
+                        f'<span class=mc-ic>target</span> <b>{estilo_espresso} × {n_doses} '
                         f'{"dose" if n_doses == 1 else "doses"}:</b> '
                         f'<b>{_rs["dose"]:.1f} g</b> de pó → '
                         f'<b>{_rs["yield"]:.0f} ml</b> de bebida '
@@ -3179,7 +3213,7 @@ def _view_nova_extracao(user_id):
                         # Coado: o alvo é o líquido na jarra; a água despejada é maior.
                         f'<div style="margin-top:10px;padding-top:8px;border-top:1px dashed '
                         f'var(--mc-orange);font-size:13px;color:var(--mc-text)">'
-                        f'🎯 <b>Para {target_ml:.0f} ml na jarra:</b> use '
+                        f'<span class=mc-ic>target</span> <b>Para {target_ml:.0f} ml na jarra:</b> use '
                         f'<b>{_rs["dose"]:.1f} g</b> de pó e despeje '
                         f'<b>{_rs["yield"]:.0f} g</b> de água — '
                         f'ratio 1:{_rs["ratio"]:.1f}, moagem {_rs["grind"].lower()}, '
@@ -3208,7 +3242,7 @@ def _view_nova_extracao(user_id):
                     # Método filtrado/imersão: pressão não se aplica → controle apagado
                     motor_html = motor_html.replace('id="pg"', 'id="pg" style="display:none"')
                 _motor_h = 660 if params.get("pressure") is not None else 600
-                components.html(motor_html, height=_motor_h, scrolling=False)
+                components.html(_iframe_theme(motor_html), height=_motor_h, scrolling=False)
     
                 # Botão para propagar sugestão do Motor Barista → campos reais abaixo
                 if st.button("↩ Redefinir campos com sugestão do Motor Barista",
@@ -3269,7 +3303,7 @@ def _view_nova_extracao(user_id):
                     if not _is_espresso:
                         _ret_m = RETENCAO_G_POR_G.get(metodo, RETENCAO_PADRAO)
                         _liq = max(0.0, agua - gramas * _ret_m)
-                        st.caption(f"💧 Rendimento estimado na jarra: **{_liq:.0f} ml** "
+                        st.caption(f":material/water_drop: Rendimento estimado na jarra: **{_liq:.0f} ml** "
                                    f"({gramas * _ret_m:.0f} g retidos no borra). "
                                    f"Divida em xícaras como preferir.")
                     # Brew ratio ao vivo (recalcula ao digitar dose/água)
@@ -3299,7 +3333,7 @@ def _view_nova_extracao(user_id):
                         .replace("__CHECKED__", "checked" if _stages else "")
                         .replace("__SWDISP__",  "flex" if _stages else "none")
                         .replace("__NSTAGES__", str(len(_stages))))
-                    components.html(_timer_html, height=(340 if _stages else 258))
+                    components.html(_iframe_theme(_timer_html), height=(340 if _stages else 258))
                     tempo        = st.number_input("Tempo Real (s)", 1, 900, step=1, key="ext_tempo")
                     temp_real    = st.number_input("Temperatura Real (°C)", 15.0, 100.0,
                                                    step=0.5, key="ext_temp")
@@ -3320,7 +3354,7 @@ def _view_nova_extracao(user_id):
                             if _dp["convertida"]:
                                 st.markdown(
                                     f'<div style="font-size:12px;color:{_cor};margin:-8px 0 8px">'
-                                    f'⚙️ <b>{_dp["nominal"]:.1f} bar nominais → '
+                                    f'<span class=mc-ic>settings</span> <b>{_dp["nominal"]:.1f} bar nominais → '
                                     f'{_dp["efetiva"]:.1f} bar efetivos no puck</b></div>',
                                     unsafe_allow_html=True)
                             st.caption(_dp["msg"])
@@ -3355,7 +3389,7 @@ def _view_nova_extracao(user_id):
                         'letter-spacing:0.12em;text-transform:uppercase;margin-bottom:0.25rem">'
                         'Perfil Sensorial — Extração Real</p>',
                         unsafe_allow_html=True)
-                    st.plotly_chart(_radar(CoffeeEngine.sensory(_ey_radar)),
+                    st.plotly_chart(_radar(CoffeeEngine.sensory(_ey_radar), dark=bool(st.session_state.get("_dark_mode"))),
                                     use_container_width=True, config={'displayModeBar': False})
                     foto_can = st.file_uploader("Foto da Caneca",
                                                 type=["jpg","jpeg","png"],
@@ -3391,7 +3425,7 @@ def _view_nova_extracao(user_id):
                         dir_t   = "rápida" if dt_tempo < 0 else "lenta"
                         sugest  = "afine a moagem (mais fino)" if dt_tempo < 0 else "abra a moagem (mais grosso)"
                         diagnosticos.append(
-                            f"⏱ <b>Fluxo {dir_t}:</b> você planejou {params['time']}s, "
+                            f"<span class=mc-ic>timer</span> <b>Fluxo {dir_t}:</b> você planejou {params['time']}s, "
                             f"mas extraiu em {tempo}s. Sugestão: {sugest}.")
     
                     # Tolerância proporcional: 5 g num espresso de 36 g é 14%,
@@ -3402,7 +3436,7 @@ def _view_nova_extracao(user_id):
                         dir_y = "abaixo" if dt_yield < 0 else "acima"
                         _o = "Bebida" if _is_espresso else "Água despejada"
                         diagnosticos.append(
-                            f"💧 <b>{_o} {dir_y} da meta:</b> planejou "
+                            f"<span class=mc-ic>water_drop</span> <b>{_o} {dir_y} da meta:</b> planejou "
                             f"{params['yield']:.0f}g, real {agua:.0f}g "
                             f"(Δ {dt_yield:+.0f}g).")
 
@@ -3419,14 +3453,14 @@ def _view_nova_extracao(user_id):
                                       f"não a um {estilo_espresso}."
                                       if _feito != estilo_espresso else "")
                             diagnosticos.append(
-                                f"⚖️ <b>Ratio fora do estilo:</b> {estilo_espresso} pede "
+                                f"<span class=mc-ic>balance</span> <b>Ratio fora do estilo:</b> {estilo_espresso} pede "
                                 f"1:{_r_alvo:.1f}, você extraiu 1:{_r_real:.1f}.{_extra}")
     
                     dt_temp = temp_real - params["temp"]
                     if abs(dt_temp) >= 1.5:
                         dir_tmp = "abaixo" if dt_temp < 0 else "acima"
                         diagnosticos.append(
-                            f"🌡 <b>Temperatura {dir_tmp} do target:</b> planejou "
+                            f"<span class=mc-ic>thermostat</span> <b>Temperatura {dir_tmp} do target:</b> planejou "
                             f"{params['temp']}°C, real {temp_real:.1f}°C (Δ {dt_temp:+.1f}°C).")
     
                     if params.get("pressure") is not None:
@@ -3442,7 +3476,7 @@ def _view_nova_extracao(user_id):
                                            f"especificação sem carga"
                                            if abs(_pe - pressao_real) > 0.05 else "")
                                 diagnosticos.append(
-                                    f"📊 <b>Pressão {dir_p} do target:</b> planejou "
+                                    f"<span class=mc-ic>bar_chart</span> <b>Pressão {dir_p} do target:</b> planejou "
                                     f"{params['pressure']:.1f} bar, efetiva {_pe:.1f} bar "
                                     f"(Δ {dt_press:+.1f} bar){_sufixo}.")
     
@@ -3459,29 +3493,29 @@ def _view_nova_extracao(user_id):
                     if ey_real > 0:
                         if ey_real < _ey_lo:
                             diagnosticos.append(
-                                f"⚡ <b>Sub-extração ({ey_real:.1f}%){_ey_ctx}:</b> sabor raso e ácido — "
+                                f"<span class=mc-ic>bolt</span> <b>Sub-extração ({ey_real:.1f}%){_ey_ctx}:</b> sabor raso e ácido — "
                                 "experimente moagem mais fina ou tempo maior.")
                         elif ey_real > _ey_hi:
                             diagnosticos.append(
-                                f"⚡ <b>Super-extração ({ey_real:.1f}%){_ey_ctx}:</b> amargor e adstringência — "
+                                f"<span class=mc-ic>bolt</span> <b>Super-extração ({ey_real:.1f}%){_ey_ctx}:</b> amargor e adstringência — "
                                 "experimente moagem mais grossa ou tempo menor.")
                         else:
                             diagnosticos.append(
-                                f"✅ <b>EY dentro da janela ({ey_real:.1f}%){_ey_ctx}</b> — extração equilibrada.")
+                                f"<span class=mc-ic>check_circle</span> <b>EY dentro da janela ({ey_real:.1f}%){_ey_ctx}</b> — extração equilibrada.")
                         diagnosticos.append(
-                            f"🧪 <b>Extraction Yield: {ey_real:.2f}%</b> — {m_real.get('status','')}.")
+                            f"<span class=mc-ic>science</span> <b>Extraction Yield: {ey_real:.2f}%</b> — {m_real.get('status','')}.")
                     elif _ey_estimado > 0:
                         # Sem refratômetro — mostra estimativa com aviso de margem
                         _ey_est_status = ("sub-extração estimada" if _ey_estimado < CoffeeEngine.EY_LOW
                                           else "super-extração estimada" if _ey_estimado > CoffeeEngine.EY_HIGH
                                           else "na janela ideal estimada")
                         diagnosticos.append(
-                            f"🔬 <b>EY estimado (sem refratômetro): ~{_ey_estimado:.1f}%</b> — "
+                            f"<span class=mc-ic>biotech</span> <b>EY estimado (sem refratômetro): ~{_ey_estimado:.1f}%</b> — "
                             f"{_ey_est_status}. <span style='color:var(--mc-text-3)'>"
                             f"Margem ±2-3%. Para precisão real, use um refratômetro.</span>")
     
                     if not diagnosticos:
-                        diagnosticos = ["✅ <b>Extração alinhada com o plano</b> — "
+                        diagnosticos = ["<span class=mc-ic>check_circle</span> <b>Extração alinhada com o plano</b> — "
                                         "todos os parâmetros dentro da meta."]
                     # Um único elemento markdown, sempre presente
                     _diag_html = "".join(
@@ -3528,7 +3562,7 @@ def _view_nova_extracao(user_id):
                 # ═════════════════════════════════════════════════════════════
                 _step(5, "Registrar extração",
                       "Salve esta extração no seu histórico para acompanhar a evolução.")
-                if st.button("✓ REGISTRAR EXTRAÇÃO", type="primary", use_container_width=True):
+                if st.button(":material/check: REGISTRAR EXTRAÇÃO", type="primary", use_container_width=True):
                     data_hora = _now_local()
                     data_ext  = data_hora.date()
                     _run("""INSERT INTO extracoes
@@ -3566,7 +3600,7 @@ def _view_nova_extracao(user_id):
                     # Limpa hora para próxima extração usar hora atual
                     st.session_state.pop("hora_ext", None)
                     st.session_state.pop("_recipe_applied", None)
-                    st.toast("✓ Extração registrada com sucesso", icon="☕")
+                    st.toast(":material/check: Extração registrada com sucesso", icon=":material/coffee:")
                     st.balloons()
 
 def _view_meus_cafes(user_id):
@@ -3593,7 +3627,7 @@ def _view_meus_cafes(user_id):
             extracts_by_coffee.setdefault(ex['coffee_id'], []).append(ex)
 
         if not cafes:
-            _empty("📦", "Sua biblioteca está vazia",
+            _empty("<span class=mc-ic>inventory_2</span>", "Sua biblioteca está vazia",
                    "Adicione cafés à sua biblioteca para começar a registrar "
                    "extrações e acompanhar a evolução do seu paladar.",
                    hint="Comece em 'Novo Café'")
@@ -3601,7 +3635,7 @@ def _view_meus_cafes(user_id):
             # ── Filtros Meus Cafés ────────────────────────────────────────
             _tc1, _tc2, _tc3 = st.columns([2, 1, 1], gap="medium")
             with _tc1:
-                _search_cafe = st.text_input("🔍 Buscar café",
+                _search_cafe = st.text_input(":material/search: Buscar café",
                                              placeholder="Nome, região...",
                                              key="tc_search")
             with _tc2:
@@ -3643,13 +3677,13 @@ def _view_meus_cafes(user_id):
                             if _dias < 0:
                                 _fresh = None
                             elif _dias <= 4:
-                                _fresh = (f"💨 Em descanso ({_dias}d) — degaseificando, espere até o 5º dia", "var(--mc-info)")
+                                _fresh = (f"<span class=mc-ic>air</span> Em descanso ({_dias}d) — degaseificando, espere até o 5º dia", "var(--mc-info)")
                             elif _dias <= 21:
-                                _fresh = (f"✨ Janela ideal ({_dias}d pós-torra) — pico de sabor", "var(--mc-success)")
+                                _fresh = (f"<span class=mc-ic>auto_awesome</span> Janela ideal ({_dias}d pós-torra) — pico de sabor", "var(--mc-success)")
                             elif _dias <= 45:
-                                _fresh = (f"👍 Ainda bom ({_dias}d) — aromas começando a decair", "var(--mc-warning)")
+                                _fresh = (f"<span class=mc-ic>thumb_up</span> Ainda bom ({_dias}d) — aromas começando a decair", "var(--mc-warning)")
                             else:
-                                _fresh = (f"⏳ {_dias}d pós-torra — priorize consumir logo", "var(--mc-error)")
+                                _fresh = (f"<span class=mc-ic>hourglass_top</span> {_dias}d pós-torra — priorize consumir logo", "var(--mc-error)")
                             if _fresh:
                                 tags += (f'<span style="display:inline-block;background:transparent;'
                                          f'border:1px solid {_fresh[1]};color:{_fresh[1]};'
@@ -3700,7 +3734,7 @@ def _view_meus_cafes(user_id):
 
                     # ── Editar características do café ─────────────────────────
                     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-                    if st.button("✏️ Editar café", key=f"edit_c_btn_{c['id']}"):
+                    if st.button(":material/edit: Editar café", key=f"edit_c_btn_{c['id']}"):
                         st.session_state[f"edit_c_{c['id']}"] = True
 
                     if st.session_state.get(f"edit_c_{c['id']}"):
@@ -3780,7 +3814,7 @@ def _view_meus_cafes(user_id):
 
                         col_save, col_cancel = st.columns(2)
                         with col_save:
-                            if st.button("💾 Salvar alterações", type="primary",
+                            if st.button(":material/save: Salvar alterações", type="primary",
                                          key=f"ec_save_{c['id']}", use_container_width=True):
                                 try:
                                     _run("""UPDATE coffees SET
@@ -3802,7 +3836,7 @@ def _view_meus_cafes(user_id):
                                           ed_foto_emb_b64,
                                           c['id'], user_id))
                                     st.session_state.pop(f"edit_c_{c['id']}", None)
-                                    st.toast("Café atualizado", icon="✅")
+                                    st.toast("Café atualizado", icon=":material/check_circle:")
                                     st.rerun()
                                 except Exception as _save_err:
                                     st.error(f"Erro ao salvar: {_save_err}")
@@ -3825,7 +3859,7 @@ def _view_meus_cafes(user_id):
                             'background:var(--mc-surface-2);border:1px dashed var(--mc-border-strong);'
                             'border-radius:10px;color:var(--mc-text-3);font-size:13px;'
                             'font-weight:500">'
-                            '☕ Ainda sem extrações deste café — vá em '
+                            '<span class=mc-ic>coffee</span> Ainda sem extrações deste café — vá em '
                             '<strong style="color:var(--mc-orange-ink)">Nova Extração</strong> '
                             'para começar.</div>',
                             unsafe_allow_html=True)
@@ -3842,7 +3876,7 @@ def _view_meus_cafes(user_id):
                                 _det = f"{float(_ml_e):.0f} ml"
                             else:
                                 _det = ""
-                            ex_header = (f"📅 {e['data'].strftime('%d/%m/%Y')}  ·  "
+                            ex_header = (f":material/calendar_today: {e['data'].strftime('%d/%m/%Y')}  ·  "
                                         f"{e['metodo']}"
                                         + (f"  ·  {_det}" if _det else "")
                                         + f"  ·  {_stars(e['classificacao'] or 0)}")
@@ -3866,14 +3900,14 @@ def _view_meus_cafes(user_id):
                                 if nova_foto:
                                     if not st.session_state.get(_fkey):
                                         _img(_b64(nova_foto), w=100)
-                                        if st.button("📸 Confirmar foto", key=f"save_foto_{e['id']}"):
+                                        if st.button(":material/photo_camera: Confirmar foto", key=f"save_foto_{e['id']}"):
                                             _run(
                                                 "UPDATE extracoes SET foto_caneca=%s, foto_caneca_url=NULL "
                                                 "WHERE id=%s AND user_id=%s",
                                                 (_b64(nova_foto), e["id"], user_id)
                                             )
                                             st.session_state[_fkey] = True
-                                            st.toast("Foto adicionada", icon="📸")
+                                            st.toast("Foto adicionada", icon=":material/photo_camera:")
                                             st.rerun()
                                 else:
                                     st.session_state.pop(_fkey, None)
@@ -3908,16 +3942,16 @@ def _view_meus_cafes(user_id):
                             st.markdown("---")
                             col_edit, col_del = st.columns(2)
                             with col_edit:
-                                if st.button("✏️ Editar Extração", key=f"tab3_edit_e_{e['id']}", use_container_width=True):
+                                if st.button(":material/edit: Editar Extração", key=f"tab3_edit_e_{e['id']}", use_container_width=True):
                                     st.session_state[f"edit_ext_{e['id']}"] = True
                             with col_del:
-                                if st.button("🗑️ Deletar", key=f"tab3_del_e_{e['id']}", use_container_width=True):
+                                if st.button(":material/delete: Deletar", key=f"tab3_del_e_{e['id']}", use_container_width=True):
                                     st.session_state[f"confirm_del_e3_{e['id']}"] = True
                             if st.session_state.get(f"confirm_del_e3_{e['id']}"):
                                 st.warning("Confirmar remoção desta extração?")
                                 cya, cna = st.columns(2)
                                 with cya:
-                                    if st.button("✓ Remover", key=f"del_e3_ok_{e['id']}", type="primary"):
+                                    if st.button(":material/check: Remover", key=f"del_e3_ok_{e['id']}", type="primary"):
                                         _run("DELETE FROM extracoes WHERE id=%s AND user_id=%s", (e['id'], user_id))
                                         st.rerun()
                                 with cna:
@@ -3950,11 +3984,11 @@ def _view_meus_cafes(user_id):
                                     _ed_pe = mc_core.pressao_efetiva(
                                         ed_press, MAQUINAS_ESPRESSO.get(ed_maq))
                                     if _ed_pe is not None and abs(_ed_pe - ed_press) > 0.05:
-                                        st.caption(f"⚙️ {ed_press:.1f} bar nominais → "
+                                        st.caption(f":material/settings: {ed_press:.1f} bar nominais → "
                                                    f"{_ed_pe:.1f} bar efetivos no puck.")
                                 ed_notas = st.text_area("Comentários", value=e['notas'] or "", key=f"tab3_ed_n_{e['id']}", height=80)
 
-                                if st.button("💾 Salvar Edição", key=f"tab3_save_e_{e['id']}", use_container_width=True):
+                                if st.button(":material/save: Salvar Edição", key=f"tab3_save_e_{e['id']}", use_container_width=True):
                                     _run(
                                         """UPDATE extracoes SET
                                             gramas=%s, agua_alvo=%s, tempo_extracao=%s,
@@ -3971,18 +4005,18 @@ def _view_meus_cafes(user_id):
                                          ed_maq if ed_press > 0 else '',
                                          ed_notas, e['id'], user_id)
                                     )
-                                    st.toast("Extração atualizada", icon="✅")
+                                    st.toast("Extração atualizada", icon=":material/check_circle:")
                                     st.session_state[f"edit_ext_{e['id']}"] = False
                                     st.rerun()
 
                     st.markdown("")
-                    if st.button("🗑️ Remover café", key=f"del_c_{c['id']}"):
+                    if st.button(":material/delete: Remover café", key=f"del_c_{c['id']}"):
                         st.session_state[f"confirm_del_c_{c['id']}"] = True
                     if st.session_state.get(f"confirm_del_c_{c['id']}"):
                         st.warning(f"Tem certeza? Isso removerá **{c['nome']}** e todas as suas extrações.")
                         col_yes, col_no = st.columns(2)
                         with col_yes:
-                            if st.button("✓ Confirmar remoção", key=f"del_c_ok_{c['id']}", type="primary"):
+                            if st.button(":material/check: Confirmar remoção", key=f"del_c_ok_{c['id']}", type="primary"):
                                 _run("DELETE FROM coffees WHERE id=%s AND user_id=%s", (c["id"], user_id))
                                 st.rerun()
                         with col_no:
@@ -4001,7 +4035,7 @@ def _view_historico(user_id):
             ORDER BY e.data DESC, e.created_at DESC LIMIT 200""", (user_id,), _v=_v())
 
         if not rows:
-            _empty("📈", "Seu histórico vai aparecer aqui",
+            _empty("<span class=mc-ic>trending_up</span>", "Seu histórico vai aparecer aqui",
                    "Cada extração registrada aparece aqui em ordem cronológica, "
                    "com todos os parâmetros e classificações para você revisar "
                    "e editar quando quiser.",
@@ -4110,14 +4144,15 @@ def _view_historico(user_id):
             # ── Gráfico de evolução EY ────────────────────────────────────
             _ey_rows = [r for r in rows if r.get("ey") and float(r["ey"]) > 0]
             if len(_ey_rows) >= 2:
-                with st.expander("📈 Evolução do Extraction Yield (EY)", expanded=False):
+                with st.expander(":material/trending_up: Evolução do Extraction Yield (EY)", expanded=False):
                     _fig_ey = go.Figure()
                     _ey_by_cafe = {}
                     for _r in sorted(_ey_rows, key=lambda x: x["data"]):
                         _ey_by_cafe.setdefault(_r["cafe_nome"], {"x": [], "y": []})
                         _ey_by_cafe[_r["cafe_nome"]]["x"].append(str(_r["data"]))
                         _ey_by_cafe[_r["cafe_nome"]]["y"].append(float(_r["ey"]))
-                    _colors = ["#D97732","#1C1714","#8F857A","#A4501A","#E6C39A"]
+                    _cp = _chart_pal(bool(st.session_state.get("_dark_mode")))
+                    _colors = _cp["series"]
                     for _ci, (_cname, _cdata) in enumerate(_ey_by_cafe.items()):
                         _fig_ey.add_trace(go.Scatter(
                             x=_cdata["x"], y=_cdata["y"],
@@ -4131,10 +4166,10 @@ def _view_historico(user_id):
                                       annotation_font_size=11)
                     _fig_ey.update_layout(
                         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                        font_color="#574E46", height=280, margin=dict(l=0,r=0,t=10,b=0),
+                        font_color=_cp["label"], height=280, margin=dict(l=0,r=0,t=10,b=0),
                         legend=dict(font_size=11, bgcolor="rgba(0,0,0,0)"),
                         xaxis=dict(showgrid=False, tickfont_size=10),
-                        yaxis=dict(gridcolor="#E3DDD4", ticksuffix="%", tickfont_size=10))
+                        yaxis=dict(gridcolor=_cp["grid"], ticksuffix="%", tickfont_size=10))
                     st.plotly_chart(_fig_ey, use_container_width=True,
                                     config={"displayModeBar": False})
 
@@ -4151,7 +4186,7 @@ def _view_historico(user_id):
                 _writer.writeheader()
                 _writer.writerows(rows)
                 st.download_button(
-                    "⬇️ Exportar CSV", data=_csv_buf.getvalue(),
+                    ":material/download: Exportar CSV", data=_csv_buf.getvalue(),
                     file_name="historico_extracoes.csv", mime="text/csv",
                     use_container_width=True)
 
@@ -4220,7 +4255,7 @@ def _view_historico(user_id):
                     ]
                     for idx, (label, stars) in enumerate(classificacoes):
                         with cols[idx % 4]:
-                            stars_str = "⭐" * (stars or 0) + "☆" * (5 - (stars or 0))
+                            stars_str = "★" * (stars or 0) + "☆" * (5 - (stars or 0))
                             st.markdown(f"**{label}**\n{stars_str}", help=f"{label}: {stars or 0}/5")
 
                     # Balanco Ideal
@@ -4230,19 +4265,19 @@ def _view_historico(user_id):
                     st.markdown("")
                     col_edit, col_share, col_del = st.columns([1, 1, 1])
                     with col_edit:
-                        if st.button("✏️ Editar", key=f"tab4_edit_e_{r['id']}"):
+                        if st.button(":material/edit: Editar", key=f"tab4_edit_e_{r['id']}"):
                             st.session_state[f"editing_e_{r['id']}"] = True
                     with col_share:
                         _share_key = f"_share_{r['id']}"
-                        if st.button("📋 Compartilhar", key=f"tab4_share_{r['id']}"):
+                        if st.button(":material/content_copy: Compartilhar", key=f"tab4_share_{r['id']}"):
                             st.session_state[_share_key] = not st.session_state.get(_share_key, False)
                         if st.session_state.get(_share_key):
                             _ey_line = f"EY: {float(r['ey']):.1f}%  " if r.get("ey") and float(r["ey"]) > 0 else ""
                             _nota_line = f"Nota: {r.get('nota_final_stars') or 0}/5  " if r.get("nota_final_stars") else ""
                             _notas_line = f"\nNotas: {r['notas']}" if r.get("notas") else ""
                             _share_text = (
-                                f"☕ {r['cafe_nome']} — {r['metodo']}\n"
-                                f"📅 {r['data'].strftime('%d/%m/%Y')}\n"
+                                f"{r['cafe_nome']} — {r['metodo']}\n"
+                                f"Data: {r['data'].strftime('%d/%m/%Y')}\n"
                                 f"Dose: {float(r['gramas']):.1f}g → Yield: {float(r['agua_alvo']):.0f}g"
                                 f"  (1:{float(r['agua_alvo'])/float(r['gramas']):.1f})\n"
                                 f"Tempo: {int(r['tempo_extracao'])}s  "
@@ -4251,16 +4286,16 @@ def _view_historico(user_id):
                                 f"{_notas_line}\n"
                                 f"#MateúCoffee #CaféEspecial #Barista"
                             )
-                            st.text_area("📋 Copie e compartilhe:", value=_share_text,
+                            st.text_area(":material/content_copy: Copie e compartilhe:", value=_share_text,
                                          height=160, key=f"share_txt_{r['id']}")
                     with col_del:
-                        if st.button("🗑️ Remover", key=f"tab4_del_e_{r['id']}"):
+                        if st.button(":material/delete: Remover", key=f"tab4_del_e_{r['id']}"):
                             st.session_state[f"confirm_del_e4_{r['id']}"] = True
                     if st.session_state.get(f"confirm_del_e4_{r['id']}"):
                         st.warning("Confirmar remoção desta extração?")
                         cya, cna = st.columns(2)
                         with cya:
-                            if st.button("✓ Remover", key=f"del_e4_ok_{r['id']}", type="primary"):
+                            if st.button(":material/check: Remover", key=f"del_e4_ok_{r['id']}", type="primary"):
                                 _run("DELETE FROM extracoes WHERE id=%s AND user_id=%s", (r["id"], user_id))
                                 st.rerun()
                         with cna:
@@ -4334,7 +4369,7 @@ def _view_historico(user_id):
                         with es8:
                             ed_nota = st.slider("Nota Final", 1, 5, int(r.get('nota_final_stars') or 3), key=f"e4_nota_{r['id']}")
 
-                        if st.button("💾 Salvar Alterações", key=f"tab4_save_e_{r['id']}",
+                        if st.button(":material/save: Salvar Alterações", key=f"tab4_save_e_{r['id']}",
                                      type="primary"):
                             _run("""UPDATE extracoes SET
                                     gramas=%s, agua_alvo=%s, tempo_extracao=%s,
@@ -4352,7 +4387,7 @@ def _view_historico(user_id):
                                   ed_doc, ed_nota, ed_nota,
                                   r['id'], user_id))
                             st.session_state.pop(f"editing_e_{r['id']}", None)
-                            st.toast("Alterações salvas", icon="✅")
+                            st.toast("Alterações salvas", icon=":material/check_circle:")
                             st.rerun()
 
 def _view_receitas(user_id):
@@ -4388,7 +4423,7 @@ def _view_receitas(user_id):
             receitas.sort(key=lambda x: ordem_dif.get(x["dificuldade"], 9))
 
         if not receitas:
-            _empty("📖", "Nenhuma receita corresponde ao filtro",
+            _empty("<span class=mc-ic>menu_book</span>", "Nenhuma receita corresponde ao filtro",
                    "Selecione ao menos uma categoria para ver as receitas.")
         else:
             st.markdown(
@@ -4447,7 +4482,7 @@ def _view_capsulas(user_id):
             cap_foto_b64 = _b64(cap_foto_f) if cap_foto_f else None
             if cap_foto_b64:
                 _img(cap_foto_b64, w=160)
-                if st.button("🔍 Analisar Embalagem com IA", key="btn_ai_cap",
+                if st.button(":material/search: Analisar Embalagem com IA", key="btn_ai_cap",
                              use_container_width=True):
                     with st.spinner("Lendo a embalagem..."):
                         try:
@@ -4497,7 +4532,7 @@ def _view_capsulas(user_id):
                           cap_aluminio == "Sim", int(cap_volume), cap_foto_b64,
                           cap_crema, cap_corpo, cap_equil, cap_acid,
                           cap_amar, cap_pres, cap_doc, cap_nota))
-                    st.toast(f"🫘 {cap_nome} cadastrada com sucesso", icon="✅")
+                    st.toast(f":material/pill: {cap_nome} cadastrada com sucesso", icon=":material/check_circle:")
                     st.balloons()
                 except Exception as e:
                     st.error(f"Erro ao salvar cápsula: {e}")
@@ -4511,23 +4546,23 @@ def _view_capsulas(user_id):
                          ORDER BY created_at DESC""", (user_id,), _v=_v())
 
         if not caps:
-            _empty("🫘", "Nenhuma cápsula cadastrada ainda",
+            _empty("<span class=mc-ic>pill</span>", "Nenhuma cápsula cadastrada ainda",
                    "Cadastre suas cápsulas acima para acompanhar o estoque e as preferências.",
                    hint="Preencha o formulário acima")
         else:
             _low_stock = [c for c in caps if int(c.get("quantidade") or 0) <= 3]
             if _low_stock:
                 _low_names = ", ".join(c["nome"] for c in _low_stock)
-                st.warning(f"⚠️ Estoque baixo: **{_low_names}**")
+                st.warning(f":material/warning: Estoque baixo: **{_low_names}**")
             st.markdown(
                 f'<p style="color:var(--mc-text-3);font-size:12px;margin:-0.5rem 0 1rem;'
                 f'font-weight:600">{len(caps)} cápsula{"s" if len(caps) != 1 else ""} cadastrada{"s" if len(caps) != 1 else ""}</p>',
                 unsafe_allow_html=True)
 
             for cap in caps:
-                alum_label = "Alumínio ✓" if cap.get("aluminio") else "Não alumínio"
+                alum_label = "Sim" if cap.get("aluminio") else "Não alumínio"
                 vol_label  = VOLUMES_CAPSULAS.get(cap.get("volume_ml", 40), "—")
-                header_cap = (f"🫘 {cap['nome']}"
+                header_cap = (f":material/pill: {cap['nome']}"
                               f"{'  ·  ' + cap['marca'] if cap.get('marca') else ''}"
                               f"  ·  {cap['maquina']}  ·  {cap['intensidade']}/12")
                 with st.expander(header_cap):
@@ -4545,9 +4580,9 @@ def _view_capsulas(user_id):
                     with cc3:
                         _qtd_atual = int(cap.get("quantidade") or 0)
                         if _qtd_atual <= 3 and _qtd_atual > 0:
-                            st.warning(f"⚠️ Estoque baixo: {_qtd_atual} un.")
+                            st.warning(f":material/warning: Estoque baixo: {_qtd_atual} un.")
                         elif _qtd_atual == 0:
-                            st.error("❌ Sem estoque")
+                            st.error(":material/cancel: Sem estoque")
                         else:
                             st.metric("Estoque", f"{_qtd_atual} un.")
                         # Usar cápsulas — decremento rápido de estoque
@@ -4555,21 +4590,21 @@ def _view_capsulas(user_id):
                                                  value=1, step=1,
                                                  key=f"use_cap_n_{cap['id']}",
                                                  label_visibility="visible")
-                        if st.button("☕ Registrar uso", key=f"use_cap_btn_{cap['id']}",
+                        if st.button(":material/coffee: Registrar uso", key=f"use_cap_btn_{cap['id']}",
                                      disabled=_qtd_atual == 0):
                             _nova_qtd = max(0, _qtd_atual - _use_n)
                             _run("UPDATE capsulas SET quantidade=%s WHERE id=%s AND user_id=%s",
                                  (_nova_qtd, cap["id"], user_id))
-                            st.toast(f"✓ {_use_n} cápsula(s) usada(s). Estoque: {_nova_qtd}")
+                            st.toast(f":material/check: {_use_n} cápsula(s) usada(s). Estoque: {_nova_qtd}")
                             st.rerun()
                         st.markdown("---")
                         _add_n = st.number_input("Reabastecer", min_value=1, max_value=500,
                                                  value=10, step=1, key=f"add_cap_n_{cap['id']}")
-                        if st.button("📦 Reabastecer", key=f"add_cap_btn_{cap['id']}"):
+                        if st.button(":material/inventory_2: Reabastecer", key=f"add_cap_btn_{cap['id']}"):
                             _nova_qtd2 = _qtd_atual + _add_n
                             _run("UPDATE capsulas SET quantidade=%s WHERE id=%s AND user_id=%s",
                                  (_nova_qtd2, cap["id"], user_id))
-                            st.toast(f"✅ +{_add_n} cápsula(s). Estoque: {_nova_qtd2}")
+                            st.toast(f":material/check_circle: +{_add_n} cápsula(s). Estoque: {_nova_qtd2}")
                             st.rerun()
                         if cap.get("nota_final_stars"):
                             st.metric("Nota Final", _stars(cap["nota_final_stars"]))
@@ -4595,12 +4630,12 @@ def _view_capsulas(user_id):
                         _cls_cols = st.columns(4, gap="small")
                         for _idx, (_lbl, _sv) in enumerate(_cls_cap):
                             with _cls_cols[_idx % 4]:
-                                st.markdown(f"**{_lbl}**\n{'⭐'*(_sv or 0)}{'☆'*(5-(_sv or 0))}")
+                                st.markdown(f"**{_lbl}**\n{'★'*(_sv or 0)}{'☆'*(5-(_sv or 0))}")
 
                     st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
 
                     # Form de edição
-                    if st.button("✏️ Editar cápsula", key=f"cap_edit_btn_{cap['id']}"):
+                    if st.button(":material/edit: Editar cápsula", key=f"cap_edit_btn_{cap['id']}"):
                         st.session_state[f"edit_cap_{cap['id']}"] = True
 
                     if st.session_state.get(f"edit_cap_{cap['id']}"):
@@ -4655,7 +4690,7 @@ def _view_capsulas(user_id):
 
                         cse1, cse2 = st.columns(2)
                         with cse1:
-                            if st.button("💾 Salvar", type="primary",
+                            if st.button(":material/save: Salvar", type="primary",
                                          key=f"cap_save_{cap['id']}", use_container_width=True):
                                 try:
                                     _run("""UPDATE capsulas SET
@@ -4674,7 +4709,7 @@ def _view_capsulas(user_id):
                                           edc_doc, edc_nota,
                                           cap['id'], user_id))
                                     st.session_state.pop(f"edit_cap_{cap['id']}", None)
-                                    st.toast("Cápsula atualizada", icon="✅")
+                                    st.toast("Cápsula atualizada", icon=":material/check_circle:")
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Erro ao salvar: {e}")
@@ -4685,13 +4720,13 @@ def _view_capsulas(user_id):
                                 st.rerun()
 
                     # Deletar
-                    if st.button("🗑️ Remover cápsula", key=f"cap_del_{cap['id']}"):
+                    if st.button(":material/delete: Remover cápsula", key=f"cap_del_{cap['id']}"):
                         st.session_state[f"confirm_del_cap_{cap['id']}"] = True
                     if st.session_state.get(f"confirm_del_cap_{cap['id']}"):
                         st.warning(f"Remover **{cap['nome']}** definitivamente?")
                         cyd, cnd = st.columns(2)
                         with cyd:
-                            if st.button("✓ Confirmar", type="primary",
+                            if st.button(":material/check: Confirmar", type="primary",
                                          key=f"cap_del_ok_{cap['id']}"):
                                 _run("DELETE FROM capsulas WHERE id=%s AND user_id=%s",
                                      (cap['id'], user_id))
@@ -4807,17 +4842,17 @@ def _view_backup(user_id):
             "**Backups automáticos semanais** são criados toda vez que você acessa o app "
             "após 7 dias do último backup. Você também pode criar backups manuais "
             "e restaurar o banco de dados para qualquer ponto anterior.",
-            icon="🛡️")
+            icon=":material/shield:")
 
         # ── Criar backup manual ──────────────────────────────────────
-        with st.expander("➕ Criar backup manual agora", expanded=False):
+        with st.expander(":material/add: Criar backup manual agora", expanded=False):
             notas_backup = st.text_input("Descrição (opcional)", key="bk_notas",
                                          placeholder="Ex: antes de apagar cafés antigos")
-            if st.button("💾 Criar backup", type="primary", key="bk_criar"):
+            if st.button(":material/save: Criar backup", type="primary", key="bk_criar"):
                 with st.spinner("Criando backup…"):
                     ok = _backup_criar("manual", notas_backup, user_id)
                 if ok:
-                    st.success("Backup criado com sucesso!", icon="✅")
+                    st.success("Backup criado com sucesso!", icon=":material/check_circle:")
                     st.rerun()
 
         st.markdown("---")
@@ -4833,7 +4868,7 @@ def _view_backup(user_id):
                 if isinstance(criado, str):
                     criado = _dt.datetime.fromisoformat(criado)
                 data_fmt = criado.strftime("%d/%m/%Y %H:%M")
-                tipo_icon = {"manual": "🔵", "semanal": "🟢", "pre-restore": "🟡"}.get(bk["tipo"], "⚪")
+                tipo_icon = {"manual": ":material/touch_app:", "semanal": ":material/event_repeat:", "pre-restore": ":material/restore:"}.get(bk["tipo"], ":material/backup:")
                 titulo = f"{tipo_icon} **{data_fmt}** — {bk['tipo'].upper()}"
                 if bk.get("notas"):
                     titulo += f" — _{bk['notas']}_"
@@ -4842,10 +4877,10 @@ def _view_backup(user_id):
                 # no topo — o lugar de onde a pessoa costuma restaurar.
                 _vazio = not (bk['n_cafes'] or bk['n_extracoes'] or bk['n_capsulas'])
                 if _vazio:
-                    titulo = f"⚠️ **{data_fmt}** — {bk['tipo'].upper()} — _VAZIO_"
-                stats = (f"☕ {bk['n_cafes']} cafés · "
-                         f"⚗️ {bk['n_extracoes']} extrações · "
-                         f"🫘 {bk['n_capsulas']} cápsulas")
+                    titulo = f":material/warning: **{data_fmt}** — {bk['tipo'].upper()} — _VAZIO_"
+                stats = (f":material/coffee: {bk['n_cafes']} cafés · "
+                         f":material/science: {bk['n_extracoes']} extrações · "
+                         f":material/pill: {bk['n_capsulas']} cápsulas")
                 if bk.get("git_hash"):
                     stats += f" · git `{bk['git_hash']}`"
 
@@ -4854,18 +4889,18 @@ def _view_backup(user_id):
 
                     if st.session_state.get(f"confirm_restore_{bk['id']}"):
                         st.warning(
-                            "⚠️ Isso **substituirá todos os seus dados** pelos dados deste backup. "
+                            ":material/warning: Isso **substituirá todos os seus dados** pelos dados deste backup. "
                             "Um backup de segurança será criado automaticamente antes. Confirma?")
                         rc1, rc2 = st.columns(2)
                         with rc1:
-                            if st.button("✅ Confirmar restauração", type="primary",
+                            if st.button(":material/check_circle: Confirmar restauração", type="primary",
                                          key=f"bk_restore_ok_{bk['id']}",
                                          use_container_width=True):
                                 with st.spinner("Restaurando dados…"):
                                     ok = _backup_restaurar_dados(bk["id"], user_id)
                                 st.session_state.pop(f"confirm_restore_{bk['id']}", None)
                                 if ok:
-                                    st.success("Dados restaurados com sucesso!", icon="✅")
+                                    st.success("Dados restaurados com sucesso!", icon=":material/check_circle:")
                                     st.rerun()
                         with rc2:
                             if st.button("← Cancelar", key=f"bk_restore_cancel_{bk['id']}",
@@ -4876,9 +4911,9 @@ def _view_backup(user_id):
                         st.error(
                             "Este backup não tem nenhum registro. Restaurá-lo "
                             "apagaria todo o seu acervo, então a restauração "
-                            "está bloqueada.", icon="🚫")
+                            "está bloqueada.", icon=":material/block:")
                     else:
-                        if st.button("🔄 Restaurar este backup", key=f"bk_restore_{bk['id']}",
+                        if st.button(":material/restore: Restaurar este backup", key=f"bk_restore_{bk['id']}",
                                      use_container_width=True):
                             st.session_state[f"confirm_restore_{bk['id']}"] = True
                             st.rerun()
@@ -4893,14 +4928,14 @@ def _view_backup(user_id):
             st.markdown("**Exportar**")
             st.caption("Baixe tudo o que o app guarda sobre você: cafés, "
                        "extrações e cápsulas em CSV, mais as fotos.")
-            if st.button("📤 Gerar exportação", key="lgpd_export",
+            if st.button(":material/upload: Gerar exportação", key="lgpd_export",
                          use_container_width=True):
                 with st.spinner("Montando o pacote…"):
                     st.session_state["_export_pronto"] = _exportar_dados(user_id)
             _pack = st.session_state.get("_export_pronto")
             if _pack:
                 st.download_button(
-                    f"⬇️ Baixar ({len(_pack)/1048576:.1f} MB)", _pack,
+                    f":material/download: Baixar ({len(_pack)/1048576:.1f} MB)", _pack,
                     file_name=f"mateu-coffee-dados-{_today_local():%Y-%m-%d}.zip",
                     mime="application/zip", key="dl_zip",
                     use_container_width=True)
@@ -4934,7 +4969,7 @@ def _view_backup(user_id):
                         st.session_state.pop("_confirm_delete", None)
                         st.rerun()
             else:
-                if st.button("🗑️ Excluir minha conta", key="lgpd_del",
+                if st.button(":material/delete: Excluir minha conta", key="lgpd_del",
                              use_container_width=True):
                     st.session_state["_confirm_delete"] = True
                     st.rerun()
@@ -5036,7 +5071,7 @@ def main():
                     st.session_state['_pending_cookie'] = (_tok, _exp)
                 except Exception:
                     _log.warning("cookie: gravar mc_token falhou", exc_info=True)
-            st.toast("Login com Google realizado!", icon="✅")
+            st.toast("Login com Google realizado!", icon=":material/check_circle:")
             st.rerun()
         else:
             st.error("Falha no login com Google. Tente novamente.")
@@ -5050,9 +5085,13 @@ def main():
             col_main = st.container()
             with col_main:
                 # Logo + slogan da marca (apenas no login)
-                st.markdown('<div class="mc-login-hero">', unsafe_allow_html=True)
-                _load_logo(max_width=560)
+                # Painel da marca: o fundo preto do logo vira meia tela
+                # (desktop) ou faixa de ponta a ponta (mobile) — ver CSS v4.
+                _lb64 = _logo_b64()
+                _limg = (f'<img src="data:image/webp;base64,{_lb64}" alt="Mateu Coffee">'
+                         if _lb64 else _wordmark_html("compact", with_tag=False))
                 st.markdown(
+                    f'<div class="mc-login-hero">{_limg}'
                     '<p class="mc-login-tagline">'
                     'Para baristas, entusiastas e apaixonados por café. '
                     'Para mim e para você também.</p>'
@@ -5107,7 +5146,7 @@ def main():
                             # _login() via _pending_cookie. Publicá-lo aqui na
                             # query string o mandava para o histórico do
                             # navegador, logs de proxy e cabeçalho Referer.
-                            st.toast("Login realizado", icon="✅")
+                            st.toast("Login realizado", icon=":material/check_circle:")
                             st.rerun()
                         elif outcome == LoginResult.RATE_LIMITED:
                             st.error("Muitas tentativas. Aguarde 10 minutos antes de tentar novamente.")
@@ -5165,7 +5204,7 @@ def main():
                                 hash_pwd = _hash_senha(new_senha)
                                 _run("INSERT INTO usuarios (email, senha_hash) VALUES (%s, %s)",
                                      (new_email.strip().lower(), hash_pwd))
-                                st.toast("Conta criada com sucesso", icon="✅")
+                                st.toast("Conta criada com sucesso", icon=":material/check_circle:")
                                 st.success("Pronto! Vá na aba **Entrar** para começar.")
                             except Exception:
                                 st.error("Esse e-mail já está cadastrado.")
@@ -5213,7 +5252,7 @@ def main():
             f'</div>',
             unsafe_allow_html=True)
     with col_theme:
-        _theme_label = "☀️" if _dark_mode else "🌙"
+        _theme_label = ":material/light_mode:" if _dark_mode else ":material/dark_mode:"
         if st.button(_theme_label, use_container_width=True, key="btn_theme",
                      help="Alternar entre modo claro e escuro"):
             st.session_state['_dark_mode'] = not _dark_mode
@@ -5224,10 +5263,11 @@ def main():
             _logout()
             st.rerun()
 
-    # Aplica o tema escuro (Roast) no body via JS
+    # Tema escuro (Roast): o marcador ativa as variáveis via :root:has(.mc-dark-flag).
+    # (<script> em st.markdown não executa — por isso não usamos classList.)
     if _dark_mode:
         st.markdown(
-            '<script>document.body.classList.add("mc-dark");</script>'
+            '<span class="mc-dark-flag" style="display:none"></span>'
             '<style>body, .stApp, .block-container { background-color: #131211 !important; }</style>',
             unsafe_allow_html=True)
 
@@ -5254,8 +5294,10 @@ def main():
             st.rerun()
 
     tab1, tab2, tab3, tab4, tab_barista, tab5, tab6, tab7 = st.tabs([
-        "Novo Café", "Nova Extração", "Meus Cafés", "Histórico",
-        "Barista Expert", "Receitas", "Cápsulas", "Backup"])
+        ":material/add_circle: Novo Café", ":material/coffee_maker: Nova Extração",
+        ":material/coffee: Meus Cafés", ":material/history: Histórico",
+        ":material/auto_awesome: Barista Expert", ":material/menu_book: Receitas",
+        ":material/pill: Cápsulas", ":material/backup: Backup"])
 
     user_id = st.session_state['user_id']
 
