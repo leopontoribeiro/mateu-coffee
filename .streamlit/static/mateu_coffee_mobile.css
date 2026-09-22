@@ -1,6 +1,6 @@
 /* ─────────────────────────────────────────────
    Mateu Coffee Production — Mobile Design System
-   Paleta v3.5: Espresso #0D0B09 · Laranja #D97732 · Creme #F2EBE0
+   Paleta v4: Oat #F6F3EE · Laranja #D97732 · Ink #1C1714
    Alinhado ao redesign — sem overrides de tipografia que
    conflitem com o CSS principal (section-label, métricas, etc.)
    ───────────────────────────────────────────── */
@@ -75,12 +75,12 @@
 }
 .mc-hero-text { line-height: 1.2; }
 .mc-hero-text h1 {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: var(--mc-font);
   font-size: 20px;
-  font-weight: 400;
+  font-weight: 600;
   color: var(--mc-text);
   margin: 0;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 .mc-hero-text p {
   font-size: 10px;
@@ -244,7 +244,7 @@
   /* ── Expander: remove overflow clip ─────────────────────────── */
   [data-testid="stExpander"] > div > div { overflow: visible !important; }
 
-  /* ── Metrics: respeita DM Serif do CSS principal ────────────── */
+  /* ── Metrics: respeita Geist Mono do CSS principal ────────────── */
   [data-testid="stMetricValue"]  {
     font-size: 24px !important;
   }

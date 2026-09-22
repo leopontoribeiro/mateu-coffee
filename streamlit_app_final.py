@@ -152,7 +152,7 @@ def _load_logo(max_width: int = 380) -> bool:
                 f'<div style="text-align:center;padding:1rem 0">'
                 f'<img src="data:image/webp;base64,{b64}" alt="Mateu Coffee" '
                 f'style="max-width:{max_width}px;width:100%;height:auto;'
-                f'margin:0 auto;display:block">'
+                f'margin:0 auto;display:block;border-radius:20px">'
                 f'</div>',
                 unsafe_allow_html=True)
             return True
@@ -273,7 +273,7 @@ _load_mobile_css()
 
 # ── PWA Manifest (instalar como app no Android/iOS) ───────────────────
 st.markdown("""
-<link rel="manifest" href="data:application/json;charset=utf-8,%7B%22name%22%3A%22Mateu%20Coffee%22%2C%22short_name%22%3A%22Mateu%22%2C%22start_url%22%3A%22%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230D0B09%22%2C%22theme_color%22%3A%22%23D97732%22%2C%22orientation%22%3A%22portrait%22%7D">
+<link rel="manifest" href="data:application/json;charset=utf-8,%7B%22name%22%3A%22Mateu%20Coffee%22%2C%22short_name%22%3A%22Mateu%22%2C%22start_url%22%3A%22%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23F6F3EE%22%2C%22theme_color%22%3A%22%23D97732%22%2C%22orientation%22%3A%22portrait%22%7D">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -297,7 +297,7 @@ except Exception:
     _MAIN_CSS = ""
     _log.warning("CSS principal não carregado: %s", _MAIN_CSS_PATH, exc_info=True)
 st.markdown(
-    '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=DM+Serif+Display:ital@0;1&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">'
+    '<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">'
     f"<style>{_MAIN_CSS}</style>",
     unsafe_allow_html=True)
 
@@ -1396,9 +1396,9 @@ def _irow(k: str, v: str) -> str:
             f'<span class="info-val">{_html.escape(str(v))}</span></div>')
 
 def _ph() -> str:
-    return ('<div style="width:150px;height:150px;background:#141414;border:1px solid #2A2A2A;'
+    return ('<div style="width:150px;height:150px;background:var(--mc-surface-2);border:1px solid var(--mc-border);'
             'border-radius:10px;display:flex;align-items:center;justify-content:center;'
-            'color:#3A3A3A;font-size:36px;">☕</div>')
+            'color:var(--mc-border-strong);font-size:36px;">☕</div>')
 
 
 # ── IA helpers ─────────────────────────────────────────────────────────
@@ -1507,7 +1507,7 @@ def _wordmark_html(size: str = "hero", with_tag: bool = True) -> str:
     """Renderiza a marca 'MATEU COFFEE' como wordmark CSS fiel ao logo.
 
     `size`: 'hero' (login) | 'compact' (topbar) | 'tiny' (footer)
-    Usa Cormorant Garamond (serif transicional) — combina com a marca.
+    Usa Geist 600 (v4) — mesma família da interface.
     """
     tag = ('<div class="mc-mark-tag">Aplicativo de Café</div>'
            if with_tag else '')
@@ -1577,7 +1577,7 @@ def _render_recipe(r: dict) -> None:
     e passos numerados — layout consistente para a Biblioteca de Receitas."""
     # Descrição
     st.markdown(
-        f'<p style="color:#B8B0A8;font-size:14px;line-height:1.6;'
+        f'<p style="color:var(--mc-text-2);font-size:14px;line-height:1.6;'
         f'margin:0.5rem 0 1rem">{r["descricao"]}</p>',
         unsafe_allow_html=True)
 
@@ -1841,21 +1841,21 @@ def _dial_in_recomendacao(coffee_id: int, metodo: str, user_id: int) -> dict:
     if avg_ey > 0:
         if avg_ey < 18.0:
             recs.append({
-                "icone": "⬇️", "cor": "#e74c3c",
+                "icone": "⬇️", "cor": "#AE3B2A",
                 "titulo": f"Sub-extração (EY médio {avg_ey:.1f}%)",
                 "acao": "Afine a moagem 1–2 clicks" if last_clicks > 0 else "Afine a moagem",
                 "alternativa": f"ou aumente o tempo em 2–3s (atual: {avg_tempo:.0f}s)"
             })
         elif avg_ey > 22.0:
             recs.append({
-                "icone": "⬆️", "cor": "#e67e22",
+                "icone": "⬆️", "cor": "#8A5A00",
                 "titulo": f"Super-extração (EY médio {avg_ey:.1f}%)",
                 "acao": "Abra a moagem 1–2 clicks" if last_clicks > 0 else "Abra a moagem",
                 "alternativa": f"ou reduza o tempo em 2–3s (atual: {avg_tempo:.0f}s)"
             })
         else:
             recs.append({
-                "icone": "✅", "cor": "#27ae60",
+                "icone": "✅", "cor": "#2D6E48",
                 "titulo": f"EY na janela ideal ({avg_ey:.1f}%)",
                 "acao": "Mantenha os parâmetros",
                 "alternativa": "extração equilibrada"
@@ -1865,14 +1865,14 @@ def _dial_in_recomendacao(coffee_id: int, metodo: str, user_id: int) -> dict:
     if not com_ey:
         if avg_tempo < 22 and metodo == "Espresso":
             recs.append({
-                "icone": "⚡", "cor": "#e74c3c",
+                "icone": "⚡", "cor": "#AE3B2A",
                 "titulo": f"Fluxo rápido (média {avg_tempo:.0f}s)",
                 "acao": "Afine a moagem para aumentar resistência",
                 "alternativa": "meta: 25–32s para espresso"
             })
         elif avg_tempo > 38 and metodo == "Espresso":
             recs.append({
-                "icone": "🐌", "cor": "#e67e22",
+                "icone": "🐌", "cor": "#8A5A00",
                 "titulo": f"Fluxo lento (média {avg_tempo:.0f}s)",
                 "acao": "Abra a moagem para aumentar fluxo",
                 "alternativa": "meta: 25–32s para espresso"
@@ -1881,7 +1881,7 @@ def _dial_in_recomendacao(coffee_id: int, metodo: str, user_id: int) -> dict:
     # Avaliação sensorial baixa
     if avg_nota > 0 and avg_nota < 2.5 and not recs:
         recs.append({
-            "icone": "⭐", "cor": "#8e44ad",
+            "icone": "⭐", "cor": "#2A6283",
             "titulo": f"Nota sensorial baixa (média {avg_nota:.1f}/5)",
             "acao": "Mude UMA variável por vez: moagem → observe → ajuste",
             "alternativa": "anote o resultado de cada ajuste"
@@ -1949,22 +1949,22 @@ def _radar(profile: tuple) -> go.Figure:
     fig   = go.Figure()
     fig.add_trace(go.Scatterpolar(
         r=CoffeeEngine.TARGET, theta=attrs, fill='toself',
-        name='Target', line_color='#8A8278', fillcolor='rgba(138,130,120,0.12)'))
+        name='Target', line_color='#6F655C', fillcolor='rgba(111,101,92,0.10)'))
     fig.add_trace(go.Scatterpolar(
         r=profile, theta=attrs, fill='toself',
         name='Atual', line_color='#D97732', fillcolor='rgba(232,114,46,0.22)'))
     fig.update_layout(
         polar=dict(
             bgcolor='rgba(0,0,0,0)',
-            radialaxis=dict(visible=True, range=[0,10], gridcolor='#2A2A2A',
-                            linecolor='#2A2A2A', tickfont=dict(color='#8A8278', size=9)),
-            angularaxis=dict(gridcolor='#2A2A2A', linecolor='#2A2A2A',
-                             tickfont=dict(color='#B8B0A8', size=10))),
+            radialaxis=dict(visible=True, range=[0,10], gridcolor='#E3DDD4',
+                            linecolor='#E3DDD4', tickfont=dict(color='#6F655C', size=9)),
+            angularaxis=dict(gridcolor='#E3DDD4', linecolor='#E3DDD4',
+                             tickfont=dict(color='#574E46', size=10))),
         showlegend=True,
-        legend=dict(font=dict(color='#B8B0A8', size=11), bgcolor='rgba(0,0,0,0)'),
+        legend=dict(font=dict(color='#574E46', size=11), bgcolor='rgba(0,0,0,0)'),
         height=280, margin=dict(l=20,r=20,t=20,b=20),
         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='#B8B0A8', size=11, family='Inter'),
+        font=dict(color='#574E46', size=11, family='Geist'),
     )
     return fig
 
@@ -1977,14 +1977,14 @@ _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
-    --bg:      #0A0A0A;
-    --card:    #141414;
-    --text:    #F5EDE8;
-    --muted:   #8A8278;
-    --label:   #B8B0A8;
+    --bg:      #F6F3EE;
+    --card:    #FFFFFF;
+    --text:    #1C1714;
+    --muted:   #6F655C;
+    --label:   #574E46;
     --accent:  #D97732;
-    --accent2: #F08842;
-    --border:  #2A2A2A;
+    --accent2: #C96A28;
+    --border:  #E3DDD4;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);padding:16px 4px 4px}
@@ -1998,9 +1998,9 @@ _MOTOR_BARISTA_HTML = """<!DOCTYPE html>
   input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4px}
   .ht{font-size:7.5pt;color:var(--muted);margin-top:3px;line-height:1.4}
   .chart-wrap{position:relative;height:260px;width:100%}
-  .results{margin-top:14px;background:#1C1C1C;border-radius:8px;padding:14px;border:1px solid var(--border)}
+  .results{margin-top:14px;background:#EDE8E1;border-radius:8px;padding:14px;border:1px solid var(--border)}
   .rt{font-size:9.5pt;font-weight:700;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.08em}
-  .vb{font-size:11pt;font-weight:700;color:#F5EDE8;background:#3A1E10;padding:10px 12px;border-radius:6px;border-left:4px solid var(--accent);margin-bottom:8px}
+  .vb{font-size:11pt;font-weight:700;color:#1C1714;background:#FBE9DA;padding:10px 12px;border-radius:6px;margin-bottom:8px}
   .vd{font-size:9pt;color:var(--label);line-height:1.55}
 </style>
 </head>
@@ -2071,8 +2071,8 @@ const chart = new Chart(document.getElementById('rc').getContext('2d'), {
   options:{
     responsive:true,maintainAspectRatio:false,
     scales:{r:{
-      angleLines:{color:'#2A2A2A'},grid:{color:'#2A2A2A'},
-      pointLabels:{font:{size:10,weight:'bold'},color:'#F5EDE8'},
+      angleLines:{color:'#E3DDD4'},grid:{color:'#E3DDD4'},
+      pointLabels:{font:{size:10,weight:'bold'},color:'#1C1714'},
       suggestedMin:0,suggestedMax:10,ticks:{display:false}
     }},
     plugins:{legend:{display:false}}
@@ -2174,19 +2174,19 @@ _TIMER_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <style>
-  :root{--bg:#0A0A0A;--card:#141414;--text:#F5EDE8;--accent:#D97732;--border:#2A2A2A;--muted:#8A8278;}
+  :root{--bg:      #F6F3EE;--card:#FFFFFF;--text:#1C1714;--accent:#D97732;--border:#E3DDD4;--muted:#6F655C;}
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;background:var(--bg);padding:10px 0 0}
-  .wrap{display:flex;align-items:center;gap:16px;background:var(--card);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:12px;padding:12px 18px;flex-wrap:wrap}
+  .wrap{display:flex;align-items:center;gap:16px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 18px;flex-wrap:wrap}
   .disp{font-size:40px;font-weight:800;color:var(--text);letter-spacing:-0.03em;font-variant-numeric:tabular-nums;min-width:110px}
   .disp.run{color:var(--accent)}
   .btns{display:flex;gap:8px;flex-wrap:wrap}
-  button{background:#1C1C1C;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-weight:600;padding:9px 16px;cursor:pointer;transition:all .15s;white-space:nowrap}
-  button:hover{background:#242424;border-color:#3A3A3A}
-  .btn-go{background:var(--accent);border-color:var(--accent);color:#0A0A0A}
-  .btn-go:hover{background:#F08842}
+  button{background:#EDE8E1;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-weight:600;padding:9px 16px;cursor:pointer;transition:all .15s;white-space:nowrap}
+  button:hover{background:#E6E0D7;border-color:#8F857A}
+  .btn-go{background:var(--accent);border-color:var(--accent);color:#1C1714}
+  .btn-go:hover{background:#C96A28}
   .laps{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
-  .lap{background:#1C1C1C;border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:11px;color:var(--muted);font-weight:600}
+  .lap{background:#EDE8E1;border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:11px;color:var(--muted);font-weight:600}
   .note{font-size:11px;color:var(--muted);margin-top:3px}
 </style>
 </head>
@@ -2223,36 +2223,36 @@ function reset(){clearInterval(iv);iv=null;ms=0;laps=[];document.getElementById(
 # para a próxima etapa. Placeholders __TARGET__/__STAGES__/__CHECKED__/
 # __SWDISP__/__NSTAGES__ são injetados em Python via .replace().
 _EXT_TIMER_TPL = """
-<div style="font-family:Inter,system-ui,sans-serif;background:#161210;
-border:1px solid #2E2820;border-radius:12px;padding:12px 14px">
+<div style="font-family:Geist,system-ui,sans-serif;background:#FFFFFF;
+border:1px solid #E3DDD4;border-radius:12px;padding:12px 14px">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
     <span style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-    color:#D97732;font-weight:700">Timer de extração</span>
-    <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#B4ACA4">
+    color:#A4501A;font-weight:700">Timer de extração</span>
+    <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#574E46">
       <span>Alvo</span>
       <input id="tg" type="number" min="1" max="900" value="__TARGET__"
-      style="width:58px;background:#0D0B09;border:1px solid #3E3630;border-radius:6px;
-      color:#F2EBE0;font-size:13px;font-weight:700;padding:5px 6px;text-align:center">
+      style="width:58px;background:#FFFFFF;border:1px solid #8F857A;border-radius:6px;
+      color:#1C1714;font-size:13px;font-weight:700;padding:5px 6px;text-align:center">
       <span>s</span>
-      <button id="tb" title="Testar som" style="background:transparent;border:1px solid #3E3630;
-      border-radius:6px;color:#D97732;font-size:14px;padding:4px 8px;cursor:pointer">&#128276;</button>
+      <button id="tb" title="Testar som" style="background:transparent;border:1px solid #8F857A;
+      border-radius:6px;color:#A4501A;font-size:14px;padding:4px 8px;cursor:pointer">&#128276;</button>
     </div>
   </div>
-  <div id="t" style="font-family:'DM Serif Display',Georgia,serif;font-size:48px;
-  color:#F2EBE0;line-height:1;margin:10px 0 12px;text-align:center;transition:color .2s">0.0<span style="font-size:19px"> s</span></div>
+  <div id="t" style="font-family:'Geist Mono',ui-monospace,monospace;font-weight:500;letter-spacing:-.02em;font-size:48px;
+  color:#1C1714;line-height:1;margin:10px 0 12px;text-align:center;transition:color .2s">0.0<span style="font-size:19px"> s</span></div>
   <div style="display:flex;gap:8px;justify-content:center">
     <button id="s" style="flex:1;max-width:200px;padding:12px;border-radius:9px;border:none;
-    background:#D97732;color:#0D0B09;font-weight:700;font-size:15px;cursor:pointer">Iniciar</button>
+    background:#D97732;color:#1C1714;font-weight:700;font-size:15px;cursor:pointer">Iniciar</button>
     <button id="r" style="flex:0 0 auto;padding:12px 18px;border-radius:9px;
-    border:1px solid #3E3630;background:transparent;color:#B4ACA4;font-weight:600;
+    border:1px solid #8F857A;background:transparent;color:#574E46;font-weight:600;
     font-size:15px;cursor:pointer">Zerar</button>
   </div>
-  <div id="banner" style="font-size:15px;font-weight:600;line-height:1.4;color:#8A8278;
+  <div id="banner" style="font-size:15px;font-weight:600;line-height:1.4;color:#6F655C;
   margin-top:13px;text-align:center;min-height:42px">Toque em Iniciar — o timer para em cada etapa até você tocar Continuar.</div>
   <label id="swrap" style="display:__SWDISP__;align-items:center;justify-content:center;gap:7px;margin-top:8px;
-  font-size:14px;color:#B4ACA4;cursor:pointer;user-select:none">
-    <input id="sw" type="checkbox" __CHECKED__ style="width:15px;height:15px;accent-color:#D97732">
-    <span style="line-height:1.3">Parar e alarmar em cada etapa <span style="color:#8A8278;display:block;font-size:12px">(__NSTAGES__ etapas)</span></span>
+  font-size:14px;color:#574E46;cursor:pointer;user-select:none">
+    <input id="sw" type="checkbox" __CHECKED__ style="width:15px;height:15px;accent-color:#A4501A">
+    <span style="line-height:1.3">Parar e alarmar em cada etapa <span style="color:#6F655C;display:block;font-size:12px">(__NSTAGES__ etapas)</span></span>
   </label>
   <div id="stg" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;justify-content:center"></div>
 </div>
@@ -2279,37 +2279,37 @@ function es(){return nowMs()/1000;}
 function fmtT(s){var m=Math.floor(s/60),x=Math.floor(s%60);return m>0?(m+':'+(x<10?'0':'')+x):(x+' s');}
 function alarms(){var l=[];if(sw.checked){STAGES.forEach(function(s){if(s.t<TARGET&&s.t>0)l.push({t:s.t,label:s.label,k:'e'});});}
   l.push({t:TARGET,label:'Tempo alvo',k:'f'});l.sort(function(a,b){return a.t-b.t;});return l;}
-function setBtn(txt,bg){sb.textContent=txt;sb.style.background=bg;sb.style.color=(bg==='transparent'?'#B4ACA4':'#0D0B09');}
-function say(html,color){banner.innerHTML=html;banner.style.color=color||'#F2EBE0';}
+function setBtn(txt,bg){sb.textContent=txt;sb.style.background=bg;sb.style.color=(bg==='transparent'?'#574E46':'#1C1714');}
+function say(html,color){banner.innerHTML=html;banner.style.color=color||'#1C1714';}
 function renderChips(){var al=alarms();stg.innerHTML=al.map(function(a){
   return '<span class="mchip" data-t="'+a.t+'" data-k="'+a.k+'" style="border:1px solid '
-  +(a.k==='f'?'#D97732':'#3E3630')+';border-radius:7px;padding:5px 11px;font-size:13px;font-weight:600;color:'
-  +(a.k==='f'?'#D97732':'#B4ACA4')+'">'+fmtT(a.t)+' · '+a.label+'</span>';}).join('');}
+  +(a.k==='f'?'#D97732':'#8F857A')+';border-radius:7px;padding:5px 11px;font-size:13px;font-weight:600;color:'
+  +(a.k==='f'?'#A4501A':'#574E46')+'">'+fmtT(a.t)+' · '+a.label+'</span>';}).join('');}
 function paint(){var e=es(),al=alarms(),nx=null;
   for(var i=0;i<al.length;i++){if(!fired[al[i].k+al[i].t]){nx=al[i].t;break;}}
   var cs=document.querySelectorAll('#stg .mchip');
   for(var j=0;j<cs.length;j++){var c=cs[j],t=+c.getAttribute('data-t');
     if(fired[c.getAttribute('data-k')+t]){c.style.opacity='0.4';c.style.textDecoration='line-through';c.style.background='transparent';}
-    else if(t===nx){c.style.opacity='1';c.style.textDecoration='none';c.style.background='rgba(217,119,50,.16)';c.style.color='#F2EBE0';c.style.borderColor='#D97732';}
+    else if(t===nx){c.style.opacity='1';c.style.textDecoration='none';c.style.background='#FBE9DA';c.style.color='#1C1714';c.style.borderColor='#D97732';}
     else{c.style.opacity='1';c.style.textDecoration='none';c.style.background='transparent';}}}
-function flash(big){el.style.color=big?'#3DD68C':'#F08842';setTimeout(function(){el.style.color='#F2EBE0';},big?900:400);}
+function flash(big){el.style.color=big?'#2D6E48':'#C96A28';setTimeout(function(){el.style.color='#1C1714';},big?900:400);}
 function nextUnfired(after){var al=alarms();for(var i=0;i<al.length;i++){if(al[i].t>after&&!fired[al[i].k+al[i].t])return al[i];}return null;}
 function fireStage(a){fired[a.k+a.t]=1;longAlarm(5);buzz([500,170,500,170,500,170,600]);flash(a.k==='f');
   acc=a.t*1000;t0=null;running=false;cancelAnimationFrame(raf);
   el.innerHTML=a.t.toFixed(1)+'<span style="font-size:19px"> s</span>';
-  if(a.k==='f'){setBtn('Concluído ✓','#3DD68C');say('✓ Tempo alvo <b>'+fmtT(a.t)+'</b> atingido — <b>pare a extração!</b>','#3DD68C');}
-  else{var nx=nextUnfired(a.t);setBtn('▶ Continuar','#3DD68C');
-    say('Etapa <b>'+fmtT(a.t)+'</b>: '+a.label+(nx?'<br><span style="color:#8A8278">próxima: '+fmtT(nx.t)+' · '+nx.label+'</span>':''),'#F2EBE0');}
+  if(a.k==='f'){setBtn('Concluído ✓','#2D6E48');say('✓ Tempo alvo <b>'+fmtT(a.t)+'</b> atingido — <b>pare a extração!</b>','#2D6E48');}
+  else{var nx=nextUnfired(a.t);setBtn('▶ Continuar','#2D6E48');
+    say('Etapa <b>'+fmtT(a.t)+'</b>: '+a.label+(nx?'<br><span style="color:#6F655C">próxima: '+fmtT(nx.t)+' · '+nx.label+'</span>':''),'#1C1714');}
   paint();}
 function check(){var e=es(),al=alarms();for(var i=0;i<al.length;i++){var a=al[i];if(!fired[a.k+a.t]&&e>=a.t){fireStage(a);return;}}}
 function tick(){el.innerHTML=(nowMs()/1000).toFixed(1)+'<span style="font-size:19px"> s</span>';check();paint();if(running)raf=requestAnimationFrame(tick);}
 function startRun(){au();stopAlarm();if(t0===null)t0=performance.now();running=true;setBtn('Pausar','#D97732');
-  var nx=nextUnfired(-1);say(nx?'Cronometrando… próxima: <b>'+fmtT(nx.t)+'</b> · '+nx.label:'Cronometrando…','#8A8278');tick();}
+  var nx=nextUnfired(-1);say(nx?'Cronometrando… próxima: <b>'+fmtT(nx.t)+'</b> · '+nx.label:'Cronometrando…','#6F655C');tick();}
 sb.onclick=function(){if(running){acc=nowMs();t0=null;running=false;cancelAnimationFrame(raf);stopAlarm();
-  setBtn('▶ Continuar','#3DD68C');say('Pausado — '+(nowMs()/1000).toFixed(1)+'s','#8A8278');}else{startRun();}};
+  setBtn('▶ Continuar','#2D6E48');say('Pausado — '+(nowMs()/1000).toFixed(1)+'s','#6F655C');}else{startRun();}};
 rb.onclick=function(){cancelAnimationFrame(raf);stopAlarm();t0=null;acc=0;running=false;fired={};
-  el.innerHTML='0.0<span style="font-size:19px">s</span>';el.style.color='#F2EBE0';setBtn('Iniciar','#D97732');
-  say('Toque em Iniciar — o timer para em cada etapa até você tocar Continuar.','#8A8278');renderChips();paint();};
+  el.innerHTML='0.0<span style="font-size:19px">s</span>';el.style.color='#1C1714';setBtn('Iniciar','#D97732');
+  say('Toque em Iniciar — o timer para em cada etapa até você tocar Continuar.','#6F655C');renderChips();paint();};
 tb.onclick=function(){au();longAlarm(1.5);};
 tg.addEventListener('input',function(){var v=parseInt(this.value)||0;TARGET=Math.max(1,v);fired={};renderChips();paint();});
 sw.addEventListener('change',function(){fired={};renderChips();paint();});
@@ -2527,13 +2527,13 @@ def _view_barista(user_id):
                 st.markdown(f"""
                 <div style="background:var(--mc-orange-soft);border:1px solid var(--mc-orange);
                 border-radius:12px;padding:16px;margin:0">
-                    <p style="margin:0 0 8px;font-weight:700;color:var(--mc-orange);font-size:14px">{_html.escape(bc['nome'])}</p>
+                    <p style="margin:0 0 8px;font-weight:700;color:var(--mc-orange-ink);font-size:14px">{_html.escape(bc['nome'])}</p>
                     <p style="margin:0;color:var(--mc-text-2);font-size:12px">
                     <strong>Torra:</strong> {_html.escape(bc['torra'])} | <strong>Intensidade:</strong> {bc['intensidade']}/12
                     </p>
                     <p style="margin:6px 0 0;color:var(--mc-text-3);font-size:12px">{_html.escape(bc['regiao'] or '—')}</p>
                     <p style="margin:8px 0 0;color:var(--mc-text);font-size:11px">{_html.escape(bc['notas'] or '(sem notas)')}</p>
-                    <p style="margin:8px 0 0;font-size:18px;color:var(--mc-orange)">{'⭐' * int(bc['classificacao'])}</p>
+                    <p style="margin:8px 0 0;font-size:18px;color:var(--mc-orange-ink)">{'⭐' * int(bc['classificacao'])}</p>
                 </div>
                 """, unsafe_allow_html=True)
             else:
@@ -2570,8 +2570,8 @@ def _view_barista(user_id):
         with col_promo:
             st.markdown('<p class="info-key" style="margin-bottom:0.5rem">Dica do Dia</p>', unsafe_allow_html=True)
             st.markdown(f"""
-            <div style="background:linear-gradient(135deg, #D97732 0%, #F08842 100%);
-            border-radius:12px;padding:16px;margin:0;color:#0A0A0A">
+            <div style="background:#D97732;
+            border-radius:12px;padding:16px;margin:0;color:var(--mc-on-orange)">
                 <p style="margin:0 0 8px;font-weight:700;font-size:14px">🎯 {_html.escape(_dica_titulo)}</p>
                 <p style="margin:0;font-size:12px;line-height:1.6">{_html.escape(_dica_texto)}</p>
                 <p style="margin:12px 0 0;font-size:11px;opacity:0.9">💡 Use o chat abaixo para perguntas específicas</p>
@@ -2604,7 +2604,7 @@ def _view_barista(user_id):
                 if msg["role"] == "user":
                     st.markdown(
                         f'<div style="display:flex;justify-content:flex-end;margin:8px 0">'
-                        f'<div style="background:var(--mc-orange);color:#0A0A0A;'
+                        f'<div style="background:var(--mc-orange);color:var(--mc-on-orange);'
                         f'border-radius:12px;border-bottom-right-radius:0;'
                         f'padding:12px 16px;max-width:70%;font-size:14px;line-height:1.5">'
                         f'{_html.escape(msg["content"])}'
@@ -2616,12 +2616,12 @@ def _view_barista(user_id):
                         f'<div style="width:30px;height:30px;border-radius:50%;flex-shrink:0;'
                         f'background:var(--mc-orange-soft);border:1px solid var(--mc-orange);'
                         f'display:flex;align-items:center;justify-content:center;'
-                        f'font-family:\'DM Serif Display\',serif;font-size:15px;color:var(--mc-orange)">B</div>'
+                        f'font-family:var(--mc-font);font-weight:600;font-size:15px;color:var(--mc-orange-ink)">B</div>'
                         f'<div style="background:var(--mc-surface);border:1px solid var(--mc-border);'
                         f'border-radius:12px;border-bottom-left-radius:0;'
                         f'padding:10px 16px;max-width:74%;font-size:14px;line-height:1.6;color:var(--mc-text)">'
                         f'<div style="font-size:10px;font-weight:700;letter-spacing:0.06em;'
-                        f'text-transform:uppercase;color:var(--mc-orange);margin-bottom:4px">Barista Expert</div>'
+                        f'text-transform:uppercase;color:var(--mc-orange-ink);margin-bottom:4px">Barista Expert</div>'
                         f'{_html.escape(msg["content"])}'
                         f'</div></div>',
                         unsafe_allow_html=True)
@@ -2778,8 +2778,8 @@ def _view_nova_extracao(user_id):
         if st.session_state.get("_recipe_applied"):
             _rap = st.session_state["_recipe_applied"]
             _rap_html = (
-                f'<div style="display:flex;align-items:center;gap:8px;background:rgba(61,214,140,.12);'
-                f'border-left:3px solid #3DD68C;border-radius:8px;padding:9px 14px;margin:0 0 .6rem;'
+                f'<div style="display:flex;align-items:center;gap:8px;background:rgba(45,110,72,.08);'
+                f'border:1px solid var(--mc-border);border-radius:8px;padding:9px 14px;margin:0 0 .6rem;'
                 f'font-size:13px;color:var(--mc-text)">📖 Receita <b>{_html.escape(str(_rap["nome"]))}</b> '
                 f'aplicada — dose {_rap["dose"]}g · yield {_rap["yield"]}g · '
                 f'{_html.escape(str(_rap["tempo"]))} · moagem {_html.escape(str(_rap["moagem"]))}</div>')
@@ -2812,19 +2812,19 @@ def _view_nova_extracao(user_id):
                     _fresh_html = ""
                 elif _dias_torra <= 4:
                     _fresh_html = (f'<div style="{_fbox};background:rgba(232,163,61,.12);'
-                                   f'border-left:3px solid #E8A33D;color:#E8A33D">⏳ Este grão está há '
+                                   f'border:1px solid var(--mc-border);color:var(--mc-warning)">⏳ Este grão está há '
                                    f'{_dias_torra}d pós-torra — ainda degaseificando. Ideal após o 5º dia.</div>')
                 elif _dias_torra <= 21:
-                    _fresh_html = (f'<div style="{_fbox};background:rgba(61,214,140,.12);'
-                                   f'border-left:3px solid #3DD68C;color:#3DD68C">✨ Janela ideal! '
+                    _fresh_html = (f'<div style="{_fbox};background:rgba(45,110,72,.08);'
+                                   f'border:1px solid var(--mc-border);color:var(--mc-success)">✨ Janela ideal! '
                                    f'{_dias_torra} dias pós-torra — pico de sabor e aroma.</div>')
                 elif _dias_torra <= 45:
                     _fresh_html = (f'<div style="{_fbox};background:rgba(74,158,255,.12);'
-                                   f'border-left:3px solid #4A9EFF;color:#4A9EFF">👍 {_dias_torra} dias '
+                                   f'border:1px solid var(--mc-border);color:var(--mc-info)">👍 {_dias_torra} dias '
                                    f'pós-torra — ainda bom, aromas começando a decair.</div>')
                 else:
                     _fresh_html = (f'<div style="{_fbox};background:rgba(232,93,93,.12);'
-                                   f'border-left:3px solid #E85D5D;color:#E85D5D">⏳ {_dias_torra} dias '
+                                   f'border:1px solid var(--mc-border);color:var(--mc-error)">⏳ {_dias_torra} dias '
                                    f'pós-torra — priorize consumir logo.</div>')
             st.markdown(_fresh_html, unsafe_allow_html=True)
 
@@ -2841,7 +2841,7 @@ def _view_nova_extracao(user_id):
                     _rq_nota   = st.slider("Nota Final", 1, 5, 3, key="rq_nota")
                     _rq_notas  = st.text_area("Impressões rápidas", height=72, key="rq_notas_txt",
                                               placeholder="Acidez, doçura, corpo...")
-                st.markdown('<p style="font-size:11px;color:#8A8278">Moedor, TDS, temperatura e avaliação detalhada ficam zerados no modo rápido. Use o modo completo para registros completos.</p>', unsafe_allow_html=True)
+                st.markdown('<p style="font-size:11px;color:var(--mc-text-3)">Moedor, TDS, temperatura e avaliação detalhada ficam zerados no modo rápido. Use o modo completo para registros completos.</p>', unsafe_allow_html=True)
 
                 # Cronômetro compacto
                 components.html(_TIMER_HTML, height=80, scrolling=False)
@@ -2893,7 +2893,7 @@ def _view_nova_extracao(user_id):
                         f'<div style="background:var(--mc-surface-2);border:1px solid var(--mc-border);'
                         f'border-left:3px solid var(--mc-orange);border-radius:0 10px 10px 0;'
                         f'padding:10px 14px;margin:4px 0 8px;font-size:13px;line-height:1.7;color:var(--mc-text)">'
-                        f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange);'
+                        f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange-ink);'
                         f'text-transform:uppercase;letter-spacing:.1em">🔁 Última receita ({_html.escape(metodo)})</span><br>'
                         f"<b>{float(lx['gramas'] or 0):.1f}g → {float(lx['agua_alvo'] or 0):.0f}g</b> · "
                         f"{int(lx['tempo_extracao'] or 0)}s · "
@@ -3131,7 +3131,7 @@ def _view_nova_extracao(user_id):
                         f'<div style="background:var(--mc-surface);border:1px solid var(--mc-border);'
                         f'border-radius:12px;padding:14px 18px;margin:0 0 1rem">'
                         f'<p style="margin:0 0 8px;font-size:11px;font-weight:700;'
-                        f'color:var(--mc-orange);text-transform:uppercase;letter-spacing:.1em">'
+                        f'color:var(--mc-orange-ink);text-transform:uppercase;letter-spacing:.1em">'
                         f'📊 Dial-in Automático — {_di_n} extraç{"ão" if _di_n==1 else "ões"} '
                         f'({metodo}{f", última: {_di_data}" if _di_data else ""})</p>'
                         f'{_di_cards}</div>')
@@ -3149,7 +3149,7 @@ def _view_nova_extracao(user_id):
                 st.markdown(
                     f'<div style="background:var(--mc-orange-soft);border:1px solid var(--mc-orange);'
                     f'border-radius:12px;padding:14px 18px;margin:0 0 1rem">'
-                    f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange);'
+                    f'<span style="font-size:11px;font-weight:700;color:var(--mc-orange-ink);'
                     f'text-transform:uppercase;letter-spacing:.1em">🎯 Receita sugerida para este grão</span>'
                     f'<span style="font-size:11px;color:var(--mc-text-3);margin-left:8px">· {metodo}</span>'
                     f'<div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:8px;font-size:14px;'
@@ -3277,8 +3277,8 @@ def _view_nova_extracao(user_id):
                     st.markdown(
                         f'<div class="mc-zone" style="margin:.3rem 0 .5rem">'
                         f'<span class="mc-zone-label">Brew ratio</span>'
-                        f'<span style="font-family:\'DM Serif Display\',Georgia,serif;'
-                        f'font-size:24px;color:var(--mc-orange);margin-left:6px">{_ratio}</span>'
+                        f'<span style="font-family:var(--mc-font-mono);font-weight:500;letter-spacing:-.02em;'
+                        f'font-size:24px;color:var(--mc-orange-ink);margin-left:6px">{_ratio}</span>'
                         f'<span style="color:var(--mc-text-3);font-size:12px;margin-left:10px">'
                         f'alvo {metodo} ~1:{params["ratio"]:.1f}</span></div>',
                         unsafe_allow_html=True)
@@ -3315,8 +3315,8 @@ def _view_nova_extracao(user_id):
                         _dp = mc_core.diagnostico_pressao(pressao_real, _maq_cfg or None)
                         if _dp:
                             pressao_efetiva_real = _dp["efetiva"]
-                            _cor = {"ideal": "#3DD68C", "alta": "#E85D5D",
-                                    "baixa": "#E8A33D"}[_dp["status"]]
+                            _cor = {"ideal": "var(--mc-success)", "alta": "var(--mc-error)",
+                                    "baixa": "var(--mc-warning)"}[_dp["status"]]
                             if _dp["convertida"]:
                                 st.markdown(
                                     f'<div style="font-size:12px;color:{_cor};margin:-8px 0 8px">'
@@ -3351,7 +3351,7 @@ def _view_nova_extracao(user_id):
                     # medido se houver, senão o estimado (adapta-se ao método).
                     _ey_radar = ey_real if ey_real > 0 else _ey_estimado
                     st.markdown(
-                        '<p style="font-size:11px;font-weight:700;color:var(--mc-orange);'
+                        '<p style="font-size:11px;font-weight:700;color:var(--mc-orange-ink);'
                         'letter-spacing:0.12em;text-transform:uppercase;margin-bottom:0.25rem">'
                         'Perfil Sensorial — Extração Real</p>',
                         unsafe_allow_html=True)
@@ -3643,13 +3643,13 @@ def _view_meus_cafes(user_id):
                             if _dias < 0:
                                 _fresh = None
                             elif _dias <= 4:
-                                _fresh = (f"💨 Em descanso ({_dias}d) — degaseificando, espere até o 5º dia", "#4A9EFF")
+                                _fresh = (f"💨 Em descanso ({_dias}d) — degaseificando, espere até o 5º dia", "var(--mc-info)")
                             elif _dias <= 21:
-                                _fresh = (f"✨ Janela ideal ({_dias}d pós-torra) — pico de sabor", "#3DD68C")
+                                _fresh = (f"✨ Janela ideal ({_dias}d pós-torra) — pico de sabor", "var(--mc-success)")
                             elif _dias <= 45:
-                                _fresh = (f"👍 Ainda bom ({_dias}d) — aromas começando a decair", "#E8A33D")
+                                _fresh = (f"👍 Ainda bom ({_dias}d) — aromas começando a decair", "var(--mc-warning)")
                             else:
-                                _fresh = (f"⏳ {_dias}d pós-torra — priorize consumir logo", "#E85D5D")
+                                _fresh = (f"⏳ {_dias}d pós-torra — priorize consumir logo", "var(--mc-error)")
                             if _fresh:
                                 tags += (f'<span style="display:inline-block;background:transparent;'
                                          f'border:1px solid {_fresh[1]};color:{_fresh[1]};'
@@ -3664,7 +3664,7 @@ def _view_meus_cafes(user_id):
                             info += _irow("Comprado em", c["local_compra"])
                         if c.get("data_compra"):
                             info += _irow("Data compra", c["data_compra"].strftime('%d/%m/%Y'))
-                        note = (f'<div style="margin-top:10px;font-size:13px;color:#B8B0A8;'
+                        note = (f'<div style="margin-top:10px;font-size:13px;color:var(--mc-text-2);'
                                 f'font-style:italic;line-height:1.5;">{_html.escape(c["notas"])}</div>' if c["notas"] else "")
                         st.markdown(f'<div>{tags}</div><div style="margin-top:12px">{info}</div>{note}',
                                     unsafe_allow_html=True)
@@ -3822,11 +3822,11 @@ def _view_meus_cafes(user_id):
                     if not extracts:
                         st.markdown(
                             '<div style="text-align:center;padding:1.5rem;'
-                            'background:#141414;border:1px dashed #3A3A3A;'
-                            'border-radius:10px;color:#8A8278;font-size:13px;'
+                            'background:var(--mc-surface-2);border:1px dashed var(--mc-border-strong);'
+                            'border-radius:10px;color:var(--mc-text-3);font-size:13px;'
                             'font-weight:500">'
                             '☕ Ainda sem extrações deste café — vá em '
-                            '<strong style="color:#D97732">Nova Extração</strong> '
+                            '<strong style="color:var(--mc-orange-ink)">Nova Extração</strong> '
                             'para começar.</div>',
                             unsafe_allow_html=True)
                     else:
@@ -4061,7 +4061,7 @@ def _view_historico(user_id):
                             _vb = f"{_nb:.{_dec}f}{_u}" if _nb is not None else "—"
                             if _na is not None and _nb is not None:
                                 _d = _nb - _na
-                                _cor = "#3DD68C" if _d > 0 else "#E85D5D" if _d < 0 else "var(--mc-text-3)"
+                                _cor = "var(--mc-success)" if _d > 0 else "var(--mc-error)" if _d < 0 else "var(--mc-text-3)"
                                 _delta = f"<span style='color:{_cor}'>{'+' if _d > 0 else ''}{_d:.{_dec}f}</span>"
                             else:
                                 _delta = "—"
@@ -4071,7 +4071,7 @@ def _view_historico(user_id):
                                  f"<td style='padding:6px 10px;text-align:right'>{_delta}</td></tr>")
                     st.markdown(
                         "<table style='width:100%;border-collapse:collapse;font-size:13px'>"
-                        "<thead><tr style='color:var(--mc-orange);font-size:11px;"
+                        "<thead><tr style='color:var(--mc-orange-ink);font-size:11px;"
                         "text-transform:uppercase;letter-spacing:.1em'>"
                         "<th style='text-align:left;padding:6px 10px'>Métrica</th>"
                         "<th style='text-align:right;padding:6px 10px'>A</th>"
@@ -4103,7 +4103,7 @@ def _view_historico(user_id):
                     and (filt_nota == 0 or (r.get("nota_final_stars") or 0) >= filt_nota)]
 
             st.markdown(
-                f'<p style="color:#8A8278;font-size:12px;margin:-0.5rem 0 1rem;'
+                f'<p style="color:var(--mc-text-3);font-size:12px;margin:-0.5rem 0 1rem;'
                 f'font-weight:600">{len(rows)} extração(ões) — máximo 200 mais recentes</p>',
                 unsafe_allow_html=True)
 
@@ -4117,7 +4117,7 @@ def _view_historico(user_id):
                         _ey_by_cafe.setdefault(_r["cafe_nome"], {"x": [], "y": []})
                         _ey_by_cafe[_r["cafe_nome"]]["x"].append(str(_r["data"]))
                         _ey_by_cafe[_r["cafe_nome"]]["y"].append(float(_r["ey"]))
-                    _colors = ["#D97732","#A0A0A0","#707070","#E8A060","#C0C0C0"]
+                    _colors = ["#D97732","#1C1714","#8F857A","#A4501A","#E6C39A"]
                     for _ci, (_cname, _cdata) in enumerate(_ey_by_cafe.items()):
                         _fig_ey.add_trace(go.Scatter(
                             x=_cdata["x"], y=_cdata["y"],
@@ -4131,10 +4131,10 @@ def _view_historico(user_id):
                                       annotation_font_size=11)
                     _fig_ey.update_layout(
                         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                        font_color="#C8C0B8", height=280, margin=dict(l=0,r=0,t=10,b=0),
+                        font_color="#574E46", height=280, margin=dict(l=0,r=0,t=10,b=0),
                         legend=dict(font_size=11, bgcolor="rgba(0,0,0,0)"),
                         xaxis=dict(showgrid=False, tickfont_size=10),
-                        yaxis=dict(gridcolor="#2A2420", ticksuffix="%", tickfont_size=10))
+                        yaxis=dict(gridcolor="#E3DDD4", ticksuffix="%", tickfont_size=10))
                     st.plotly_chart(_fig_ey, use_container_width=True,
                                     config={"displayModeBar": False})
 
@@ -4170,7 +4170,7 @@ def _view_historico(user_id):
                         st.rerun()
                 with _pg2:
                     st.markdown(
-                        f'<p style="text-align:center;color:#8A8278;font-size:12px;padding-top:8px">'
+                        f'<p style="text-align:center;color:var(--mc-text-3);font-size:12px;padding-top:8px">'
                         f'Página {_hist_pg + 1} de {_total_pgs}</p>', unsafe_allow_html=True)
                 with _pg3:
                     if st.button("Próxima →", disabled=_hist_pg >= _total_pgs - 1, key="hist_next"):
@@ -4195,7 +4195,7 @@ def _view_historico(user_id):
                                 _irow("TDS",   f"{r['tds']}%" if r['tds'] else "—") +
                                 (_irow("Moedor", f"{r['moedor']}  ·  {r['clicks_moedor']} clicks")
                                  if r["moedor"] else ""))
-                        note = (f'<div style="margin-top:10px;font-size:13px;color:#B8B0A8;'
+                        note = (f'<div style="margin-top:10px;font-size:13px;color:var(--mc-text-2);'
                                 f'font-style:italic;line-height:1.5;">{_html.escape(r["notas"])}</div>' if r["notas"] else "")
                         st.markdown(f'<div>{tags}</div><div style="margin-top:12px">{info}</div>{note}',
                                     unsafe_allow_html=True)
@@ -4359,11 +4359,11 @@ def _view_receitas(user_id):
         st.markdown('<p class="mc-section-header">Biblioteca de Receitas</p>',
                     unsafe_allow_html=True)
         st.markdown(
-            '<p style="color:#B8B0A8;font-size:14px;line-height:1.6;'
+            '<p style="color:var(--mc-text-2);font-size:14px;line-height:1.6;'
             'margin:0 0 1.5rem">10 receitas-referência dos métodos mais '
             'comentados pelos especialistas — James Hoffmann, World AeroPress '
             'Championship, padrões italianos clássicos e SCA. Todas pressupõem '
-            '<strong style="color:#F5EDE8">grãos moídos na hora</strong> para '
+            '<strong style="color:var(--mc-text)">grãos moídos na hora</strong> para '
             'extração ideal.</p>',
             unsafe_allow_html=True)
 
@@ -4392,7 +4392,7 @@ def _view_receitas(user_id):
                    "Selecione ao menos uma categoria para ver as receitas.")
         else:
             st.markdown(
-                f'<p style="color:#8A8278;font-size:12px;margin:1rem 0 0.5rem;'
+                f'<p style="color:var(--mc-text-3);font-size:12px;margin:1rem 0 0.5rem;'
                 f'font-weight:600">Exibindo {len(receitas)} de '
                 f'{len(RECIPES)} receitas</p>',
                 unsafe_allow_html=True)
@@ -4404,7 +4404,7 @@ def _view_receitas(user_id):
                     _render_recipe(r)
 
             st.markdown(
-                '<p style="color:#8A8278;font-size:12px;text-align:center;'
+                '<p style="color:var(--mc-text-3);font-size:12px;text-align:center;'
                 'margin:2rem 0 0.5rem;line-height:1.6">'
                 'As receitas e ratios foram extraídos de fontes públicas e podem '
                 'ser ajustados ao seu paladar. Use-as como ponto de partida — '
@@ -4520,7 +4520,7 @@ def _view_capsulas(user_id):
                 _low_names = ", ".join(c["nome"] for c in _low_stock)
                 st.warning(f"⚠️ Estoque baixo: **{_low_names}**")
             st.markdown(
-                f'<p style="color:#8A8278;font-size:12px;margin:-0.5rem 0 1rem;'
+                f'<p style="color:var(--mc-text-3);font-size:12px;margin:-0.5rem 0 1rem;'
                 f'font-weight:600">{len(caps)} cápsula{"s" if len(caps) != 1 else ""} cadastrada{"s" if len(caps) != 1 else ""}</p>',
                 unsafe_allow_html=True)
 
@@ -4574,7 +4574,7 @@ def _view_capsulas(user_id):
                         if cap.get("nota_final_stars"):
                             st.metric("Nota Final", _stars(cap["nota_final_stars"]))
                         st.markdown(
-                            f'<p style="font-size:11px;color:#8A8278;margin:4px 0 0">'
+                            f'<p style="font-size:11px;color:var(--mc-text-3);margin:4px 0 0">'
                             f'Cadastrado em {cap["created_at"].strftime("%d/%m/%Y")}</p>',
                             unsafe_allow_html=True)
 
@@ -5182,8 +5182,8 @@ def main():
     user_email_display = st.session_state.get('user_email', '')
     initial = (user_email_display[:1] or "?").upper()
 
-    # Toggle Dark/Light mode — persiste na sessão
-    _light_mode = st.session_state.get('_light_mode', False)
+    # Toggle claro/escuro — claro (Oat) é o padrão v4; escuro (Roast) opcional
+    _dark_mode = st.session_state.get('_dark_mode', False)
 
     col_brand, col_user, col_theme, col_logout = st.columns([0.60, 0.25, 0.07, 0.08], gap="small")
     with col_brand:
@@ -5213,10 +5213,10 @@ def main():
             f'</div>',
             unsafe_allow_html=True)
     with col_theme:
-        _theme_label = "☀️" if _light_mode else "🌙"
+        _theme_label = "☀️" if _dark_mode else "🌙"
         if st.button(_theme_label, use_container_width=True, key="btn_theme",
-                     help="Alternar entre modo escuro e claro"):
-            st.session_state['_light_mode'] = not _light_mode
+                     help="Alternar entre modo claro e escuro"):
+            st.session_state['_dark_mode'] = not _dark_mode
             st.rerun()
     with col_logout:
         if st.button("Sair", use_container_width=True, key="btn_logout",
@@ -5224,11 +5224,11 @@ def main():
             _logout()
             st.rerun()
 
-    # Aplica classe light mode no body via JS
-    if _light_mode:
+    # Aplica o tema escuro (Roast) no body via JS
+    if _dark_mode:
         st.markdown(
-            '<script>document.body.classList.add("mc-light");</script>'
-            '<style>body, .stApp, .block-container { background-color: #FAF7F4 !important; }</style>',
+            '<script>document.body.classList.add("mc-dark");</script>'
+            '<style>body, .stApp, .block-container { background-color: #131211 !important; }</style>',
             unsafe_allow_html=True)
 
     # Widget de consumo (hoje · semana · média · total)

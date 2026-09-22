@@ -4,79 +4,95 @@
        sobre preto puro, com "COFFEE" em cinza quente.
        ═══════════════════════════════════════════════════════════════ */
     :root {
-        --mc-bg: #0D0B09;
-        --mc-surface: #161210;
-        --mc-surface-2: #1E1A16;
-        --mc-surface-3: #27211B;
-        --mc-border: #2E2820;
-        --mc-border-strong: #3E3630;
-
-        --mc-orange: #D97732;
-        --mc-orange-hover: #E8883A;
-        --mc-orange-soft: #3D1F0D;
-        --mc-orange-glow: rgba(217, 119, 50, 0.16);
-
-        --mc-text: #F2EBE0;
-        --mc-text-2: #B4ACA4;
-        --mc-text-3: #8A8278;
-        --mc-text-muted: #6C6660;
-
-        --mc-success: #4CAF6F;
-        --mc-error: #E55A4C;
-        --mc-warning: #E8A23E;
-        --mc-info: #5BB0E8;
-    }
-
-    /* ─── Light Mode — classe aplicada pelo toggle ────────────────── */
-    .mc-light {
-        --mc-bg: #FAF7F4;
+        /* Mateu Coffee v4 — tema claro "Oat" (padrão). Fonte: design system v4. */
+        --mc-bg: #F6F3EE;
         --mc-surface: #FFFFFF;
-        --mc-surface-2: #F2EDE8;
-        --mc-surface-3: #EAE4DE;
-        --mc-border: #E0D8D0;
-        --mc-border-strong: #C8BEB4;
-        --mc-orange: #C8541A;
-        --mc-orange-hover: #D96420;
-        --mc-orange-soft: #FDE8D8;
-        --mc-orange-glow: rgba(200, 84, 26, 0.14);
-        --mc-text: #1A1208;
-        --mc-text-2: #4A3C30;
-        --mc-text-3: #7A6A5A;
-        --mc-text-muted: #A89880;
-        --mc-success: #2E7D4A;
-        --mc-error: #C0392B;
-        --mc-warning: #C07000;
-        --mc-info: #1A6EA8;
+        --mc-surface-2: #EDE8E1;
+        --mc-surface-3: #E6E0D7;
+        --mc-border: #E3DDD4;
+        --mc-border-strong: #8F857A;
+
+        --mc-orange: #D97732;          /* 🔒 marca — só preenchimentos */
+        --mc-orange-hover: #C96A28;
+        --mc-orange-ink: #A4501A;      /* laranja como texto / anel de foco */
+        --mc-on-orange: #1C1714;       /* texto sobre laranja (5.6:1) */
+        --mc-orange-soft: #FBE9DA;
+        --mc-orange-glow: rgba(217, 119, 50, 0.14);
+
+        --mc-text: #1C1714;
+        --mc-text-2: #574E46;
+        --mc-text-3: #6F655C;
+        --mc-text-muted: #857A70;
+
+        --mc-success: #2D6E48;
+        --mc-error: #AE3B2A;
+        --mc-warning: #8A5A00;
+        --mc-info: #2A6283;
+
+        --mc-roast-light: #E6C39A;
+        --mc-roast-medium: #A8683A;
+        --mc-roast-dark: #4A2F1F;
+
+        --mc-font: 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        --mc-font-mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
     }
-    .mc-light .stApp { background-color: var(--mc-bg) !important; color: var(--mc-text) !important; }
-    .mc-light [data-testid="stSidebar"] { background-color: var(--mc-surface) !important; }
-    .mc-light [data-testid="stHeader"]  { background-color: var(--mc-bg) !important; }
+
+    /* ─── Tema escuro "Roast" — classe aplicada pelo toggle ───────── */
+    .mc-dark {
+        --mc-bg: #131211;
+        --mc-surface: #1C1A18;
+        --mc-surface-2: #0D0C0B;
+        --mc-surface-3: #24211E;
+        --mc-border: #2A2724;
+        --mc-border-strong: #716A63;
+        --mc-orange-hover: #E8883A;
+        --mc-orange-ink: #E8914F;
+        --mc-orange-soft: #2E1D11;
+        --mc-orange-glow: rgba(217, 119, 50, 0.18);
+        --mc-text: #F3EFEA;
+        --mc-text-2: #B8B0A8;
+        --mc-text-3: #948B82;
+        --mc-text-muted: #7F776F;
+        --mc-success: #6CC08E;
+        --mc-error: #F07F6C;
+        --mc-warning: #E3AE52;
+        --mc-info: #7DB8DD;
+        --mc-roast-medium: #B8774A;
+        --mc-roast-dark: #6B4630;
+    }
+    .mc-dark .stApp { background-color: var(--mc-bg) !important; color: var(--mc-text) !important; }
+    .mc-dark [data-testid="stSidebar"] { background-color: var(--mc-surface) !important; }
+    .mc-dark [data-testid="stHeader"]  { background-color: var(--mc-bg) !important; }
 
     /* ─── Tipografia base ─────────────────────────────────────────── */
     html, body, [class*="css"], .stApp, div, p, span, label,
     h1, h2, h3, h4, h5, h6, button, input, textarea, select {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        font-family: var(--mc-font) !important;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
     }
     .mc-serif, .mc-serif * {
-        font-family: 'DM Serif Display', 'Cormorant Garamond', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.02em;
     }
     .stMarkdown p.mc-login-tagline, .mc-login-tagline {
-        font-family: 'DM Serif Display', Georgia, serif !important;
-        font-style: italic;
-        font-size: 22px !important;
-        line-height: 1.6;
+        font-family: var(--mc-font) !important;
+        font-style: normal;
+        font-size: 18px !important;
+        line-height: 1.5;
         text-align: center;
         color: var(--mc-text-2) !important;
         max-width: 400px;
         margin: 0.75rem auto 0;
+        font-weight: 400 !important;
+        letter-spacing: -0.02em;
     }
     /* Card de café — estilo carta de menu (nome serifado + origem eyebrow) */
     .stMarkdown p.mc-cafe-name, .mc-cafe-name {
-        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         font-size: 26px !important;
-        font-weight: 400 !important;
+        font-weight: 600 !important;
         line-height: 1.15;
         color: var(--mc-text) !important;
         margin: 0 0 2px 0 !important;
@@ -90,17 +106,17 @@
         color: var(--mc-text-3) !important;
         margin: 0 0 12px 0 !important;
     }
-    /* Cabeçalhos de seção — DM Serif com fundo espresso + acento (uniforme) */
+    /* Cabeçalhos de seção — Geist 600, plano, hairline (v4) */
     .stMarkdown p.mc-section-header, .mc-section-header {
-        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         font-size: 24px !important;
-        font-weight: 400 !important;
+        font-weight: 600 !important;
         color: var(--mc-text) !important;
-        background: linear-gradient(135deg, var(--mc-surface-3) 0%, var(--mc-surface-2) 100%) !important;
+        background: var(--mc-surface) !important;
         padding: 14px 18px 14px 22px !important;
         margin: 2rem 0 1.5rem 0 !important;
         border-radius: 10px !important;
-        border-left: 3px solid var(--mc-orange) !important;
+        border-left: 1px solid var(--mc-border) !important;
         line-height: 1.3;
         letter-spacing: -0.01em;
         animation: mcFadeUp 0.4s ease both;
@@ -126,25 +142,26 @@
     }
     .mc-card:hover {
         border-color: var(--mc-border-strong);
-        box-shadow: 0 10px 30px rgba(0,0,0,.30);
+        box-shadow: none;
     }
 
     /* ─── Zona (padrão das 3 zonas de extração) ─── */
     .mc-zone {
         position: relative;
         background: var(--mc-surface-2);
-        border-left: 3px solid var(--mc-orange);
-        border-radius: 0 10px 10px 0;
+        border: 1px solid var(--mc-border);
+        border-radius: 12px;
         padding: .65rem 1.1rem .4rem 1.25rem;
         margin: .5rem 0 1.1rem;
     }
     .mc-zone-label {
-        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         font-size: 13px !important;
         letter-spacing: .14em;
         text-transform: uppercase;
-        color: var(--mc-orange) !important;
+        color: var(--mc-orange-ink) !important;
         margin: 0 0 .35rem 0 !important;
+        font-weight: 600 !important;
     }
 
     /* ─── Inputs · textarea · date — superfície + glow no foco ─── */
@@ -153,8 +170,8 @@
     [data-testid="stDateInput"] input,
     [data-testid="stTextArea"] textarea {
         background: var(--mc-surface) !important;
-        border: 1px solid var(--mc-border) !important;
-        border-radius: 9px !important;
+        border: 1px solid var(--mc-border-strong) !important;
+        border-radius: 8px !important;
         color: var(--mc-text) !important;
         transition: border-color .2s ease, box-shadow .2s ease !important;
     }
@@ -163,20 +180,20 @@
     [data-testid="stDateInput"] input:focus,
     [data-testid="stTextArea"] textarea:focus {
         border-color: var(--mc-orange) !important;
-        box-shadow: 0 0 0 3px var(--mc-orange-glow) !important;
+        box-shadow: 0 0 0 2px var(--mc-orange-ink) !important;
     }
 
     /* ─── Selectbox / multiselect ─── */
     [data-baseweb="select"] > div {
         background: var(--mc-surface) !important;
-        border: 1px solid var(--mc-border) !important;
-        border-radius: 9px !important;
+        border: 1px solid var(--mc-border-strong) !important;
+        border-radius: 8px !important;
         transition: border-color .2s ease, box-shadow .2s ease !important;
     }
     [data-baseweb="select"] > div:hover { border-color: var(--mc-border-strong) !important; }
     [data-baseweb="select"]:focus-within > div {
         border-color: var(--mc-orange) !important;
-        box-shadow: 0 0 0 3px var(--mc-orange-glow) !important;
+        box-shadow: 0 0 0 2px var(--mc-orange-ink) !important;
     }
 
     /* ─── Botões — lift + sombra suave (transition, sem replay) ─── */
@@ -188,8 +205,8 @@
     }
     [data-testid="stButton"] button:hover,
     [data-testid="stFormSubmitButton"] button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 20px var(--mc-orange-glow);
+        transform: none;
+        box-shadow: none;
     }
     [data-testid="stButton"] button:active,
     [data-testid="stFormSubmitButton"] button:active { transform: translateY(0); }
@@ -205,10 +222,10 @@
     }
     [data-testid="stExpander"]:hover {
         border-color: var(--mc-orange) !important;
-        box-shadow: 0 8px 26px rgba(0,0,0,.26);
+        box-shadow: none;
     }
     [data-testid="stExpander"] summary { font-weight: 600 !important; }
-    [data-testid="stExpander"] summary:hover { color: var(--mc-orange) !important; }
+    [data-testid="stExpander"] summary:hover { color: var(--mc-orange-ink) !important; }
 
     /* ─── Métricas em mini-cards ─── */
     [data-testid="stMetric"] {
@@ -220,7 +237,7 @@
     }
     [data-testid="stMetric"]:hover {
         border-color: var(--mc-border-strong);
-        transform: translateY(-2px);
+        transform: none;
     }
 
     /* ─── Alerts / file uploader / sliders ─── */
@@ -233,7 +250,7 @@
     }
     [data-testid="stFileUploader"] section:hover { border-color: var(--mc-orange) !important; }
     [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
-        box-shadow: 0 0 0 4px var(--mc-orange-glow) !important;
+        box-shadow: 0 0 0 2px var(--mc-orange-ink) !important;
     }
 
     /* ═══ REFINO DE DENSIDADE — respiro e ritmo vertical ═══ */
@@ -262,29 +279,31 @@
         padding: 8px 16px;
         border: 1px solid var(--mc-orange);
         border-radius: 24px;
-        color: var(--mc-orange) !important;
+        color: var(--mc-orange-ink) !important;
         font-weight: 600;
         font-size: 13px;
     }
 
     /* ═══ ONBOARDING — card de boas-vindas (1ª sessão) ═══ */
     .mc-onboard {
-        background: linear-gradient(135deg, var(--mc-surface-3), var(--mc-surface));
+        background: var(--mc-surface);
         border: 1px solid var(--mc-border-strong);
-        border-left: 3px solid var(--mc-orange);
+        border-left: 1px solid var(--mc-border);
         border-radius: 14px;
         padding: 1.25rem 1.5rem;
         margin: 0 0 1.5rem;
         animation: mcFadeUp .45s ease both;
     }
     .mc-onboard h4 {
-        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         font-size: 20px !important; color: var(--mc-text) !important;
         margin: 0 0 .5rem !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.02em;
     }
     .mc-onboard ul { margin: .25rem 0 0; padding-left: 1.1rem; }
     .mc-onboard li { color: var(--mc-text-2) !important; font-size: 13.5px; margin: .25rem 0; }
-    .mc-onboard b { color: var(--mc-orange) !important; }
+    .mc-onboard b { color: var(--mc-orange-ink) !important; }
 
     .stApp { background-color: var(--mc-bg); color: var(--mc-text); }
     .block-container {
@@ -293,24 +312,23 @@
     }
 
     /* ─── Hierarquia de títulos (h1 > h2 > h3) ──────────────────────
-       Contraste sobre #0A0A0A:
-         #F5EDE8 = 17.3:1 (AAA)
-         #B8B0A8 = 9.4:1  (AAA)
-         #8A8278 = 5.0:1  (AA texto comum)
-         #6C6660 = 3.3:1  (AA texto grande apenas)
+       Contraste v4 sobre #F6F3EE (claro) / #131211 (escuro):
+         --mc-text   16.1:1 / 16.4:1
+         --mc-text-2  7.3:1 /  8.7:1
+         --mc-text-3  5.1:1 /  5.6:1
        ──────────────────────────────────────────────────────────── */
     h1 {
-        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         font-size: 28px !important;
-        font-weight: 400 !important;
+        font-weight: 600 !important;
         color: var(--mc-text) !important;
         letter-spacing: -0.01em !important;
         margin: 0 0 1rem 0 !important;
     }
     h2 {
-        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         font-size: 22px !important;
-        font-weight: 400 !important;
+        font-weight: 600 !important;
         color: var(--mc-text) !important;
         letter-spacing: -0.01em !important;
         margin: 1.5rem 0 0.75rem 0 !important;
@@ -348,9 +366,9 @@
         margin-bottom: 2rem;
     }
     .app-header-title {
-        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         font-size: 26px;
-        font-weight: 400;
+        font-weight: 600;
         color: var(--mc-text);
         letter-spacing: -0.01em;
         margin: 0;
@@ -395,7 +413,7 @@
     }
     .stTabs [aria-selected="true"] {
         background: transparent !important;
-        color: var(--mc-orange) !important;
+        color: var(--mc-orange-ink) !important;
         font-weight: 600 !important;
         border-bottom: 2px solid var(--mc-orange) !important;
         box-shadow: none !important;
@@ -406,10 +424,10 @@
     /* ─── Section labels (eyebrow) ──────────────────────────────── */
     .stMarkdown p.section-label,
     .section-label {
-        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         font-size: 11px;
         font-weight: 600;
-        color: var(--mc-orange) !important;
+        color: var(--mc-orange-ink) !important;
         letter-spacing: 0.14em;
         text-transform: uppercase;
         margin: 0 0 1.25rem 0;
@@ -447,7 +465,7 @@
     }
     .tag-accent {
         border-color: var(--mc-orange);
-        color: var(--mc-orange);
+        color: var(--mc-orange-ink);
         background: var(--mc-orange-soft);
     }
 
@@ -492,10 +510,10 @@
         letter-spacing: 0.12em !important;
     }
     div[data-testid="stMetricValue"] {
-        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         font-size: 24px !important;
-        font-weight: 400 !important;
-        color: var(--mc-orange) !important;
+        font-weight: 600 !important;
+        color: var(--mc-orange-ink) !important;
         letter-spacing: -0.01em !important;
     }
     div[data-testid="stMetricDelta"] {
@@ -510,7 +528,7 @@
     .stDateInput input,
     .stTimeInput input {
         background: var(--mc-surface) !important;
-        border: 0.5px solid var(--mc-border) !important;
+        border: 1px solid var(--mc-border-strong) !important;
         border-radius: 8px !important;
         color: var(--mc-text) !important;
         font-size: 14px !important;
@@ -530,7 +548,7 @@
     .stDateInput input:focus,
     .stTimeInput input:focus {
         border-color: var(--mc-orange) !important;
-        box-shadow: 0 0 0 3px var(--mc-orange-glow) !important;
+        box-shadow: 0 0 0 2px var(--mc-orange-ink) !important;
         outline: none !important;
     }
     .stTextInput input:disabled,
@@ -543,18 +561,18 @@
     /* Selects */
     div[data-baseweb="select"] > div {
         background: var(--mc-surface) !important;
-        border: 0.5px solid var(--mc-border) !important;
+        border: 1px solid var(--mc-border-strong) !important;
         border-radius: 8px !important;
         color: var(--mc-text) !important;
         min-height: 42px !important;
     }
     div[data-baseweb="select"] > div:focus-within {
         border-color: var(--mc-orange) !important;
-        box-shadow: 0 0 0 3px var(--mc-orange-glow) !important;
+        box-shadow: 0 0 0 2px var(--mc-orange-ink) !important;
     }
     div[data-baseweb="popover"] ul {
         background: var(--mc-surface-2) !important;
-        border: 0.5px solid var(--mc-border) !important;
+        border: 1px solid var(--mc-border) !important; background: var(--mc-surface) !important;
     }
     div[data-baseweb="popover"] li {
         color: var(--mc-text) !important;
@@ -606,22 +624,22 @@
         background: var(--mc-surface-3) !important;
         border-color: var(--mc-border-strong) !important;
         color: var(--mc-text) !important;
-        transform: translateY(-1px);
+        transform: none;
     }
     .stButton > button:active { transform: translateY(0); }
 
     .stButton > button[kind="primary"] {
         background: var(--mc-orange) !important;
         border-color: var(--mc-orange) !important;
-        color: #0D0B09 !important;
+        color: var(--mc-on-orange) !important;
         font-weight: 700 !important;
-        box-shadow: 0 2px 8px var(--mc-orange-glow) !important;
+        box-shadow: none !important;
     }
     .stButton > button[kind="primary"]:hover {
         background: var(--mc-orange-hover) !important;
         border-color: var(--mc-orange-hover) !important;
-        box-shadow: 0 6px 16px var(--mc-orange-glow) !important;
-        transform: translateY(-1px);
+        box-shadow: none !important;
+        transform: none;
     }
 
     /* Download button */
@@ -653,7 +671,7 @@
     .stRadio > div > label:has(input:checked) {
         background: var(--mc-orange-soft) !important;
         border-color: var(--mc-orange) !important;
-        color: var(--mc-orange) !important;
+        color: var(--mc-orange-ink) !important;
         font-weight: 600 !important;
     }
 
@@ -661,7 +679,7 @@
     .stSlider [data-baseweb="slider"] [role="slider"] {
         background: var(--mc-orange) !important;
         border-color: var(--mc-orange) !important;
-        box-shadow: 0 0 0 4px var(--mc-orange-glow) !important;
+        box-shadow: 0 0 0 2px var(--mc-orange-ink) !important;
     }
     .stSlider [data-baseweb="slider"] > div > div > div {
         background: var(--mc-orange) !important;
@@ -708,7 +726,7 @@
     /* ─── Alerts (success / error / warning / info) ───────────── */
     div[data-testid="stAlert"] {
         border-radius: 10px !important;
-        border-left-width: 4px !important;
+        border-left-width: 1px !important;
         font-size: 13px !important;
         padding: 14px 18px !important;
     }
@@ -782,12 +800,12 @@
         flex-shrink: 0;
         width: 32px; height: 32px;
         background: var(--mc-orange);
-        color: #0A0A0A;
+        color: var(--mc-on-orange);
         border-radius: 50%;
         display: flex; align-items: center; justify-content: center;
         font-weight: 800;
         font-size: 14px;
-        box-shadow: 0 2px 8px var(--mc-orange-glow);
+        box-shadow: none;
     }
     .mc-step-num.muted {
         background: var(--mc-surface-3);
@@ -796,9 +814,9 @@
     }
     .mc-step-body { flex: 1; min-width: 0; }
     .mc-step-title {
-        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         font-size: 21px;
-        font-weight: 400;
+        font-weight: 600;
         color: var(--mc-text);
         letter-spacing: -0.01em;
         margin: 0;
@@ -827,11 +845,12 @@
         opacity: 0.85;
     }
     .mc-empty-title {
-        font-family: 'DM Serif Display', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         font-size: 22px;
-        font-weight: 400;
+        font-weight: 600;
         color: var(--mc-text);
         margin: 0 0 0.5rem 0;
+        letter-spacing: -0.02em;
     }
     .mc-empty-sub {
         font-size: 13px;
@@ -847,7 +866,7 @@
         padding: 8px 14px;
         background: var(--mc-orange-soft);
         border: 0.5px solid var(--mc-orange);
-        color: var(--mc-orange);
+        color: var(--mc-orange-ink);
         border-radius: 24px;
         font-size: 12px;
         font-weight: 700;
@@ -857,14 +876,15 @@
 
     /* ═══════════════════════════════════════════════════════════
        BRAND WORDMARK — Replica fiel do logo "MATEU COFFEE"
-       Fonte: Cormorant Garamond (serif transicional)
+       Fonte: Geist 600 (v4)
        MATEU em laranja vibrante · COFFEE em cinza quente
        ═══════════════════════════════════════════════════════════ */
     .mc-mark {
-        font-family: 'Cormorant Garamond', 'Playfair Display', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         text-align: center;
         line-height: 0.95;
         letter-spacing: 0.04em;
+        font-weight: 600 !important;
     }
     .mc-mark-row {
         display: inline-flex;
@@ -873,13 +893,13 @@
         line-height: 0.95;
     }
     .mc-mark-mateu {
-        font-family: 'Cormorant Garamond', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         font-weight: 600;
-        color: var(--mc-orange);
+        color: var(--mc-orange-ink);
         letter-spacing: 0.08em;
     }
     .mc-mark-coffee {
-        font-family: 'Cormorant Garamond', Georgia, serif !important;
+        font-family: var(--mc-font) !important;
         font-weight: 600;
         color: var(--mc-text-2);
         letter-spacing: 0.08em;
@@ -888,13 +908,13 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        color: var(--mc-orange);
+        color: var(--mc-orange-ink);
         line-height: 1;
     }
     .mc-mark-tag {
-        font-family: 'Cormorant Garamond', Georgia, serif !important;
-        font-weight: 500;
-        font-style: italic;
+        font-family: var(--mc-font) !important;
+        font-weight: 600;
+        font-style: normal;
         color: var(--mc-text-3);
         letter-spacing: 0.18em;
         text-transform: uppercase;
@@ -933,7 +953,7 @@
     .mc-login-hero img {
         max-width: 480px !important;
         width: 90% !important;
-        filter: drop-shadow(0 8px 32px rgba(232, 114, 46, 0.28));
+        filter: none;
         transition: filter 0.3s ease;
     }
     .mc-login-title {
@@ -991,7 +1011,7 @@
     }
     .mc-topbar-brand-tag {
         font-size: 10px;
-        color: var(--mc-orange);
+        color: var(--mc-orange-ink);
         letter-spacing: 0.14em;
         text-transform: uppercase;
         font-weight: 700;
@@ -1007,7 +1027,7 @@
         width: 28px; height: 28px; border-radius: 50%;
         background: var(--mc-orange-soft);
         border: 1px solid var(--mc-orange);
-        color: var(--mc-orange);
+        color: var(--mc-orange-ink);
         display: flex; align-items: center; justify-content: center;
         font-weight: 800;
         font-size: 12px;
@@ -1018,9 +1038,9 @@
         display: flex;
         gap: 0;
         align-items: stretch;
-        background: linear-gradient(135deg, var(--mc-surface) 0%, var(--mc-surface-2) 100%);
+        background: var(--mc-surface);
         border: 1px solid var(--mc-border);
-        border-left: 4px solid var(--mc-orange);
+        border-left: 1px solid var(--mc-border);
         border-radius: 12px;
         padding: 14px 18px;
         margin: 0 0 1.5rem;
@@ -1048,7 +1068,7 @@
         letter-spacing: -0.02em;
         margin: 0;
     }
-    .mc-consumo-value.accent { color: var(--mc-orange); }
+    .mc-consumo-value.accent { color: var(--mc-orange-ink); }
     .mc-consumo-sub {
         font-size: 11px;
         color: var(--mc-text-3);
@@ -1093,7 +1113,7 @@
         margin: 0;
         letter-spacing: -0.01em;
     }
-    .mc-recipe-meta-value.accent { color: var(--mc-orange); }
+    .mc-recipe-meta-value.accent { color: var(--mc-orange-ink); }
 
     /* Badges/chips de filtro */
     .mc-recipe-badge {
@@ -1103,7 +1123,7 @@
         padding: 4px 10px;
         background: var(--mc-orange-soft);
         border: 1px solid var(--mc-orange);
-        color: var(--mc-orange);
+        color: var(--mc-orange-ink);
         border-radius: 100px;
         font-size: 10px;
         font-weight: 700;
@@ -1154,19 +1174,19 @@
         left: 12px; top: 11px;
         width: 26px; height: 26px;
         background: var(--mc-orange);
-        color: #0A0A0A;
+        color: var(--mc-on-orange);
         border-radius: 50%;
         display: flex; align-items: center; justify-content: center;
         font-weight: 800;
         font-size: 12px;
-        font-family: 'Inter', sans-serif;
+        font-family: var(--mc-font);
     }
 
     /* Lista de ingredientes (visual mais quente) */
     .mc-ingredients {
-        background: linear-gradient(135deg, var(--mc-surface) 0%, var(--mc-orange-soft) 200%);
+        background: var(--mc-surface);
         border: 1px solid var(--mc-border);
-        border-left: 4px solid var(--mc-orange);
+        border-left: 1px solid var(--mc-border);
         border-radius: 10px;
         padding: 14px 18px;
         margin: 0.5rem 0 1rem;
@@ -1186,7 +1206,7 @@
     }
     .mc-ingredients li::before {
         content: "•";
-        color: var(--mc-orange);
+        color: var(--mc-orange-ink);
         font-weight: 800;
         font-size: 16px;
         position: absolute;
@@ -1217,7 +1237,7 @@
         color: var(--mc-text-2);
         letter-spacing: 0.02em;
     }
-    .mc-when.today { background: var(--mc-orange-soft); border-color: var(--mc-orange); color: var(--mc-orange); }
+    .mc-when.today { background: var(--mc-orange-soft); border-color: var(--mc-orange); color: var(--mc-orange-ink); }
 
     /* ─── Mobile ──────────────────────────────────────────────── */
     @media (max-width: 640px) {
@@ -1325,7 +1345,7 @@
             height: 44px; width: 34px;
             display: flex; align-items: center; justify-content: center;
             font-size: 22px; font-weight: 700;
-            color: var(--mc-orange);
+            color: var(--mc-orange-ink);
             background: linear-gradient(to right, transparent, var(--mc-bg) 55%);
             pointer-events: none;
             z-index: 5;
@@ -1342,3 +1362,15 @@
         max-width: 680px !important;
         margin: 0 auto !important;
     }
+    /* ─── v4: números em Geist Mono ───────────────────────────────── */
+    [data-testid="stMetricValue"], [data-testid="stMetricValue"] *,
+    .mc-num, .mc-num * {
+        font-family: var(--mc-font-mono) !important;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.02em;
+    }
+
+    /* ─── v4: logo oficial tem fundo preto próprio → bloco escuro arredondado ─── */
+    .mc-topbar-logo { border-radius: 12px; }
+    .mc-login-hero img, [data-testid="stImage"] img, [data-testid="stImageContainer"] img { border-radius: 20px; }
+    [data-baseweb="input"], [data-baseweb="base-input"] { border-color: transparent !important; background: transparent !important; }
