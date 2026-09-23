@@ -120,6 +120,29 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ── App legado desativado (2026-09-22) ─────────────────────────────────
+# A versão oficial do Mateu Coffee é o app Next.js no domínio abaixo. Esta
+# instância Streamlit (Render) fica só como aviso + redirecionamento, para
+# não existirem dois apps gravando no mesmo banco. Nenhum dado é apagado.
+# Para reativar (ex.: consulta pontual), defina MC_LEGACY_ENABLED=1.
+_OFFICIAL_URL = "https://mateucoffee.souleandroribeiro.com.br"
+if os.environ.get("MC_LEGACY_ENABLED") != "1":
+    st.markdown(
+        "<style>[data-testid='stHeader'],[data-testid='stToolbar']{display:none}"
+        ".stApp{background:#F6F3EE}.block-container{max-width:520px;padding-top:18vh}"
+        "</style>"
+        "<h2 style='color:#1C1714;font-weight:600;letter-spacing:-.02em;margin:0 0 .5rem'>"
+        "O Mateu Coffee mudou de endereço</h2>"
+        "<p style='color:#574E46;font-size:16px;line-height:1.6;margin:0 0 1.5rem'>"
+        "Esta versão antiga foi desativada. Seus cafés, extrações e cápsulas "
+        "continuam no app oficial — é só entrar com a mesma conta.</p>",
+        unsafe_allow_html=True)
+    st.link_button("Abrir o Mateu Coffee", _OFFICIAL_URL, type="primary")
+    components.html(
+        f"<script>try{{window.top.location.replace('{_OFFICIAL_URL}')}}catch(e){{}}</script>",
+        height=0)
+    st.stop()
+
 _DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Fuso local — o servidor (Render) roda em UTC; sem isso a hora sai errada
